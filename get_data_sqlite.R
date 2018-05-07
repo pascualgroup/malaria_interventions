@@ -60,13 +60,17 @@ summary_general$EIR <- summary_general$prevalence*summary_general$b*30
 
 summary_general %>% filter(time>1440) %>% gather(variable, value, -time) %>% ggplot(aes(time, value))+geom_line()+facet_wrap(~variable, scales = 'free')
 
+assign(paste(exp,'_results',sep=''), summary_general)
 
 # Annual biting rate is given by taking an average over 12 months and multiplying by 30.
 summary_general$year <- gl(n = max(summary_general$time)/360, length = nrow(summary_general), k = 1)
 summary_general %>% group_by(year) %>% summarise(eir_y=mean(EIR)*30)
 
 
-summary_general_04$exp <- 'test4'
-summary_general_05$exp <- 'test5'
-d <- rbind(summary_general_04,summary_general_05)
+# Compare between experiments ---------------------------------------------
+d <- rbind(test_01_results,test_02_results)
 d %>% filter(time>1440) %>% gather(variable, value, -time, -exp) %>% ggplot(aes(time, value, color=exp))+geom_line()+facet_wrap(~variable, scales = 'free')
+
+png('~/Documents/malaria_interventions/burnin_test.png', 1200, 800)
+d %>% filter(time>1440) %>% gather(variable, value, -time, -exp) %>% ggplot(aes(time, value, color=exp))+geom_line()+facet_wrap(~variable, scales = 'free')
+dev.off()

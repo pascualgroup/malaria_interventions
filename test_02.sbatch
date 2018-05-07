@@ -1,6 +1,6 @@
 #!/bin/bash
 #SBATCH --job-name=test_02
-#SBATCH --time=20:00:00
+#SBATCH --time=10:00:00
 #SBATCH --output=slurm_output/test_02_%A_%a.out
 #SBATCH --error=slurm_output/test_02_%A_%a.err
 #SBATCH --array=1-2
@@ -18,7 +18,7 @@ module load gcc/4.9
 # Initialize
 run=$SLURM_ARRAY_TASK_ID
 exp='test_02'
-base_folder='/home/pilosofs/varmodel2/' # Where all the source files are and where the experiment folders will be created
+base_folder='/home/pilosofs/malaria_interventions/' # Where all the source files are and where the experiment folders will be created
 work_folder=$base_folder'/'$exp'/run_'$run
 ABM_file=varmodel2.zip
 

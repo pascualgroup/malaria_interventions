@@ -6,7 +6,7 @@
 #SBATCH --array=1-2
 #SBATCH --tasks=1
 #SBATCH --cpus-per-task=1 
-#SBATCH --mem-per-cpu=32000
+#SBATCH --mem-per-cpu=20000
 #SBATCH --partition=broadwl
 ##SBATCH --mail-type=END
 ##SBATCH --mail-user=pilosofs@uchicago.edu
@@ -17,8 +17,8 @@ module load gcc/4.9
 
 # Initialize
 run=$SLURM_ARRAY_TASK_ID
-exp='test_05'
-base_folder='/home/pilosofs/varmodel2/' # Where all the source files are and where the experiment folders will be created
+exp='test_02'
+base_folder='/home/pilosofs/malaria_interventions/' # Where all the source files are and where the experiment folders will be created
 work_folder=$base_folder'/'$exp'/run_'$run
 ABM_file=varmodel2.zip
 
