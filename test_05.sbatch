@@ -17,7 +17,7 @@ module load gcc/4.9
 
 # Initialize
 run=$SLURM_ARRAY_TASK_ID
-exp='test_02'
+exp='test_05'
 base_folder='/home/pilosofs/malaria_interventions/' # Where all the source files are and where the experiment folders will be created
 work_folder=$base_folder'/'$exp'/run_'$run
 ABM_file=varmodel2.zip
