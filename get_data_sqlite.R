@@ -23,9 +23,9 @@ get_biting_rate <- function(parameter_file, sampling_period=30){
 
 
 # Arguments ---------------------------------------------------------------
-setwd('~/Documents/malaria_interventions/sqlite')
-exp <- 'test_04'
-run <- 2
+setwd('~/Documents/malaria_interventions_sqlite')
+exp <- 'test_05'
+run <- 1
 sqlite_file <- paste(exp,'_',run,'.sqlite',sep='')
 parameter_file <- paste(exp,'.py',sep='')
 
@@ -37,15 +37,15 @@ summary_general <- dbGetQuery(db, 'SELECT * FROM summary')
 summary_general <- inner_join(sampled_hosts, summary_general)
 
 # Main code ---------------------------------------------------------------
-
+summary_general <- summary_general[-1,]
 # Prevalence
 summary_general$prevalence <- summary_general$total_infected/10^4
 
 #EIR
 #EIR=biting_rate * prevalence
 biting_rate <- get_biting_rate(parameter_file)
-summary_general$b[2:nrow(summary_general)] <- biting_rate
-summary_general$EIR <- summary_general$prevalence*summary_general$b
+summary_general$b <- biting_rate
+summary_general$EIR <- summary_general$prevalence*summary_general$b*30
 
 # Burnin
 # burnin_seq <- 1:10  # This is burnin in years, not days
@@ -59,3 +59,14 @@ summary_general$EIR <- summary_general$prevalence*summary_general$b
 # df %>% ggplot(aes(time, EIR, color=burnin))+geom_line()+facet_wrap(~burnin)
 
 summary_general %>% filter(time>1440) %>% gather(variable, value, -time) %>% ggplot(aes(time, value))+geom_line()+facet_wrap(~variable, scales = 'free')
+
+
+# Annual biting rate is given by taking an average over 12 months and multiplying by 30.
+summary_general$year <- gl(n = max(summary_general$time)/360, length = nrow(summary_general), k = 1)
+summary_general %>% group_by(year) %>% summarise(eir_y=mean(EIR)*30)
+
+
+summary_general_04$exp <- 'test4'
+summary_general_05$exp <- 'test5'
+d <- rbind(summary_general_04,summary_general_05)
+d %>% filter(time>1440) %>% gather(variable, value, -time, -exp) %>% ggplot(aes(time, value, color=exp))+geom_line()+facet_wrap(~variable, scales = 'free')
