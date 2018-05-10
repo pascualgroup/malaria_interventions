@@ -23,14 +23,22 @@ param_values <- map(lines, function(l){
 param_data <- data.frame(param=str_trim(parameters), value=param_values, stringsAsFactors = F)
 
 
-# Set parameters ----------------------------------------------------------
-experiment <- 'test_09'
-mathematica_file <- 'mosquito_population_IRS02.csv' # This file contains the number of adult mosquitos for the particular experiment
-param_data[param_data$param=='SAMPLE_DB_FILENAME',] <- set_parameter(param_data, 'SAMPLE_DB_FILENAME', paste('\'\"',experiment,'.sqlite\"\'',sep=''))
-param_data[param_data$param=='BITING_RATE_MEAN',] <- set_parameter(param_data, 'BITING_RATE_MEAN', '[0.00005]')
+# Define parameters to set ------------------------------------------------
+experiment <- 'test_10'
+BITING_RATE_MEAN <- 1
+# The biting rate distribution for seasonality and/or IRS is generated in
+# Mathematica and exported to a file. This distribution consists of the number
+# of adult mosquitos. This is done per experiment.
+mathematica_file <- 'mosquito_population_IRS02.csv' 
 biting_rate_mathematica <- read_csv(mathematica_file, col_names = c('day','num_mosquitos'))
-biting_rate_distribution <- biting_rate_mathematica$num_mosquitos
-param_data[param_data$param=='DAILY_BITING_RATE_DISTRIBUTION',] <- set_parameter(param_data, 'DAILY_BITING_RATE_DISTRIBUTION', paste('[',paste(biting_rate_distribution, collapse=','),']',sep=''))
+DAILY_BITING_RATE_DISTRIBUTION <- biting_rate_mathematica$num_mosquitos
+
+# biting_rate_distribution <- paste(rep(0.5,360),collapse=',') # This is to set a fixed biting rate. Mostly for testing.
+
+# Set parameters ----------------------------------------------------------
+param_data[param_data$param=='SAMPLE_DB_FILENAME',] <- set_parameter(param_data, 'SAMPLE_DB_FILENAME', paste('\'\"',experiment,'.sqlite\"\'',sep=''))
+param_data[param_data$param=='BITING_RATE_MEAN',] <- set_parameter(param_data, 'BITING_RATE_MEAN', paste('[',BITING_RATE_MEAN,']',sep=''))
+param_data[param_data$param=='DAILY_BITING_RATE_DISTRIBUTION',] <- set_parameter(param_data, 'DAILY_BITING_RATE_DISTRIBUTION', paste('[',paste(DAILY_BITING_RATE_DISTRIBUTION, collapse=','),']',sep=''))
 
 
 # Write to a new paramter file --------------------------------------------

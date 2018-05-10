@@ -3,6 +3,22 @@ library(tidyverse)
 
 
 # Functions ---------------------------------------------------------------
+mytheme <- theme_bw() + theme(
+  legend.title  = element_text(colour = "black", size=17),
+   legend.position = "none",
+  #	legend.direction = "horizontal",
+  legend.key = element_blank(),
+  legend.text  = element_text(colour = "black", size=17),
+  panel.background = element_blank(),
+  panel.grid.minor = element_blank(),
+  axis.text = element_text(color='black', family="Helvetica", size=19),
+  strip.text.x = element_text(family = "Helvetica", size = 10),
+  strip.text.y = element_text(family = "Helvetica", size = 10),
+  panel.border = element_rect(colour = "black", size=1.3),
+  axis.ticks = element_line(size = 1.3),
+  strip.background = element_rect( fill = "transparent", size = 1.3, colour = "black"  ),
+  strip.text = element_text(size = 19)
+)
 
 chunk2 <- function(x,n) split(x, cut(seq_along(x), n, labels = FALSE)) 
 
@@ -13,7 +29,7 @@ chunk2 <- function(x,n) split(x, cut(seq_along(x), n, labels = FALSE))
 get_biting_rate <- function(parameter_file, sampling_period=30){
   x <- readLines(parameter_file)
   y <- x[grep('BITING_RATE_MEAN',x)[1]]
-  BITING_RATE_MEAN <- as.numeric(str_extract(y, "[[:digit:]]"))
+  BITING_RATE_MEAN <- parse_number(y)
   y <- x[grep('DAILY_BITING_RATE_DISTRIBUTION',x)[1]]
   DAILY_BITING_RATE_DISTRIBUTION <- eval(parse(text=paste('c(',(str_sub(y, str_locate(y, '\\[(.*?)\\]')[1]+1, str_locate(y, '\\[(.*?)\\]')[2]-1)),')',sep='')))
   BITING_RATE <- BITING_RATE_MEAN*DAILY_BITING_RATE_DISTRIBUTION
@@ -24,8 +40,8 @@ get_biting_rate <- function(parameter_file, sampling_period=30){
 
 # Arguments ---------------------------------------------------------------
 setwd('~/Documents/malaria_interventions_sqlite')
-exp <- 'test_05'
-run <- 1
+exp <- 'test_06'
+run <- 2
 sqlite_file <- paste(exp,'_',run,'.sqlite',sep='')
 parameter_file <- paste(exp,'.py',sep='')
 
@@ -58,18 +74,38 @@ summary_general$EIR <- summary_general$prevalence*summary_general$b*30
 # df %>% ggplot(aes(time, prevalence, color=burnin))+geom_line()+facet_wrap(~burnin)
 # df %>% ggplot(aes(time, EIR, color=burnin))+geom_line()+facet_wrap(~burnin)
 
-summary_general %>% filter(time>1440) %>% gather(variable, value, -time) %>% ggplot(aes(time, value))+geom_line()+facet_wrap(~variable, scales = 'free')
-
-assign(paste(exp,'_results',sep=''), summary_general)
+summary_general %>% 
+  select(-n_infected) %>% 
+  # filter(time>6000&time<8000) %>% 
+  gather(variable, value, -time) %>% 
+  ggplot(aes(time, value, color=variable))+
+  geom_line()+
+  facet_wrap(~variable, scales = 'free')+
+  mytheme
 
 # Annual biting rate is given by taking an average over 12 months and multiplying by 30.
 summary_general$year <- gl(n = max(summary_general$time)/360, length = nrow(summary_general), k = 1)
 summary_general %>% group_by(year) %>% summarise(eir_y=mean(EIR)*30)
 
+summary_general$month <- gl(n = 12, k = 1, length = nrow(summary_general),labels = c('Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'), ordered = F)
+summary_general %>% 
+  ggplot(aes(x=month,y=EIR))+
+  # geom_boxplot()+
+  geom_point(stat='summary', fun.y=mean, color='red')+
+  stat_summary(fun.y=mean, geom="line")+mytheme
+
+
+summary_general$exp <- exp
+assign(paste(exp,'_results',sep=''), summary_general)
 
 # Compare between experiments ---------------------------------------------
-d <- rbind(test_01_results,test_02_results)
-d %>% filter(time>1440) %>% gather(variable, value, -time, -exp) %>% ggplot(aes(time, value, color=exp))+geom_line()+facet_wrap(~variable, scales = 'free')
+d <- rbind(test_07_results,test_06_results)
+d %>% 
+  # filter(time>1440) %>% 
+  gather(variable, value, -time, -exp) %>% 
+  ggplot(aes(x=time, y=value, color=exp, group=exp))+
+  geom_line()+
+  facet_wrap(~variable, scales = 'free')
 
 png('~/Documents/malaria_interventions/burnin_test.png', 1200, 800)
 d %>% filter(time>1440) %>% gather(variable, value, -time, -exp) %>% ggplot(aes(time, value, color=exp))+geom_line()+facet_wrap(~variable, scales = 'free')
