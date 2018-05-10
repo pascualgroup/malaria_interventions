@@ -40,8 +40,9 @@ get_biting_rate <- function(parameter_file, sampling_period=30){
 
 # Arguments ---------------------------------------------------------------
 setwd('~/Documents/malaria_interventions_sqlite')
+setwd('~/GitHub/')
 exp <- 'test_06'
-run <- 2
+run <- 1
 sqlite_file <- paste(exp,'_',run,'.sqlite',sep='')
 parameter_file <- paste(exp,'.py',sep='')
 
@@ -60,7 +61,8 @@ summary_general$prevalence <- summary_general$total_infected/10^4
 #EIR
 #EIR=biting_rate * prevalence
 biting_rate <- get_biting_rate(parameter_file)
-summary_general$b <- biting_rate
+summary_general$b <- NA
+summary_general$b[] <- biting_rate # The [] is for recycling the biting_rate
 summary_general$EIR <- summary_general$prevalence*summary_general$b*30
 
 # Burnin
@@ -90,7 +92,7 @@ summary_general %>% group_by(year) %>% summarise(eir_y=mean(EIR)*30)
 summary_general$month <- gl(n = 12, k = 1, length = nrow(summary_general),labels = c('Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'), ordered = F)
 summary_general %>% 
   ggplot(aes(x=month,y=EIR))+
-  # geom_boxplot()+
+  geom_boxplot()+
   geom_point(stat='summary', fun.y=mean, color='red')+
   stat_summary(fun.y=mean, geom="line")+mytheme
 
@@ -99,13 +101,30 @@ summary_general$exp <- exp
 assign(paste(exp,'_results',sep=''), summary_general)
 
 # Compare between experiments ---------------------------------------------
-d <- rbind(test_07_results,test_06_results)
+scaleFUN <- function(x) sprintf("%.2f", x)
+
+d <- rbind(test_06_results,test_07_results)
+mintime=d %>% group_by(exp) %>% summarise(m=max(time)) %>% summarise(min(m))
+mintime=mintime[1,1]
 d %>% 
-  # filter(time>1440) %>% 
+  filter(time<mintime) %>% 
   gather(variable, value, -time, -exp) %>% 
   ggplot(aes(x=time, y=value, color=exp, group=exp))+
   geom_line()+
+  # scale_y_continuous(labels=scaleFUN)+
   facet_wrap(~variable, scales = 'free')
+
+png('monthly_eir',1600,1000)
+d %>% 
+  ggplot(aes(x=month,y=EIR, color=exp, group=exp))+
+  # geom_boxplot()+
+  geom_point(stat='summary', fun.y=mean)+
+  scale_y_continuous(limits = c(0,10))+
+  stat_summary(fun.y=mean, geom="line")+
+  mytheme
+dev.off()
+
+
 
 png('~/Documents/malaria_interventions/burnin_test.png', 1200, 800)
 d %>% filter(time>1440) %>% gather(variable, value, -time, -exp) %>% ggplot(aes(time, value, color=exp))+geom_line()+facet_wrap(~variable, scales = 'free')
