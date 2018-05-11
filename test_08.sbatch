@@ -1,12 +1,12 @@
 #!/bin/bash
 #SBATCH --job-name=test_08
-#SBATCH --time=20:00:00
+#SBATCH --time=10:00:00
 #SBATCH --output=slurm_output/test_08_%A_%a.out
 #SBATCH --error=slurm_output/test_08_%A_%a.err
 #SBATCH --array=1
 #SBATCH --tasks=1
 #SBATCH --cpus-per-task=1 
-#SBATCH --mem-per-cpu=16000
+#SBATCH --mem-per-cpu=4000
 #SBATCH --partition=broadwl
 ##SBATCH --mail-type=END
 ##SBATCH --mail-user=pilosofs@uchicago.edu
