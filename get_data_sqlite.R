@@ -41,7 +41,7 @@ get_biting_rate <- function(parameter_file, sampling_period=30){
 # Arguments ---------------------------------------------------------------
 setwd('~/Documents/malaria_interventions_sqlite')
 setwd('~/GitHub/')
-exp <- 'test_07'
+exp <- 'CPsave_test'
 run <- 1
 sqlite_file <- paste(exp,'_',run,'.sqlite',sep='')
 parameter_file <- paste(exp,'.py',sep='')
@@ -83,7 +83,7 @@ summary_general %>%
   ggplot(aes(time, value, color=variable))+
   geom_line()+
   facet_wrap(~variable, scales = 'free')+
-  mytheme
+  mytheme+theme(legend.position = 'none')
 
 # Annual biting rate is given by taking an average over 12 months and multiplying by 30.
 summary_general$year <- gl(n = max(summary_general$time)/360, length = nrow(summary_general), k = 1)
