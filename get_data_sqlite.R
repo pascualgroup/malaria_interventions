@@ -5,7 +5,7 @@ library(tidyverse)
 # Functions ---------------------------------------------------------------
 mytheme <- theme_bw() + theme(
   legend.title  = element_text(colour = "black", size=17),
-   legend.position = "none",
+   # legend.position = "none",
   #	legend.direction = "horizontal",
   legend.key = element_blank(),
   legend.text  = element_text(colour = "black", size=17),
@@ -41,7 +41,7 @@ get_biting_rate <- function(parameter_file, sampling_period=30){
 # Arguments ---------------------------------------------------------------
 setwd('~/Documents/malaria_interventions_sqlite')
 setwd('~/GitHub/')
-exp <- 'test_06'
+exp <- 'test_07'
 run <- 1
 sqlite_file <- paste(exp,'_',run,'.sqlite',sep='')
 parameter_file <- paste(exp,'.py',sep='')
@@ -101,20 +101,19 @@ summary_general$exp <- exp
 assign(paste(exp,'_results',sep=''), summary_general)
 
 # Compare between experiments ---------------------------------------------
-scaleFUN <- function(x) sprintf("%.2f", x)
 
 d <- rbind(test_06_results,test_07_results)
-mintime=d %>% group_by(exp) %>% summarise(m=max(time)) %>% summarise(min(m))
-mintime=mintime[1,1]
-d %>% 
-  filter(time<mintime) %>% 
+# mintime=d %>% group_by(exp) %>% summarise(m=max(time)) %>% summarise(min(m))
+# mintime=mintime[1,1]
+pdf('seasonal_comparison.pdf',16,10)
+d %>%
+  select(-year, -month, -n_infected) %>% 
+  filter(time>15000) %>% 
   gather(variable, value, -time, -exp) %>% 
   ggplot(aes(x=time, y=value, color=exp, group=exp))+
   geom_line()+
-  # scale_y_continuous(labels=scaleFUN)+
-  facet_wrap(~variable, scales = 'free')
-
-png('monthly_eir',1600,1000)
+  scale_x_continuous(breaks=pretty(x=d$time,n=20))+
+  facet_wrap(~variable, scales = 'free')+mytheme
 d %>% 
   ggplot(aes(x=month,y=EIR, color=exp, group=exp))+
   # geom_boxplot()+
