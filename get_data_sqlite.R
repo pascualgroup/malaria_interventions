@@ -41,11 +41,13 @@ get_biting_rate <- function(parameter_file, sampling_period=30){
 # Arguments ---------------------------------------------------------------
 setwd('~/Documents/malaria_interventions_sqlite')
 setwd('~/GitHub/')
-exp <- 'CPsave_test'
+PS <- '01'
+scenario <- 'S'
+exp <- '01' # 00 is for the checkpoint and control
 run <- 1
-sqlite_file <- paste(exp,'_',run,'.sqlite',sep='')
-parameter_file <- paste(exp,'.py',sep='')
-
+base_name <- paste('PS',PS,'_',scenario,'_E',exp,sep='')
+sqlite_file <- paste(base_name,'_R',run,'.sqlite',sep='')
+parameter_file <- paste(base_name,'.py',sep='')
 
 # Extract from sqlite -----------------------------------------------------
 db <- dbConnect(SQLite(), dbname = sqlite_file)
@@ -78,7 +80,7 @@ summary_general$EIR <- summary_general$prevalence*summary_general$b*30
 
 summary_general %>% 
   select(-n_infected) %>% 
-  # filter(time>6000&time<8000) %>% 
+  # filter(time>10000) %>%
   gather(variable, value, -time) %>% 
   ggplot(aes(time, value, color=variable))+
   geom_line()+
@@ -97,19 +99,22 @@ summary_general %>%
   stat_summary(fun.y=mean, geom="line")+mytheme
 
 
+summary_general$PS <- PS
 summary_general$exp <- exp
-assign(paste(exp,'_results',sep=''), summary_general)
+summary_general$scenario <- scenario
+summary_general$run <- run
+assign(paste(base_name,'_R',run,'_results',sep=''), summary_general)
 
 # Compare between experiments ---------------------------------------------
 
-d <- rbind(test_06_results,test_07_results)
+d <- rbind(PS01_S_E00_R1_results,PS01_S_E01_R1_results)
 # mintime=d %>% group_by(exp) %>% summarise(m=max(time)) %>% summarise(min(m))
 # mintime=mintime[1,1]
 pdf('seasonal_comparison.pdf',16,10)
 d %>%
   select(-year, -month, -n_infected) %>% 
-  filter(time>15000) %>% 
-  gather(variable, value, -time, -exp) %>% 
+  # filter(time>15000) %>% 
+  gather(variable, value, -time, -exp, -PS, -scenario, -run) %>% 
   ggplot(aes(x=time, y=value, color=exp, group=exp))+
   geom_line()+
   scale_x_continuous(breaks=pretty(x=d$time,n=20))+

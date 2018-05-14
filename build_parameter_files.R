@@ -23,7 +23,7 @@ param_values <- map(lines, function(l){
 param_data <- data.frame(param=str_trim(parameters), value=param_values, stringsAsFactors = F)
 
 
-# Define parameters for a give nparameter set -----------------------------
+# Define parameters for a given parameter set -----------------------------
 parameter_space <- '01'
 scenario <- 'S'
 experiment <- '01'
@@ -64,7 +64,7 @@ param_data[param_data$param=='CHECKPOINT_LOAD_FILENAME',] <- set_parameter(param
 output_file=paste('PS',parameter_space,'_',scenario,'.py',sep = '')
 
 # Load from a checkpoint --------------------------------------------------
-run=1 # This is the particular run of the parameter space which should be loaded
+run <- 1 # This is the particular run of the parameter space which should be loaded
 # This section prepares a parameter file to load a checkpoint and run an experiment
 param_data[param_data$param=='SAMPLE_DB_FILENAME',] <- set_parameter(param_data, 'SAMPLE_DB_FILENAME', paste('\'\"PS',parameter_space,'_',scenario,'_E',experiment,'.sqlite\"\'',sep='')) # The run ID will be added while running the job (in the sbatch execution).
 param_data[param_data$param=='SAVE_TO_CHECKPOINT',] <- set_parameter(param_data, 'SAVE_TO_CHECKPOINT', 'False')
@@ -72,6 +72,7 @@ param_data[param_data$param=='CHECKPOINT_SAVE_PERIOD',] <- set_parameter(param_d
 param_data[param_data$param=='CHECKPOINT_SAVE_FILENAME',] <- set_parameter(param_data, 'CHECKPOINT_SAVE_FILENAME', '\'\"\"\'')
 param_data[param_data$param=='LOAD_FROM_CHECKPOINT',] <- set_parameter(param_data, 'LOAD_FROM_CHECKPOINT', 'True')
 param_data[param_data$param=='CHECKPOINT_LOAD_FILENAME',] <- set_parameter(param_data, 'CHECKPOINT_LOAD_FILENAME', paste('\'\"PS',parameter_space,'_',scenario,'_R',run,'_CP.sqlite\"\'',sep=''))
+param_data[param_data$param=='T_BURNIN',] <- set_parameter(param_data, 'T_BURNIN', 2880)
 # Name of output parameter file
 output_file=paste('PS',parameter_space,'_',scenario,'_E',experiment,'.py',sep = '')
 
@@ -88,14 +89,15 @@ memory <- '3000'
 CP_state <- 'load' # Can be 'create', 'load', or 'none'
 if (CP_state=='create'){
   output_file=paste('PS',parameter_space,'_',scenario,'.sbatch',sep = '')
+  job_lines[47] <- "cd 'PS'$PS'_'$scenario'_R'$run'"
 }
 if (CP_state=='load'){
   output_file=paste('PS',parameter_space,'_',scenario,'_E',experiment,'.sbatch',sep = '')
   job_lines[24] <- "work_folder=$base_folder'PS'$PS'_'$scenario'_E'$exp'/run_'$run"
   job_lines[31] <- "mkdir -p 'PS'$PS'_'$scenario'_E'$exp # create the paramter space folder, if does not exist"
   job_lines[33] <- "cp 'PS'$PS'_'$scenario'_E'$exp'.py' $work_folder # Copy the parameter space parameter file"
-  job_lines[43] <- "./build.py -p 'PS'$PS'_'$scenario'_E'$exp'.py' -d 'PS'$PS'_'$scenario'_R'$run'_E'$exp"
-  job_lines[44] <- "./'PS'$PS'_'$scenario'_R'$run'_E'$exp/bin/varmodel2"
+  job_lines[40] <- "./build.py -p 'PS'$PS'_'$scenario'_E'$exp'.py' -d 'PS'$PS'_'$scenario'_R'$run'_E'$exp"
+  job_lines[47] <- "cd 'PS'$PS'_'$scenario'_R'$run'_E'$exp"
 }
 
 job_lines[2] <- paste('#SBATCH --job-name=PS',parameter_space,sep='')
