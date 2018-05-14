@@ -26,7 +26,11 @@ param_data <- data.frame(param=str_trim(parameters), value=param_values, strings
 # Define parameters for a given parameter set -----------------------------
 parameter_space <- '01'
 scenario <- 'S'
-experiment <- '01'
+experiment <- '00' # Use 00 for checkpoints
+run <- 1
+base_name <- paste('PS',parameter_space,'_',scenario,'_E',experiment,'_R',run,sep='')
+
+RANDOM_SEED <- round(runif(n = 1, min=1, max=10^7),0)
 BITING_RATE_MEAN <- 1
 N_GENES_INITIAL <- 1200 # The initial gene pool
 
@@ -37,10 +41,12 @@ mathematica_file <- 'mosquito_population_seasonality.csv'
 biting_rate_mathematica <- read_csv(mathematica_file, col_names = c('day','num_mosquitos'))
 DAILY_BITING_RATE_DISTRIBUTION <- biting_rate_mathematica$num_mosquitos
 # Or, if using a distribution not from a file
-DAILY_BITING_RATE_DISTRIBUTION <- paste(rep(0.03,360),collapse=',') # This is to set a fixed biting rate. Mostly for testing.
-T_END <- 2880*2
+DAILY_BITING_RATE_DISTRIBUTION <- paste(rep(0.01,360),collapse=',') # This is to set a fixed biting rate. Mostly for testing.
+T_END <- 2880
 
 # Set parameters ----------------------------------------------------------
+# General
+param_data[param_data$param=='RANDOM_SEED',] <- set_parameter(param_data, 'RANDOM_SEED', RANDOM_SEED)
 # Genetic diversity
 param_data[param_data$param=='N_GENES_INITIAL',] <- set_parameter(param_data, 'N_GENES_INITIAL', N_GENES_INITIAL)
 param_data[param_data$param=='N_ALLELES_INITIAL',] <- set_parameter(param_data, 'N_ALLELES_INITIAL', paste('N_LOCI*[',N_GENES_INITIAL/10,']',sep=''))
@@ -54,14 +60,16 @@ param_data[param_data$param=='VERIFICATION_PERIOD',] <- set_parameter(param_data
 
 # Create checkpoints ------------------------------------------------------
 # This section prepares the parameter file to create a checkpoint.
-param_data[param_data$param=='SAMPLE_DB_FILENAME',] <- set_parameter(param_data, 'SAMPLE_DB_FILENAME', paste('\'\"PS',parameter_space,'_',scenario,'.sqlite\"\'',sep='')) # The run ID will be added while running the job (in the sbatch execution).
+param_data[param_data$param=='SAMPLE_DB_FILENAME',] <- set_parameter(param_data, 'SAMPLE_DB_FILENAME', paste('\'\"',base_name,'.sqlite\"\'',sep='')) # The run ID will be added while running the job (in the sbatch execution).
 param_data[param_data$param=='SAVE_TO_CHECKPOINT',] <- set_parameter(param_data, 'SAVE_TO_CHECKPOINT', 'True')
 param_data[param_data$param=='CHECKPOINT_SAVE_PERIOD',] <- set_parameter(param_data, 'CHECKPOINT_SAVE_PERIOD', T_END)
-param_data[param_data$param=='CHECKPOINT_SAVE_FILENAME',] <- set_parameter(param_data, 'CHECKPOINT_SAVE_FILENAME', paste('\'\"PS',parameter_space,'_',scenario,'_CP.sqlite\"\'',sep=''))
+param_data[param_data$param=='CHECKPOINT_SAVE_FILENAME',] <- set_parameter(param_data, 'CHECKPOINT_SAVE_FILENAME', paste('\'\"',base_name,'_CP.sqlite\"\'',sep=''))
 param_data[param_data$param=='LOAD_FROM_CHECKPOINT',] <- set_parameter(param_data, 'LOAD_FROM_CHECKPOINT', 'False')
 param_data[param_data$param=='CHECKPOINT_LOAD_FILENAME',] <- set_parameter(param_data, 'CHECKPOINT_LOAD_FILENAME', '\'\"\"\'')
+param_data[param_data$param=='T_BURNIN',] <- set_parameter(param_data, 'T_BURNIN', 0)
+
 # Name of output parameter file
-output_file=paste('PS',parameter_space,'_',scenario,'.py',sep = '')
+output_file=paste(base_name,'.py',sep = '')
 
 # Load from a checkpoint --------------------------------------------------
 run <- 1 # This is the particular run of the parameter space which should be loaded
@@ -86,9 +94,19 @@ job_lines <- readLines('job_file_ref.sbatch')
 wall_time <- '00:15:00'
 SLURM_ARRAY_RANGE <- '1'
 memory <- '3000'
-CP_state <- 'load' # Can be 'create', 'load', or 'none'
+CP_state <- 'create' # Can be 'create', 'load', or 'none'
+job_lines[2] <- paste('#SBATCH --job-name=',parameter_space,scenario,experiment,'R',run,sep='')
+job_lines[3] <- paste('#SBATCH --time=',wall_time,sep='')
+job_lines[4] <- paste('#SBATCH --output=slurm_output/PS',parameter_space,scenario,experiment,'R',run,'_%A_%a.out',sep='')
+job_lines[5] <- paste('#SBATCH --error=slurm_output/PS',parameter_space,scenario,experiment,'R',run,'_%A_%a.err',sep='')
+job_lines[6] <- paste('#SBATCH --array=',SLURM_ARRAY_RANGE,sep='')
+job_lines[9] <- paste('#SBATCH --mem-per-cpu=',memory,sep='')
+job_lines[19] <- paste("PS='",parameter_space,"'",sep='')
+job_lines[20] <- paste("scenario='",scenario,"'",sep='')
+job_lines[22] <- paste("exp='",experiment,"'",sep='')
+job_lines[26] <- paste("CHECKPOINT='",CP_state,"'",sep='')
 if (CP_state=='create'){
-  output_file=paste('PS',parameter_space,'_',scenario,'.sbatch',sep = '')
+  output_file=paste(base_name,'.sbatch',sep = '')
   job_lines[47] <- "cd 'PS'$PS'_'$scenario'_R'$run'"
 }
 if (CP_state=='load'){
@@ -99,17 +117,6 @@ if (CP_state=='load'){
   job_lines[40] <- "./build.py -p 'PS'$PS'_'$scenario'_E'$exp'.py' -d 'PS'$PS'_'$scenario'_R'$run'_E'$exp"
   job_lines[47] <- "cd 'PS'$PS'_'$scenario'_R'$run'_E'$exp"
 }
-
-job_lines[2] <- paste('#SBATCH --job-name=PS',parameter_space,sep='')
-job_lines[3] <- paste('#SBATCH --time=',wall_time,sep='')
-job_lines[4] <- paste('#SBATCH --output=slurm_output/PS',parameter_space,'_%A_%a.out',sep='')
-job_lines[5] <- paste('#SBATCH --error=slurm_output/PS',parameter_space,'_%A_%a.err',sep='')
-job_lines[6] <- paste('#SBATCH --array=',SLURM_ARRAY_RANGE,sep='')
-job_lines[9] <- paste('#SBATCH --mem-per-cpu=',memory,sep='')
-job_lines[19] <- paste("PS='",parameter_space,"'",sep='')
-job_lines[20] <- paste("scenario='",scenario,"'",sep='')
-job_lines[22] <- paste("exp='",experiment,"'",sep='')
-job_lines[26] <- paste("CHECKPOINT='",CP_state,"'",sep='')
 write_lines(job_lines, output_file)
 
 # plots -------------------------------------------------------------------

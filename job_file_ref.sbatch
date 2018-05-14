@@ -21,6 +21,7 @@ scenario = 'XXX' # Can be: 'S', 'G' or 'N'
 run=$SLURM_ARRAY_TASK_ID # The run in the parameter space
 exp='XXX' # The experiment ID
 base_folder='/home/pilosofs/malaria_interventions/' # Where all the source files are and where the experiment folders will be created
+$base_name='PS'$PS'_'$scenario'_E'$exp'_R'$run
 work_folder=$base_folder'PS'$PS'_'$scenario'_E'$exp'/run_'$run
 ABM_file=varmodel2.zip
 CHECKPOINT='none' # Can be: 'create', 'load', or 'none'
