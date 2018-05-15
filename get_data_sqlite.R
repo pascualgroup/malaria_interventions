@@ -43,10 +43,10 @@ setwd('~/Documents/malaria_interventions_sqlite')
 setwd('~/GitHub/')
 PS <- '01'
 scenario <- 'S'
-exp <- '01' # 00 is for the checkpoint and control
+experiment <- '02' # 00 is for the checkpoint and control
 run <- 1
-base_name <- paste('PS',PS,'_',scenario,'_E',exp,sep='')
-sqlite_file <- paste(base_name,'_R',run,'.sqlite',sep='')
+base_name <- paste('PS',parameter_space,'_',scenario,'_E',experiment,'_R',run,sep='')
+sqlite_file <- paste(base_name,'.sqlite',sep='')
 parameter_file <- paste(base_name,'.py',sep='')
 
 # Extract from sqlite -----------------------------------------------------
@@ -98,26 +98,26 @@ summary_general %>%
   geom_point(stat='summary', fun.y=mean, color='red')+
   stat_summary(fun.y=mean, geom="line")+mytheme
 
-
+# Create an object with the results
 summary_general$PS <- PS
-summary_general$exp <- exp
+summary_general$exp <- experiment
 summary_general$scenario <- scenario
 summary_general$run <- run
-assign(paste(base_name,'_R',run,'_results',sep=''), summary_general)
+assign(paste('results_',base_name,sep=''), summary_general)
 
 # Compare between experiments ---------------------------------------------
 
-d <- rbind(PS01_S_E00_R1_results,PS01_S_E01_R1_results)
+d <- rbind(results_PS01_S_E00_R1,results_PS01_S_E01_R1,results_PS01_S_E02_R1)
 # mintime=d %>% group_by(exp) %>% summarise(m=max(time)) %>% summarise(min(m))
 # mintime=mintime[1,1]
-pdf('seasonal_comparison.pdf',16,10)
+# pdf('seasonal_comparison.pdf',16,10)
 d %>%
   select(-year, -month, -n_infected) %>% 
   # filter(time>15000) %>% 
   gather(variable, value, -time, -exp, -PS, -scenario, -run) %>% 
   ggplot(aes(x=time, y=value, color=exp, group=exp))+
   geom_line()+
-  scale_x_continuous(breaks=pretty(x=d$time,n=20))+
+  scale_x_continuous(breaks=pretty(x=d$time,n=5))+
   facet_wrap(~variable, scales = 'free')+mytheme
 d %>% 
   ggplot(aes(x=month,y=EIR, color=exp, group=exp))+
