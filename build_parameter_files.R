@@ -98,13 +98,13 @@ create_run <- function(design_ID, run, RANDOM_SEED){
 # This creates several run WITH THE SAME RANDOM SEED for each experiment
 for (RUN in 1:2){
   RANDOM_SEED <- round(runif(n = 1, min=1, max=10^7),0)
-  for (id in 1:3){
+  for (id in 4:6){
     create_run(design_ID = id, RUN, RANDOM_SEED)
   }
 }
 
 SLURM_ARRAY_RANGE <- '1-2'
-for (design_ID in 1:3){
+for (design_ID in 4:6){
   parameter_space <- design$PS[design_ID]
   scenario <- design$Scenario[design_ID]
   experiment <- design$Experiment[design_ID] # Use 00 for checkpoints and control
