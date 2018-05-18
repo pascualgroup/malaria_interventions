@@ -1,3 +1,5 @@
+zip -r varmodel2.zip . -x *.git* varmodel2.xcodeproj/\*
+
 # SLURM get job info
 sacct -j 21777695 --format=jobid,jobname,partition,account,alloccpus,state,cputime,maxrss,maxvmsize --state=RUNNING --starttime 2018-04-30T18:15:00
 

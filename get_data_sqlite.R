@@ -40,10 +40,10 @@ get_biting_rate <- function(parameter_file, sampling_period=30){
 
 # Arguments ---------------------------------------------------------------
 setwd('~/Documents/malaria_interventions_sqlite')
-setwd('~/GitHub/')
-PS <- '01'
+# setwd('~/GitHub/')
+parameter_space <- '03'
 scenario <- 'S'
-experiment <- '02' # 00 is for the checkpoint and control
+experiment <- '01' # 00 is for the checkpoint and control
 run <- 1
 base_name <- paste('PS',parameter_space,'_',scenario,'_E',experiment,'_R',run,sep='')
 sqlite_file <- paste(base_name,'.sqlite',sep='')
@@ -51,14 +51,18 @@ parameter_file <- paste(base_name,'.py',sep='')
 
 # Extract from sqlite -----------------------------------------------------
 db <- dbConnect(SQLite(), dbname = sqlite_file)
-sampled_hosts <- dbGetQuery(db, 'SELECT * FROM sampled_hosts')
+# sampled_hosts <- dbGetQuery(db, 'SELECT * FROM sampled_hosts')
 summary_general <- dbGetQuery(db, 'SELECT * FROM summary')
-summary_general <- inner_join(sampled_hosts, summary_general)
+sampled_infections <- dbGetQuery(db, 'SELECT * FROM sampled_infections')
+# summary_general <- inner_join(sampled_hosts, summary_general)
 
 # Main code ---------------------------------------------------------------
-summary_general <- summary_general[-1,]
+if (nrow(summary_general)%%30==1){# The beginning of the data set has a timestap of 0 and this line is unnecesary. So remove it
+  summary_general <- summary_general[-1,]
+}
+
 # Prevalence
-summary_general$prevalence <- summary_general$total_infected/10^4
+summary_general$prevalence <- summary_general$n_infected/10^4
 
 #EIR
 #EIR=biting_rate * prevalence
@@ -67,16 +71,19 @@ summary_general$b <- NA
 summary_general$b[] <- biting_rate # The [] is for recycling the biting_rate
 summary_general$EIR <- summary_general$prevalence*summary_general$b*30
 
-# Burnin
-# burnin_seq <- 1:10  # This is burnin in years, not days
-# df <- map(burnin_seq, function(burnin){
-#   x <- summary_general %>% filter(time>burnin*360)
-#   x$burnin <- burnin
-#   return(x)
-# }) %>% bind_rows()
-# df$burnin <- as.factor(df$burnin)
-# df %>% ggplot(aes(time, prevalence, color=burnin))+geom_line()+facet_wrap(~burnin)
-# df %>% ggplot(aes(time, EIR, color=burnin))+geom_line()+facet_wrap(~burnin)
+# MOI
+meanMOI <- sampled_infections %>% group_by(time, host_id) %>% summarise(MOI=length(strain_id)) %>% group_by(time) %>% summarise(meanMOI=mean(MOI))
+summary_general <- inner_join(summary_general, meanMOI)
+
+# Host age structure
+hosts <- dbGetQuery(db, 'SELECT * FROM hosts')
+names(hosts)[1] <- 'host_id'
+hosts$lifespan <- round((hosts$death_time-hosts$birth_time)/30)
+hosts <- subset(hosts, host_id%in%sampled_infections$host_id)
+sampled_infections <- left_join(sampled_infections, hosts, by='host_id')
+sampled_infections$host_age <- round((sampled_infections$time-sampled_infections$birth_time)/30)
+
+sampled_infections %>% ggplot(aes(x=host_age))+geom_histogram() + labs(x='Infected host age (months)') # Plot the age structure of infected hosts
 
 summary_general %>% 
   select(-n_infected) %>% 
@@ -99,7 +106,7 @@ summary_general %>%
   stat_summary(fun.y=mean, geom="line")+mytheme
 
 # Create an object with the results
-summary_general$PS <- PS
+summary_general$PS <- parameter_space
 summary_general$exp <- experiment
 summary_general$scenario <- scenario
 summary_general$run <- run
@@ -107,7 +114,7 @@ assign(paste('results_',base_name,sep=''), summary_general)
 
 # Compare between experiments ---------------------------------------------
 
-d <- rbind(results_PS01_S_E00_R1,results_PS01_S_E01_R1,results_PS01_S_E02_R1)
+d <- rbind(results_PS02_S_E00_R1,results_PS02_S_E01_R1,results_PS02_S_E02_R1,results_test06)
 # mintime=d %>% group_by(exp) %>% summarise(m=max(time)) %>% summarise(min(m))
 # mintime=mintime[1,1]
 # pdf('seasonal_comparison.pdf',16,10)
@@ -127,7 +134,6 @@ d %>%
   stat_summary(fun.y=mean, geom="line")+
   mytheme
 dev.off()
-
 
 
 png('~/Documents/malaria_interventions/burnin_test.png', 1200, 800)

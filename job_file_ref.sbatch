@@ -50,7 +50,6 @@ if [ "$CHECKPOINT" = "create" ]; then
 	rm generate_managers.py
 	rm generate_parameters.py
 	rm *.pyc
-	rm README.md
 	cd $base_name
 	mv -v * $base_folder$base_name
 	cd ..
@@ -72,7 +71,6 @@ if [ "$CHECKPOINT" = "load" ]; then
 	rm generate_managers.py
 	rm generate_parameters.py
 	rm *.pyc
-	rm README.md
 	cd $base_name
 	rm *'_CP.sqlite'
 	mv -v * $base_folder$base_name
