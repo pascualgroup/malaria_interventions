@@ -40,6 +40,28 @@ loadExperiments_GoogleSheets <- function(workBookName='malaria_interventions_des
 
 # Setting general parameters ----------------------------------------------
 
+# This function obtains the duration of infection from the selection mode
+# counterpart simulations to calculate the var switching rate in the neutral
+# scenario. it makes more sense to take the duration from the control
+# experiment, otherwise interventions can affect it, so I set exepriment=01 as default.
+set_transition_rate <- function(parameter_space, experiment='01', N_GENES_PER_STRAIN = 60){
+  sqlite_files <- list.files(path = '~/Documents/malaria_interventions_sqlite', pattern=paste('PS',parameter_space,'_S_E',experiment,'_R',sep=''), full.names = T)
+  sqlite_files <- sqlite_files[str_detect(sqlite_files,'\\.sqlite')] # only sqlite files
+  sqlite_files <- sqlite_files[!str_detect(sqlite_files,'_CP')] # no checkpoint files
+  
+  doi <- map(sqlite_files, function(f){
+    db <- dbConnect(SQLite(), dbname = f)
+    sampled_duration <- dbGetQuery(db, 'SELECT duration FROM sampled_duration')
+    # print(head(sampled_duration))
+    return(sampled_duration)
+  }) %>% bind_rows()
+  
+  mean_doi <- mean(doi$duration)
+  TRANSITION_RATE_NOT_IMMUNE <- 1/(mean_doi/N_GENES_PER_STRAIN)
+  setwd('~/Documents/malaria_interventions/')
+  return(TRANSITION_RATE_NOT_IMMUNE)
+}
+
 # Function to create the necesary files and pipeline for a single run of an experiment.
 # Each run has its own random seed across experiments.
 create_run <- function(design_ID, run, RANDOM_SEED){
@@ -57,6 +79,16 @@ create_run <- function(design_ID, run, RANDOM_SEED){
   param_data[param_data$param=='VERIFICATION_ON',] <- set_parameter(param_data, 'VERIFICATION_ON', 'False')
   param_data[param_data$param=='VERIFICATION_PERIOD',] <- set_parameter(param_data, 'VERIFICATION_PERIOD', T_END)
   
+  # Scenario
+  if(scenario=='N'){
+    param_data[param_data$param=='SELECTION_MODE',] <- set_parameter(param_data, 'SELECTION_MODE', "\'NEUTRALITY\'")
+    TRANSITION_RATE_NOT_IMMUNE <- set_transition_rate(parameter_space, experiment='01')
+    param_data[param_data$param=='TRANSITION_RATE_NOT_IMMUNE',] <- set_parameter(param_data, 'TRANSITION_RATE_NOT_IMMUNE', TRANSITION_RATE_NOT_IMMUNE)
+  }
+  if(scenario=='G'){
+    param_data[param_data$param=='SELECTION_MODE',] <- set_parameter(param_data, 'SELECTION_MODE', 'GENERAL_IMMUNITY')
+  }
+
   # Biting rates
   BITING_RATE_MEAN <- design$BITING_RATE_MEAN[design_ID]
   mathematica_file <- design$DAILY_BITING_RATE_DISTRIBUTION[design_ID]
@@ -99,7 +131,7 @@ create_run <- function(design_ID, run, RANDOM_SEED){
 }
 
 
-# IRS ---------------------------------------------------------------------
+# Setting interventions ---------------------------------------------------
 
 # This function sets the parameters for a single IRS. It is possible to run it several times, once for each IRS scheme.
 set_IRS <- function(design_ID, run, IRS_START_TIME, IRS_input, IRS_IMMIGRATION){
@@ -138,9 +170,6 @@ set_IRS <- function(design_ID, run, IRS_START_TIME, IRS_input, IRS_IMMIGRATION){
   write_lines(param_data$output, output_file)
 }
 
-
-# MDA ---------------------------------------------------------------------
-
 set_MDA <- function(design_ID, run){
   # Regime
   parameter_space <- design$PS[design_ID]
@@ -164,71 +193,100 @@ set_MDA <- function(design_ID, run){
   write_lines(param_data$output, output_file)
 }
 
-# Create parameter and job files -------------------------------------------
-design <- loadExperiments_GoogleSheets() # Get data design 
 
-# This creates several run WITH THE SAME RANDOM SEED for each experiment
-for (RUN in 1:1){
-  RANDOM_SEED <- round(runif(n = 1, min=1, max=10^7),0)
-  RANDOM_SEED <- 9073975
-  for (design_ID in 8:10){
-    # Create parameter file with main parameters
-    create_run(design_ID, RUN, RANDOM_SEED)
-    # Set IRS
-    if (!is.na(design$IRS_START_TIMES[design_ID])){
-      IRS_scheme <- data.frame(IRS_START_TIME=str_split(design$IRS_START_TIMES[design_ID], ',')[[1]],
-                               IRS_input=str_split(design$IRS_input[design_ID], ',')[[1]],
-                               IRS_IMMIGRATION=str_split(design$IRS_IMMIGRATION[design_ID], ',')[[1]],
-                               stringsAsFactors = F)
-      for (i in 1:nrow(IRS_scheme)){
-        set_IRS(design_ID, RUN, IRS_scheme$IRS_START_TIME[i], IRS_scheme$IRS_input[i], IRS_scheme$IRS_IMMIGRATION[i])
+# Generating files --------------------------------------------------------
+# This function generates parameter files and corresponding job files for
+# several experiments and runs. It keeps the random seed for each RUN the same.
+# Also possible to provide a random seed.
+# row_range is the row numbers in the design data frame
+generate_files <- function(row_range, run_range, random_seed=NULL){
+  # Generate a parameter file for each combination of experiment and run
+  for (RUN in run_range){
+    # Keep random seed the same across runs
+    RANDOM_SEED <- ifelse(is.null(random_seed),round(runif(n = 1, min=1, max=10^7),0),random_seed)
+    for (design_ID in row_range){
+      # Create parameter file with main parameters
+      create_run(design_ID, RUN, RANDOM_SEED)
+      # Set IRS
+      if (!is.na(design$IRS_START_TIMES[design_ID])){
+        IRS_scheme <- data.frame(IRS_START_TIME=str_split(design$IRS_START_TIMES[design_ID], ',')[[1]],
+                                 IRS_input=str_split(design$IRS_input[design_ID], ',')[[1]],
+                                 IRS_IMMIGRATION=str_split(design$IRS_IMMIGRATION[design_ID], ',')[[1]],
+                                 stringsAsFactors = F)
+        for (i in 1:nrow(IRS_scheme)){
+          set_IRS(design_ID, RUN, IRS_scheme$IRS_START_TIME[i], IRS_scheme$IRS_input[i], IRS_scheme$IRS_IMMIGRATION[i])
+        }
+      }
+      # Set MDA
+      if (!is.na(design$MDA_START[design_ID])){
+        set_MDA(design_ID, RUN)
       }
     }
-    # Set MDA
-    if (!is.na(design$MDA_START[design_ID])){
-      set_MDA(design_ID, RUN)
+  }
+  
+  # Generate batch file for each experiment
+  SLURM_ARRAY_RANGE <- paste("\'",min(run_range),'-',max(run_range),"\'",sep='')
+  for (design_ID in row_range){
+    parameter_space <- design$PS[design_ID]
+    scenario <- design$Scenario[design_ID]
+    experiment <- design$Experiment[design_ID] # Use 00 for checkpoints and control
+    base_name <- paste('PS',parameter_space,scenario,'E',experiment,sep='')
+    # Write the job file for the exepriment
+    job_lines <- readLines('job_file_ref.sbatch')
+    wall_time <-  design$wall_time[design_ID]
+    mem_per_cpu <-  design$mem_per_cpu[design_ID]
+    job_lines[2] <- paste('#SBATCH --job-name=',base_name,sep='')
+    job_lines[3] <- paste('#SBATCH --time=',wall_time,sep='')
+    job_lines[4] <- paste('#SBATCH --output=slurm_output/',base_name,'_%A_%a.out',sep='')
+    job_lines[5] <- paste('#SBATCH --error=slurm_output/',base_name,'_%A_%a.err',sep='')
+    job_lines[6] <- paste('#SBATCH --array=',SLURM_ARRAY_RANGE,sep='')
+    job_lines[9] <- paste('#SBATCH --mem-per-cpu=',mem_per_cpu,sep='')
+    job_lines[19] <- paste("PS='",parameter_space,"'",sep='')
+    job_lines[20] <- paste("scenario='",scenario,"'",sep='')
+    job_lines[21] <- paste("exp='",experiment,"'",sep='')
+    if (experiment == '00'){
+      job_lines[26] <- "CHECKPOINT='create'"
+    }
+    if (experiment != '00'){
+      job_lines[26] <- "CHECKPOINT='load'"
+    }
+    output_file=paste(base_name,'.sbatch',sep = '')
+    write_lines(job_lines, output_file)
+  }
+  
+  # Printout of generated file names
+  cat('Generated files:\n')
+  for (e in row_range){
+    cat(paste('PS',design$PS[e],design$Scenario[e],'E',design$Experiment[e],'.sbatch','\n',sep=''))
+    for (r in run_range){
+      cat(paste('--- PS',design$PS[e],'_',design$Scenario[e],'_E',design$Experiment[e],'_R',r,'\n',sep=''))
     }
   }
+  
+  cat('Run this on Midway: \n')
+  for (e in row_range){
+    cat(paste('sbatch PS',design$PS[e],design$Scenario[e],'E',design$Experiment[e],'.sbatch','\n',sep=''))
+  }
 }
 
-SLURM_ARRAY_RANGE <- '1'
-for (design_ID in 8:10){
-  parameter_space <- design$PS[design_ID]
-  scenario <- design$Scenario[design_ID]
-  experiment <- design$Experiment[design_ID] # Use 00 for checkpoints and control
-  base_name <- paste('PS',parameter_space,scenario,'E',experiment,sep='')
-  # Write the job file for the exepriment
-  job_lines <- readLines('job_file_ref.sbatch')
-  wall_time <-  design$wall_time[design_ID]
-  mem_per_cpu <-  design$mem_per_cpu[design_ID]
-  job_lines[2] <- paste('#SBATCH --job-name=',base_name,sep='')
-  job_lines[3] <- paste('#SBATCH --time=',wall_time,sep='')
-  job_lines[4] <- paste('#SBATCH --output=slurm_output/',base_name,'_%A_%a.out',sep='')
-  job_lines[5] <- paste('#SBATCH --error=slurm_output/',base_name,'_%A_%a.err',sep='')
-  job_lines[6] <- paste('#SBATCH --array=',SLURM_ARRAY_RANGE,sep='')
-  job_lines[9] <- paste('#SBATCH --mem-per-cpu=',mem_per_cpu,sep='')
-  job_lines[19] <- paste("PS='",parameter_space,"'",sep='')
-  job_lines[20] <- paste("scenario='",scenario,"'",sep='')
-  job_lines[21] <- paste("exp='",experiment,"'",sep='')
-  if (experiment == '00'){
-    job_lines[26] <- "CHECKPOINT='create'"
-  }
-  if (experiment != '00'){
-    job_lines[26] <- "CHECKPOINT='load'"
-  }
-  output_file=paste(base_name,'.sbatch',sep = '')
-  write_lines(job_lines, output_file)
-}
-
+# Create parameter and job files -------------------------------------------
+design <- loadExperiments_GoogleSheets() # Get data design 
+setwd('~/Documents/malaria_interventions/')
+generate_files(row_range = 15, run_range = 1)
 
 
 # plots -------------------------------------------------------------------
+setwd('~/Documents/malaria_interventions/')
 seasonality <- read_csv('mosquito_population_seasonality.csv', col_names = c('day','num_mosquitos'))
 seasonality$grp <- 'S'
-irs01 <- read_csv('mosquito_population_IRS01.csv', col_names = c('day','num_mosquitos'))
+seasonality2 <- NULL
+for (i in 1:10){
+  seasonality2 <- rbind(seasonality2,seasonality)
+}
+seasonality=seasonality2
+seasonality$day <- 1:3600
+irs01 <- read_csv('IRS01.csv', col_names = c('day','num_mosquitos'))
 irs01$grp <- 'IRS01'
-irs02 <- read_csv('mosquito_population_IRS02.csv', col_names = c('day','num_mosquitos'))
-irs02$grp <- 'IRS02'
-x <- rbind(seasonality,irs01,irs02)
+x <- rbind(seasonality,irs01)
 x %>% ggplot(aes(day, num_mosquitos, color=grp))+geom_line()
 

@@ -11,7 +11,7 @@ mytheme <- theme_bw() + theme(
   legend.text  = element_text(colour = "black", size=17),
   panel.background = element_blank(),
   panel.grid.minor = element_blank(),
-  axis.text = element_text(color='black', family="Helvetica", size=19),
+  axis.text = element_text(color='black', family="Helvetica", size=10),
   strip.text.x = element_text(family = "Helvetica", size = 10),
   strip.text.y = element_text(family = "Helvetica", size = 10),
   panel.border = element_rect(colour = "black", size=1.3),
@@ -42,8 +42,8 @@ get_biting_rate <- function(parameter_file, sampling_period=30){
 setwd('~/Documents/malaria_interventions_sqlite')
 # setwd('~/GitHub/')
 parameter_space <- '03'
-scenario <- 'S'
-experiment <- '01' # 00 is for the checkpoint and control
+scenario <- 'N'
+experiment <- '02' # 00 is for the checkpoint and control
 run <- 1
 base_name <- paste('PS',parameter_space,'_',scenario,'_E',experiment,'_R',run,sep='')
 sqlite_file <- paste(base_name,'.sqlite',sep='')
@@ -114,17 +114,25 @@ assign(paste('results_',base_name,sep=''), summary_general)
 
 # Compare between experiments ---------------------------------------------
 
-d <- rbind(results_PS02_S_E00_R1,results_PS02_S_E01_R1,results_PS02_S_E02_R1,results_test06)
+d <- rbind(results_PS03_S_E01_R1,
+           # results_PS03_S_E02_R1,
+           results_PS03_S_E03_R1,
+           # results_PS03_S_E04_R1)
+           results_PS03_S_E05_R1)
+
+d <- rbind(results_PS03_N_E00_R1,results_PS03_N_E01_R1,results_PS03_N_E02_R1)
 # mintime=d %>% group_by(exp) %>% summarise(m=max(time)) %>% summarise(min(m))
 # mintime=mintime[1,1]
 # pdf('seasonal_comparison.pdf',16,10)
+time_range <- c(10800,14400)
 d %>%
   select(-year, -month, -n_infected) %>% 
-  # filter(time>15000) %>% 
+  filter(time>time_range[1]&time<time_range[2]) %>%
   gather(variable, value, -time, -exp, -PS, -scenario, -run) %>% 
   ggplot(aes(x=time, y=value, color=exp, group=exp))+
   geom_line()+
-  scale_x_continuous(breaks=pretty(x=d$time,n=5))+
+  # geom_vline(xintercept = c(21600,21960,22320,22680,23040,23400))+
+  scale_x_continuous(breaks=pretty(x=subset(d, time>time_range[1]&time<time_range[2])$time,n=5))+
   facet_wrap(~variable, scales = 'free')+mytheme
 d %>% 
   ggplot(aes(x=month,y=EIR, color=exp, group=exp))+
@@ -139,3 +147,18 @@ dev.off()
 png('~/Documents/malaria_interventions/burnin_test.png', 1200, 800)
 d %>% filter(time>1440) %>% gather(variable, value, -time, -exp) %>% ggplot(aes(time, value, color=exp))+geom_line()+facet_wrap(~variable, scales = 'free')
 dev.off()
+
+
+# Calendar ----------------------------------------------------------------
+
+num_years <- 100
+months_in_year <- rep(c('Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'), each=30)
+calendar <- data.frame(running_day=seq(from = 1,to = 360*num_years,by=1),
+                       year_sim=rep(1:num_years, each=360),
+                       month_sim=rep(months_in_year,num_years),
+                       day_sim=rep(1:30,num_years))
+# calendar$layer <- ceiling((calendar$running_day-burnin)/30)
+# calendar$burnin <- 'No'
+# calendar$burnin[1:burnin] <- 'Yes'
+calendar <- as_tibble(calendar)
+calendar %>% filter(running_day==10930)
