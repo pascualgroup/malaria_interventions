@@ -62,6 +62,118 @@ set_transition_rate <- function(parameter_space, experiment='01', N_GENES_PER_ST
   return(TRANSITION_RATE_NOT_IMMUNE)
 }
 
+
+#A function to set the parameters for generazlied immunity scenario
+set_generalized_immunity <- function(parameter_space, experiment='01'){
+  sqlite_files <- list.files(path = '~/Documents/malaria_interventions_sqlite', pattern=paste('PS',parameter_space,'_S_E',experiment,'_R',sep=''), full.names = T)
+  sqlite_files <- sqlite_files[str_detect(sqlite_files,'\\.sqlite')] # only sqlite files
+  sqlite_files <- sqlite_files[!str_detect(sqlite_files,'_CP')] # no checkpoint files
+  
+
+  duration_data <- map(sqlite_files,
+                       function(f){
+                         db <- dbConnect(SQLite(), dbname = f)
+                         sampled_duration <- dbGetQuery(db, 'SELECT duration, infection_id FROM sampled_duration')
+                        return(sampled_duration)
+  }) %>% bind_rows()
+  numObservations <- table(duration_data$infection_id)
+  observations_to_include <- names(which(numObservations>1))
+  duration_data %<>% 
+    filter(infection_id %in% observations_to_include) %>% 
+    group_by(infection_id) %>% summarise(meanDuration=mean(duration))
+  x <- duration_data$infection_id
+  y <- duration_data$meanDuration-14
+  
+  plot(x,y)
+  a=0.01
+  b=50
+  c=0.0017
+  d=0.8
+  x.fit <- 0:max(x)
+  y.fit <- ((b*exp(-c*x.fit))/(d*x.fit+1)^d)+a
+  plot(x.fit,y.fit)
+  fit <- nls(formula = y~((b*exp(-c*x))/(d*x+1)^d)+a, start = list(a=0.01,b=50,c=0.0017,d=0.8))
+  
+  # Fit function using python code
+  pyFile <- readLines('generalized_immunity_fitting.py')
+  pyFile[11] <- paste('path=','"','/home/shai/Documents/mtn_data/sqlite_zip/mtn_',eid,'_','run_',r,'.sqlite','"',sep='')
+  pyFile[15] <- str_replace(pyFile[15],'XXX',as.character(burnin))
+  writeLines(pyFile,'generalized_immunity_fitting_experiment.py')
+  python.load('generalized_immunity_fitting_experiment.py')
+  # Get parameters
+  generalImmunityParams <- python.get('generalImmunityParams')
+  infectionTimesToImmune <- python.get('infectionTimesToImmune')
+  clearanceRateConstantImmune <- python.get('clearanceRateConstantImmune')
+  a=generalImmunityParams[1]
+  b=generalImmunityParams[2]
+  c=generalImmunityParams[3]
+  d=generalImmunityParams[4]
+  # Check fit
+  x.fit <- 0:max(x)
+  y.fit <- ((b*exp(-c*x.fit))/(d*x.fit+1)^d)+a
+  
+}
+
+(dbFile <- paste('~/Documents/mtn_data/sqlite_zip/mtn_',eid,'_','run_',r,'.sqlite',sep=''))
+db <- dbConnect(SQLite(), dbname = dbFile)
+infectionData <- dbGetQuery(db, paste('SELECT time, duration,infectionId FROM InfectionDuration WHERE time <= ',maxTime,sep=''))
+dat <- infectionData %>% group_by(infectionId) %>% summarise(meanDuration=mean(duration))
+numObservations <- table(infectionData$infectionId)
+x <- dat$infectionId[dat$infectionId%in%names(which(numObservations>1))]
+y <- dat$meanDuration[dat$infectionId%in%names(which(numObservations>1))]-14
+# Fit function using python code
+pyFile <- readLines('generalized_immunity_fitting.py')
+pyFile[11] <- paste('path=','"','/home/shai/Documents/mtn_data/sqlite_zip/mtn_',eid,'_','run_',r,'.sqlite','"',sep='')
+pyFile[15] <- str_replace(pyFile[15],'XXX',as.character(burnin))
+writeLines(pyFile,'generalized_immunity_fitting_experiment.py')
+python.load('generalized_immunity_fitting_experiment.py')
+# Get parameters
+generalImmunityParams <- python.get('generalImmunityParams')
+infectionTimesToImmune <- python.get('infectionTimesToImmune')
+clearanceRateConstantImmune <- python.get('clearanceRateConstantImmune')
+a=generalImmunityParams[1]
+b=generalImmunityParams[2]
+c=generalImmunityParams[3]
+d=generalImmunityParams[4]
+# Check fit
+x.fit <- 0:max(x)
+y.fit <- ((b*exp(-c*x.fit))/(d*x.fit+1)^d)+a
+# plot(x,y, main=dbFile)
+# points(x.fit,y.fit,col='blue')
+
+# Load the json of the selection model and add the part of generalized immunity
+selectionJSON <- paste('/home/shai/Documents/mtn_data/sqlite_zip/mtn_',eid,'_run_',r,'.json',sep='')
+ref <- readLines(selectionJSON)
+print(selectionJSON)
+ref[100] <- '\"selectionMode\": 2,'
+ref[104] <- paste('\"dbFilename\": \"mtn_',eid,'Gn_run_',r,'.sqlite\",',sep='')
+ref[4] <- paste('\"infectionTimesToImmune\": ',infectionTimesToImmune,',',sep='')
+ref[11] <- paste('\"clearanceRateConstantImmune\": ', clearanceRateConstantImmune,',',sep='')
+ref1 <- ref[1:2]
+ref2 <- ref[3:length(ref)]
+ref3 <- paste('\"generalImmunityParams\": [',a,',',b,',',c,',',d,'],',sep='')
+ref <- c(ref1,ref3,ref2)
+writeLines(ref, paste('/home/shai/Documents/mtn_data/sqlite_zip/mtn_',eid,'Gn_run_',r,'.json',sep=''))
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 # Function to create the necesary files and pipeline for a single run of an experiment.
 # Each run has its own random seed across experiments.
 create_run <- function(design_ID, run, RANDOM_SEED){
