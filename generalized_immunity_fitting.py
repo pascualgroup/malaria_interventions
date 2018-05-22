@@ -12,7 +12,7 @@ def func(x,a,b,c,d):
 con = lite.connect(path)
 with con:
 		cur = con.cursor()
-		cur.execute("select duration,infectionId from InfectionDuration where time > XXX")
+		cur.execute("SELECT duration, infection_id FROM sampled_duration")
 		rows = cur.fetchall()
 		
 
