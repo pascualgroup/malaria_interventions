@@ -87,7 +87,7 @@ get_data <- function(parameter_space, scenario, experiment, run, sampling_period
   sampled_infections <- left_join(sampled_infections, hosts, by='host_id')
   sampled_infections$host_age <- round((sampled_infections$time-sampled_infections$birth_time)/30)
   
-  return(list(summary_general=summary_general, sampled_infections=sampled_infections))
+  return(list(summary_general=as.tibble(summary_general), sampled_infections=as.tibble(sampled_infections)))
 }
 
 # This function uses the list obtained by get_data() and generates relevant plots
@@ -166,6 +166,31 @@ png('~/Documents/malaria_interventions/burnin_test.png', 1200, 800)
 d %>% filter(time>1440) %>% gather(variable, value, -time, -exp) %>% ggplot(aes(time, value, color=exp))+geom_line()+facet_wrap(~variable, scales = 'free')
 dev.off()
 
+
+# Structure ---------------------------------------------------------------
+require(sqldf)
+# Initialize
+parameter_space <- '03'
+scenario <- 'S'
+experiment <- '01'
+run <- 1
+base_name <- paste('PS',parameter_space,'_',scenario,'_E',experiment,'_R',run,sep='')
+sqlite_file <- paste(base_name,'.sqlite',sep='')
+# parameter_file <- paste(base_name,'.py',sep='') # This may be necessary so I leave it
+
+# Extract data from sqlite. variable names correspond to table names
+db <- dbConnect(SQLite(), dbname = sqlite_file)
+sampled_strains <- as.tibble(dbGetQuery(db, 'SELECT id, gene_id FROM sampled_strains'))
+names(sampled_strains)[1] <- c('strain_id')
+sampled_alleles <- as.tibble(dbGetQuery(db, 'SELECT * FROM sampled_alleles'))
+names(sampled_alleles)[3] <- c('allele_id')
+x <- full_join(sampled_strains, sampled_alleles)
+nrow(x)
+
+y <- PS03_S_01[[2]]
+sum(unique(y$strain_id)%in%x$strain_id)/length(unique(y$strain_id))
+
+# Found a problem with mergeing the hosts and sampled_infections tables. get all NA in the columns coming from hosts
 
 # Calendar ----------------------------------------------------------------
 
