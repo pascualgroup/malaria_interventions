@@ -1,4 +1,5 @@
 library(tidyverse)
+library(sqldf)
 setwd('~/Documents/malaria_interventions')
 
 
@@ -37,14 +38,31 @@ loadExperiments_GoogleSheets <- function(workBookName='malaria_interventions_des
   return(experiments)
 }
 
+# A function to remove sqlite and parameter files, or any other file for
+# specific combinations of parameter space, scenario and experiment. Will remove
+# across all runs.
+clear_previous_files <- function(parameter_space=NULL, scenario=NULL, experiment=NULL){
+  files <- list.files(path = '~/Documents/malaria_interventions_sqlite', full.names = T)
+  if (!is.null(parameter_space)){
+    files <- files[str_detect(files,paste('PS',parameter_space,sep=''))]
+  }
+  if (!is.null(scenario)){
+    files <- files[str_detect(files,paste('_',scenario,'_',sep='')) | str_detect(files,paste(scenario,'E',sep=''))]
+  }
+  if (!is.null(experiment)){
+    files <- files[str_detect(files,paste('E',experiment,sep=''))]
+  }
+  file.remove(files)
+}
 
-# Setting general parameters ----------------------------------------------
+
+# Functions to set parameters ---------------------------------------------
 
 # This function obtains the duration of infection from the selection mode
 # counterpart simulations to calculate the var switching rate in the neutral
 # scenario. it makes more sense to take the duration from the control
 # experiment, otherwise interventions can affect it, so I set exepriment=01 as default.
-set_transition_rate <- function(parameter_space, experiment='01', N_GENES_PER_STRAIN = 60){
+set_transition_rate_neutral <- function(parameter_space, experiment='01', N_GENES_PER_STRAIN = 60){
   sqlite_files <- list.files(path = '~/Documents/malaria_interventions_sqlite', pattern=paste('PS',parameter_space,'_S_E',experiment,'_R',sep=''), full.names = T)
   sqlite_files <- sqlite_files[str_detect(sqlite_files,'\\.sqlite')] # only sqlite files
   sqlite_files <- sqlite_files[!str_detect(sqlite_files,'_CP')] # no checkpoint files
@@ -63,187 +81,24 @@ set_transition_rate <- function(parameter_space, experiment='01', N_GENES_PER_ST
 }
 
 
-#A function to set the parameters for generazlied immunity scenario
-set_generalized_immunity <- function(parameter_space, experiment='01'){
-  sqlite_files <- list.files(path = '~/Documents/malaria_interventions_sqlite', pattern=paste('PS',parameter_space,'_S_E',experiment,'_R',sep=''), full.names = T)
-  sqlite_files <- sqlite_files[str_detect(sqlite_files,'\\.sqlite')] # only sqlite files
-  sqlite_files <- sqlite_files[!str_detect(sqlite_files,'_CP')] # no checkpoint files
-  
-
-  duration_data <- map(sqlite_files,
-                       function(f){
-                         db <- dbConnect(SQLite(), dbname = f)
-                         sampled_duration <- dbGetQuery(db, 'SELECT duration, infection_id FROM sampled_duration')
-                        return(sampled_duration)
-  }) %>% bind_rows()
-  numObservations <- table(duration_data$infection_id)
-  observations_to_include <- names(which(numObservations>1))
-  duration_data %<>% 
-    filter(infection_id %in% observations_to_include) %>% 
-    group_by(infection_id) %>% summarise(meanDuration=mean(duration))
-  x <- duration_data$infection_id
-  y <- duration_data$meanDuration-14
-  
-  plot(x,y)
-  a=0.01
-  b=50
-  c=0.0017
-  d=0.8
-  x.fit <- 0:max(x)
-  y.fit <- ((b*exp(-c*x.fit))/(d*x.fit+1)^d)+a
-  plot(x.fit,y.fit)
-  fit <- nls(formula = y~((b*exp(-c*x))/(d*x+1)^d)+a, start = list(a=0.01,b=50,c=0.0017,d=0.8))
-  
-  # Fit function using python code
+#A function to set the parameters for generazlied immunity scenario. Unlike the
+#set_transition_rate_neutral, which returns a single value, this function
+#returns a list which describes a fit of a curve of a particualr run, so it
+#cannot be aggregated across runs.
+set_generalized_immunity <- function(parameter_space, experiment='01', run){
+require('rPython')
+  sqlite_file <- paste('/home/shai/Documents/malaria_interventions_sqlite/','PS',parameter_space,'_S_E',experiment,'_R',run,'.sqlite',sep='')
   pyFile <- readLines('generalized_immunity_fitting.py')
-  pyFile[11] <- paste('path=','"','/home/shai/Documents/mtn_data/sqlite_zip/mtn_',eid,'_','run_',r,'.sqlite','"',sep='')
-  pyFile[15] <- str_replace(pyFile[15],'XXX',as.character(burnin))
+  pyFile[11] <- paste('path=','"',sqlite_file,'"',sep='')
   writeLines(pyFile,'generalized_immunity_fitting_experiment.py')
   python.load('generalized_immunity_fitting_experiment.py')
-  # Get parameters
-  generalImmunityParams <- python.get('generalImmunityParams')
-  infectionTimesToImmune <- python.get('infectionTimesToImmune')
-  clearanceRateConstantImmune <- python.get('clearanceRateConstantImmune')
-  a=generalImmunityParams[1]
-  b=generalImmunityParams[2]
-  c=generalImmunityParams[3]
-  d=generalImmunityParams[4]
-  # Check fit
-  x.fit <- 0:max(x)
-  y.fit <- ((b*exp(-c*x.fit))/(d*x.fit+1)^d)+a
-  
+  GENERAL_IMMUNITY_PARAMS <- python.get('generalImmunityParams')
+  GENERAL_IMMUNITY_PARAMS <- paste('[',paste(GENERAL_IMMUNITY_PARAMS, collapse = ','),']',sep='')
+  N_INFECTIONS_FOR_GENERAL_IMMUNITY <- python.get('infectionTimesToImmune')
+  CLEARANCE_RATE_IMMUNE <- python.get('clearanceRateConstantImmune')
+  file.remove('generalized_immunity_fitting_experiment.py')
+  return(list(GENERAL_IMMUNITY_PARAMS,N_INFECTIONS_FOR_GENERAL_IMMUNITY,CLEARANCE_RATE_IMMUNE))
 }
-
-(dbFile <- paste('~/Documents/mtn_data/sqlite_zip/mtn_',eid,'_','run_',r,'.sqlite',sep=''))
-db <- dbConnect(SQLite(), dbname = dbFile)
-infectionData <- dbGetQuery(db, paste('SELECT time, duration,infectionId FROM InfectionDuration WHERE time <= ',maxTime,sep=''))
-dat <- infectionData %>% group_by(infectionId) %>% summarise(meanDuration=mean(duration))
-numObservations <- table(infectionData$infectionId)
-x <- dat$infectionId[dat$infectionId%in%names(which(numObservations>1))]
-y <- dat$meanDuration[dat$infectionId%in%names(which(numObservations>1))]-14
-# Fit function using python code
-pyFile <- readLines('generalized_immunity_fitting.py')
-pyFile[11] <- paste('path=','"','/home/shai/Documents/mtn_data/sqlite_zip/mtn_',eid,'_','run_',r,'.sqlite','"',sep='')
-pyFile[15] <- str_replace(pyFile[15],'XXX',as.character(burnin))
-writeLines(pyFile,'generalized_immunity_fitting_experiment.py')
-python.load('generalized_immunity_fitting_experiment.py')
-# Get parameters
-generalImmunityParams <- python.get('generalImmunityParams')
-infectionTimesToImmune <- python.get('infectionTimesToImmune')
-clearanceRateConstantImmune <- python.get('clearanceRateConstantImmune')
-a=generalImmunityParams[1]
-b=generalImmunityParams[2]
-c=generalImmunityParams[3]
-d=generalImmunityParams[4]
-# Check fit
-x.fit <- 0:max(x)
-y.fit <- ((b*exp(-c*x.fit))/(d*x.fit+1)^d)+a
-# plot(x,y, main=dbFile)
-# points(x.fit,y.fit,col='blue')
-
-# Load the json of the selection model and add the part of generalized immunity
-selectionJSON <- paste('/home/shai/Documents/mtn_data/sqlite_zip/mtn_',eid,'_run_',r,'.json',sep='')
-ref <- readLines(selectionJSON)
-print(selectionJSON)
-ref[100] <- '\"selectionMode\": 2,'
-ref[104] <- paste('\"dbFilename\": \"mtn_',eid,'Gn_run_',r,'.sqlite\",',sep='')
-ref[4] <- paste('\"infectionTimesToImmune\": ',infectionTimesToImmune,',',sep='')
-ref[11] <- paste('\"clearanceRateConstantImmune\": ', clearanceRateConstantImmune,',',sep='')
-ref1 <- ref[1:2]
-ref2 <- ref[3:length(ref)]
-ref3 <- paste('\"generalImmunityParams\": [',a,',',b,',',c,',',d,'],',sep='')
-ref <- c(ref1,ref3,ref2)
-writeLines(ref, paste('/home/shai/Documents/mtn_data/sqlite_zip/mtn_',eid,'Gn_run_',r,'.json',sep=''))
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-# Function to create the necesary files and pipeline for a single run of an experiment.
-# Each run has its own random seed across experiments.
-create_run <- function(design_ID, run, RANDOM_SEED){
-  # Regime
-  parameter_space <- design$PS[design_ID]
-  scenario <- design$Scenario[design_ID]
-  experiment <- design$Experiment[design_ID] # Use 00 for checkpoints and control
-  base_name <- paste('PS',parameter_space,'_',scenario,'_E',experiment,'_R',run,sep='')
-  param_data <- get_parameter_reference()
-  
-  # General parameters
-  param_data[param_data$param=='RANDOM_SEED',] <- set_parameter(param_data, 'RANDOM_SEED', RANDOM_SEED)
-  T_END <- design$T_END[design_ID]
-  param_data[param_data$param=='T_END',] <- set_parameter(param_data, 'T_END', T_END)
-  param_data[param_data$param=='VERIFICATION_ON',] <- set_parameter(param_data, 'VERIFICATION_ON', 'False')
-  param_data[param_data$param=='VERIFICATION_PERIOD',] <- set_parameter(param_data, 'VERIFICATION_PERIOD', T_END)
-  
-  # Scenario
-  if(scenario=='N'){
-    param_data[param_data$param=='SELECTION_MODE',] <- set_parameter(param_data, 'SELECTION_MODE', "\'NEUTRALITY\'")
-    TRANSITION_RATE_NOT_IMMUNE <- set_transition_rate(parameter_space, experiment='01')
-    param_data[param_data$param=='TRANSITION_RATE_NOT_IMMUNE',] <- set_parameter(param_data, 'TRANSITION_RATE_NOT_IMMUNE', TRANSITION_RATE_NOT_IMMUNE)
-  }
-  if(scenario=='G'){
-    param_data[param_data$param=='SELECTION_MODE',] <- set_parameter(param_data, 'SELECTION_MODE', 'GENERAL_IMMUNITY')
-  }
-
-  # Biting rates
-  BITING_RATE_MEAN <- design$BITING_RATE_MEAN[design_ID]
-  mathematica_file <- design$DAILY_BITING_RATE_DISTRIBUTION[design_ID]
-  biting_rate_mathematica <- read_csv(mathematica_file, col_names = c('day','num_mosquitos'))
-  DAILY_BITING_RATE_DISTRIBUTION <- biting_rate_mathematica$num_mosquitos
-  param_data[param_data$param=='BITING_RATE_MEAN',] <- set_parameter(param_data, 'BITING_RATE_MEAN', paste('[',BITING_RATE_MEAN,']',sep=''))
-  param_data[param_data$param=='DAILY_BITING_RATE_DISTRIBUTION',] <- set_parameter(param_data, 'DAILY_BITING_RATE_DISTRIBUTION', paste('[',paste(DAILY_BITING_RATE_DISTRIBUTION, collapse=','),']',sep=''))
-  
-  # Genetic diversity
-  N_GENES_INITIAL <- design$N_GENES_INITIAL[design_ID]
-  param_data[param_data$param=='N_GENES_INITIAL',] <- set_parameter(param_data, 'N_GENES_INITIAL', N_GENES_INITIAL)
-  N_ALLELES_INITIAL <- design$N_ALLELES_INITIAL[design_ID]
-  param_data[param_data$param=='N_ALLELES_INITIAL',] <- set_parameter(param_data, 'N_ALLELES_INITIAL', paste('N_LOCI*[',N_ALLELES_INITIAL,']',sep=''))
-  
-  # Checkpoints
-  T_BURNIN <- design$T_BURNIN[design_ID]
-  if (experiment == '00'){
-    param_data[param_data$param=='SAMPLE_DB_FILENAME',] <- set_parameter(param_data, 'SAMPLE_DB_FILENAME', paste('\'\"',base_name,'.sqlite\"\'',sep='')) # The run ID will be added while running the job (in the sbatch execution).
-    param_data[param_data$param=='SAVE_TO_CHECKPOINT',] <- set_parameter(param_data, 'SAVE_TO_CHECKPOINT', 'True')
-    param_data[param_data$param=='CHECKPOINT_SAVE_PERIOD',] <- set_parameter(param_data, 'CHECKPOINT_SAVE_PERIOD', T_END) # The save period should be the T_END
-    param_data[param_data$param=='CHECKPOINT_SAVE_FILENAME',] <- set_parameter(param_data, 'CHECKPOINT_SAVE_FILENAME', paste('\'\"',base_name,'_CP.sqlite\"\'',sep=''))
-    param_data[param_data$param=='LOAD_FROM_CHECKPOINT',] <- set_parameter(param_data, 'LOAD_FROM_CHECKPOINT', 'False')
-    param_data[param_data$param=='CHECKPOINT_LOAD_FILENAME',] <- set_parameter(param_data, 'CHECKPOINT_LOAD_FILENAME', '\'\"\"\'')
-    param_data[param_data$param=='T_BURNIN',] <- set_parameter(param_data, 'T_BURNIN', T_BURNIN)
-  }
-  if (experiment != '00'){ # This section prepares a parameter file to load a checkpoint and run an experiment
-    param_data[param_data$param=='SAMPLE_DB_FILENAME',] <- set_parameter(param_data, 'SAMPLE_DB_FILENAME', paste('\'\"',base_name,'.sqlite\"\'',sep='')) # The run ID will be added while running the job (in the sbatch execution).
-    param_data[param_data$param=='SAVE_TO_CHECKPOINT',] <- set_parameter(param_data, 'SAVE_TO_CHECKPOINT', 'False')
-    param_data[param_data$param=='CHECKPOINT_SAVE_PERIOD',] <- set_parameter(param_data, 'CHECKPOINT_SAVE_PERIOD', 0)
-    param_data[param_data$param=='CHECKPOINT_SAVE_FILENAME',] <- set_parameter(param_data, 'CHECKPOINT_SAVE_FILENAME', '\'\"\"\'')
-    param_data[param_data$param=='LOAD_FROM_CHECKPOINT',] <- set_parameter(param_data, 'LOAD_FROM_CHECKPOINT', 'True')
-    param_data[param_data$param=='CHECKPOINT_LOAD_FILENAME',] <- set_parameter(param_data, 'CHECKPOINT_LOAD_FILENAME', paste('\'\"PS',parameter_space,'_',scenario,'_E00','_R',run,'_CP.sqlite\"\'',sep=''))
-    param_data[param_data$param=='T_BURNIN',] <- set_parameter(param_data, 'T_BURNIN', T_BURNIN) # The burnin value should be the value where the checkpoint was taken
-  }
-  
-  # Write parameter file
-  output_file=paste(base_name,'.py',sep = '')
-  param_data$output <- paste(param_data$param,param_data$value,sep='=')
-  write_lines(param_data$output, output_file)
-}
-
-
-# Setting interventions ---------------------------------------------------
 
 # This function sets the parameters for a single IRS. It is possible to run it several times, once for each IRS scheme.
 set_IRS <- function(design_ID, run, IRS_START_TIME, IRS_input, IRS_IMMIGRATION){
@@ -306,7 +161,80 @@ set_MDA <- function(design_ID, run){
 }
 
 
-# Generating files --------------------------------------------------------
+# Functions to generate files ---------------------------------------------
+
+# Function to create the necesary files and pipeline for a single run of an experiment.
+# Each run has its own random seed across experiments.
+create_run <- function(design_ID, run, RANDOM_SEED){
+  # Regime
+  parameter_space <- design$PS[design_ID]
+  scenario <- design$Scenario[design_ID]
+  experiment <- design$Experiment[design_ID] # Use 00 for checkpoints and control
+  base_name <- paste('PS',parameter_space,'_',scenario,'_E',experiment,'_R',run,sep='')
+  param_data <- get_parameter_reference()
+  
+  # General parameters
+  param_data[param_data$param=='RANDOM_SEED',] <- set_parameter(param_data, 'RANDOM_SEED', RANDOM_SEED)
+  T_END <- design$T_END[design_ID]
+  param_data[param_data$param=='T_END',] <- set_parameter(param_data, 'T_END', T_END)
+  param_data[param_data$param=='VERIFICATION_ON',] <- set_parameter(param_data, 'VERIFICATION_ON', 'False')
+  param_data[param_data$param=='VERIFICATION_PERIOD',] <- set_parameter(param_data, 'VERIFICATION_PERIOD', T_END)
+  
+  # Scenario
+  if(scenario=='N'){
+    param_data[param_data$param=='SELECTION_MODE',] <- set_parameter(param_data, 'SELECTION_MODE', "\'NEUTRALITY\'")
+    TRANSITION_RATE_NOT_IMMUNE <- set_transition_rate_neutral(parameter_space, experiment='01')
+    param_data[param_data$param=='TRANSITION_RATE_NOT_IMMUNE',] <- set_parameter(param_data, 'TRANSITION_RATE_NOT_IMMUNE', TRANSITION_RATE_NOT_IMMUNE)
+  }
+  if(scenario=='G'){
+    param_data[param_data$param=='SELECTION_MODE',] <- set_parameter(param_data, 'SELECTION_MODE', "\'GENERAL_IMMUNITY\'")
+    x <- set_generalized_immunity(parameter_space, run = run)
+    param_data[param_data$param=='GENERAL_IMMUNITY_PARAMS',] <- set_parameter(param_data, 'GENERAL_IMMUNITY_PARAMS', x[[1]])
+    param_data[param_data$param=='N_INFECTIONS_FOR_GENERAL_IMMUNITY',] <- set_parameter(param_data, 'N_INFECTIONS_FOR_GENERAL_IMMUNITY', x[[2]])
+    param_data[param_data$param=='CLEARANCE_RATE_IMMUNE',] <- set_parameter(param_data, 'CLEARANCE_RATE_IMMUNE', x[[3]])
+  }
+  
+  # Biting rates
+  BITING_RATE_MEAN <- design$BITING_RATE_MEAN[design_ID]
+  mathematica_file <- design$DAILY_BITING_RATE_DISTRIBUTION[design_ID]
+  biting_rate_mathematica <- read_csv(mathematica_file, col_names = c('day','num_mosquitos'))
+  DAILY_BITING_RATE_DISTRIBUTION <- biting_rate_mathematica$num_mosquitos
+  param_data[param_data$param=='BITING_RATE_MEAN',] <- set_parameter(param_data, 'BITING_RATE_MEAN', paste('[',BITING_RATE_MEAN,']',sep=''))
+  param_data[param_data$param=='DAILY_BITING_RATE_DISTRIBUTION',] <- set_parameter(param_data, 'DAILY_BITING_RATE_DISTRIBUTION', paste('[',paste(DAILY_BITING_RATE_DISTRIBUTION, collapse=','),']',sep=''))
+  
+  # Genetic diversity
+  N_GENES_INITIAL <- design$N_GENES_INITIAL[design_ID]
+  param_data[param_data$param=='N_GENES_INITIAL',] <- set_parameter(param_data, 'N_GENES_INITIAL', N_GENES_INITIAL)
+  N_ALLELES_INITIAL <- design$N_ALLELES_INITIAL[design_ID]
+  param_data[param_data$param=='N_ALLELES_INITIAL',] <- set_parameter(param_data, 'N_ALLELES_INITIAL', paste('N_LOCI*[',N_ALLELES_INITIAL,']',sep=''))
+  
+  # Checkpoints
+  T_BURNIN <- design$T_BURNIN[design_ID]
+  if (experiment == '00'){
+    param_data[param_data$param=='SAMPLE_DB_FILENAME',] <- set_parameter(param_data, 'SAMPLE_DB_FILENAME', paste('\'\"',base_name,'.sqlite\"\'',sep='')) # The run ID will be added while running the job (in the sbatch execution).
+    param_data[param_data$param=='SAVE_TO_CHECKPOINT',] <- set_parameter(param_data, 'SAVE_TO_CHECKPOINT', 'True')
+    param_data[param_data$param=='CHECKPOINT_SAVE_PERIOD',] <- set_parameter(param_data, 'CHECKPOINT_SAVE_PERIOD', T_END) # The save period should be the T_END
+    param_data[param_data$param=='CHECKPOINT_SAVE_FILENAME',] <- set_parameter(param_data, 'CHECKPOINT_SAVE_FILENAME', paste('\'\"',base_name,'_CP.sqlite\"\'',sep=''))
+    param_data[param_data$param=='LOAD_FROM_CHECKPOINT',] <- set_parameter(param_data, 'LOAD_FROM_CHECKPOINT', 'False')
+    param_data[param_data$param=='CHECKPOINT_LOAD_FILENAME',] <- set_parameter(param_data, 'CHECKPOINT_LOAD_FILENAME', '\'\"\"\'')
+    param_data[param_data$param=='T_BURNIN',] <- set_parameter(param_data, 'T_BURNIN', T_BURNIN)
+  }
+  if (experiment != '00'){ # This section prepares a parameter file to load a checkpoint and run an experiment
+    param_data[param_data$param=='SAMPLE_DB_FILENAME',] <- set_parameter(param_data, 'SAMPLE_DB_FILENAME', paste('\'\"',base_name,'.sqlite\"\'',sep='')) # The run ID will be added while running the job (in the sbatch execution).
+    param_data[param_data$param=='SAVE_TO_CHECKPOINT',] <- set_parameter(param_data, 'SAVE_TO_CHECKPOINT', 'False')
+    param_data[param_data$param=='CHECKPOINT_SAVE_PERIOD',] <- set_parameter(param_data, 'CHECKPOINT_SAVE_PERIOD', 0)
+    param_data[param_data$param=='CHECKPOINT_SAVE_FILENAME',] <- set_parameter(param_data, 'CHECKPOINT_SAVE_FILENAME', '\'\"\"\'')
+    param_data[param_data$param=='LOAD_FROM_CHECKPOINT',] <- set_parameter(param_data, 'LOAD_FROM_CHECKPOINT', 'True')
+    param_data[param_data$param=='CHECKPOINT_LOAD_FILENAME',] <- set_parameter(param_data, 'CHECKPOINT_LOAD_FILENAME', paste('\'\"PS',parameter_space,'_',scenario,'_E00','_R',run,'_CP.sqlite\"\'',sep=''))
+    param_data[param_data$param=='T_BURNIN',] <- set_parameter(param_data, 'T_BURNIN', T_BURNIN) # The burnin value should be the value where the checkpoint was taken
+  }
+  
+  # Write parameter file
+  output_file=paste(base_name,'.py',sep = '')
+  param_data$output <- paste(param_data$param,param_data$value,sep='=')
+  write_lines(param_data$output, output_file)
+}
+
 # This function generates parameter files and corresponding job files for
 # several experiments and runs. It keeps the random seed for each RUN the same.
 # Also possible to provide a random seed.
@@ -382,9 +310,16 @@ generate_files <- function(row_range, run_range, random_seed=NULL){
 }
 
 # Create parameter and job files -------------------------------------------
+
 design <- loadExperiments_GoogleSheets() # Get data design 
 setwd('~/Documents/malaria_interventions/')
-generate_files(row_range = 15, run_range = 1)
+generate_files(row_range = 7:18, run_range = 1)
+
+clear_previous_files(parameter_space='03', scenario = 'G')
+
+system('mv PS*.py /home/shai/Documents/malaria_interventions_sqlite/')
+system('mv PS*.sbatch /home/shai/Documents/malaria_interventions_sqlite/')
+
 
 
 # plots -------------------------------------------------------------------
