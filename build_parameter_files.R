@@ -312,11 +312,11 @@ generate_files <- function(row_range, run_range, random_seed=NULL){
 # Create parameter and job files -------------------------------------------
 
 design <- loadExperiments_GoogleSheets() # Get data design 
-setwd('~/Documents/malaria_interventions/')
-generate_files(row_range = 7:18, run_range = 1)
 
 clear_previous_files(parameter_space='03', scenario = 'G')
 
+setwd('~/Documents/malaria_interventions/')
+generate_files(row_range = 11:18, run_range = 1)
 system('mv PS*.py /home/shai/Documents/malaria_interventions_sqlite/')
 system('mv PS*.sbatch /home/shai/Documents/malaria_interventions_sqlite/')
 
