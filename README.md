@@ -4,7 +4,7 @@ Experiments are organized in 4 levels:
 1. **Parameter space**: This is the set of parameters such as biting rates, interventions, etc.
 2. **Scenario**: Each parameter space can be run for the 3 scenarios.
 3. **Experiment**: Experiments are variations on the parameter space. By definition '00' denotes the basic parameter space that is used to reach a steady-state and create a checkpoint. '01' is control. It has the *exact same parameters* as '00'. It loads the checkpoint created by 00 and continues the simulation. Any other number (e.g., 02, 03...) denotes a variation from 00 (e.g., to test interventions, different biting rates or different seasonal patterns).
-4. **Runs**: Each combination of paramter space, scenario and experiment can be run multiple times. Importantly, the seed for the random number (`RANDOM_SEED` parameter) is consistent across all experiments for a given run in a given parameter space. For example, within parameter space PS03, any run *r* of experiments E00, E01, E02,... will have the same value for `RANDOM_SEED`.
+4. **Runs**: Each combination of paramter space, scenario and experiment can be run multiple times. Importantly, the seed for the random number (`RANDOM_SEED` parameter) is consistent across all experiments for a given run in a given parameter space. For example, within parameter space PS03, any run *r* of experiments E00, E01, E02,... will have the same value for `RANDOM_SEED`. I did this because E01 (control), should be an exact continuation of E00 (checkpoint).
 
 The study design is layed in [this google sheet](https://docs.google.com/spreadsheets/d/1AetmLv-3sxpv9blupDA04pF_Y0RYOod38sRxGu1SOuM/edit?usp=sharing).
 
@@ -27,3 +27,10 @@ The neutral scenarios are always counterpart to the immune selection scenario. T
 7.  Run the rest of the experiments that depend on E00 (as in step 3) for N and G.
 
 # Seasonality
+Seasonality is implemented using an ODE model for the mosquito population.
+
+# Interventions
+
+## IRS
+
+## MDA
