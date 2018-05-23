@@ -27,14 +27,14 @@ The neutral scenarios are always counterpart to the immune selection scenario. T
 7.  Run the rest of the experiments that depend on E00 (as in step 3) for N and G.
 
 # Seasonality and interventions
+## Seasonality
 Seasonality is implemented using an ODE model for the mosquito population, adapted from [White et al. 2011](https://paperpile.com/shared/BH0tw2), implemented in Mathematica (file `White2011_mosquito_model.nb`). The model assumes a seasonal carrying capacity for the first two stages of the mosquito. To obtain seasonal patterns in adult mosquitos, the model is run with the baseline mortality rate for adult mosquitos for 360 days, in section *Mosquito population dynamics without IRS (only seasonality)*. The output is a vector of length 360 which contains daily numbers of adult mosquitos, exportedto the file `mosquito_population _seasonality.csv` (or any other file). The file name is specified in the experimental design Google worksheet. This vector is the input to `DAILY_BITING_RATE_DISTRIBUTION` in the parameter file. The daily biting rate is determined by multiplying `BITING_RATE_MEAN`*`DAILY_BITING_RATE_DISTRIBUTION`.
 
-# Interventions
-
-## IRS
+## Interventions
+### IRS
 IRS is obtained by setting a specific IRS scheme in `White2011_mosquito_model.nb` in section *Mosquito population dynamics with IRS*. The two variables that determine the scheme are the length of the IRS (`TimeMax`) and its coverage (`c`). The IRS affects adult mortality rate. The output is a vector of any legth with the number of adult mosquitos, which is stored as a file (e.g., IRS01.csv). The file is specified in the experimental design Google worksheet under the `IRS_input` column. The vector is the input for the `BITING_RATE_FACTORS` parameter. There can be several IRS events in a simulation. In that case there will be several output files (e.g., IRS01.csv, IRS02.csv, ...) and the parameter `BITING_RATE_FACTORS` will contain several vectors. 
 
 The parameter `IRS_START_TIMES` is a vector that specifies at which day the IRS schemes will begin. Once an IRS is executed, its values (number of moquitos) replace that of `DAILY_BITING_RATE_DISTRIBUTION`. The parameter `IRS_IMMIGRATION_RATE_FACTORS` is a vecotr with factors (values can be 0-1), to multiply immigration rate during the IRS. A value of 1 will leave immigration as is (a completely local IRS) and a value of 0 will block immigration (a regional IRS).
 
-## MDA
+### MDA
 `MDA_START_TIMES` is a vector determining at which days the MDA will start. `HOST_FAIL_RATE` is the % of hosts that did not take the drug. `DRUG_EFF_DURATION` determines how long the drug remains effective in the body and `MDA_IMMIGRATION_RATE_FACTORS` are analogous to `IRS_IMMIGRATION_RATE_FACTORS`.
