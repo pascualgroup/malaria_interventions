@@ -27,7 +27,7 @@ The neutral scenarios are always counterpart to the immune selection scenario. T
 7.  Run the rest of the experiments that depend on E00 (as in step 3) for N and G.
 
 # Seasonality
-Seasonality is implemented using an ODE model for the mosquito population.
+Seasonality is implemented using an ODE model for the mosquito population, adapted from [White et al. 2011](https://paperpile.com/shared/BH0tw2), implemented in Mathematica (file `White2011_mosquito_model.nb`). 
 
 # Interventions
 
