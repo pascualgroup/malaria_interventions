@@ -1,5 +1,5 @@
 library(tidyverse)
-
+library(sqldf)
 
 # Functions ---------------------------------------------------------------
 mytheme <- theme_bw() + theme(
@@ -47,13 +47,18 @@ get_data <- function(parameter_space, scenario, experiment, run, sampling_period
   # Extract data from sqlite. variable names correspond to table names
   db <- dbConnect(SQLite(), dbname = sqlite_file)
   summary_general <- dbGetQuery(db, 'SELECT * FROM summary')
-  sampled_infections <- dbGetQuery(db, 'SELECT * FROM sampled_infections')
   summary_general$PS <- parameter_space
   summary_general$exp <- experiment
   summary_general$scenario <- scenario
   summary_general$run <- run
   summary_general$year <- gl(n = max(summary_general$time)/360, length = nrow(summary_general), k = 1)
   summary_general$month <- gl(n = 12, k = 1, length = nrow(summary_general),labels = c('Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'), ordered = F)
+  
+  sampled_infections <- dbGetQuery(db, 'SELECT * FROM sampled_infections')
+  sampled_infections$PS <- parameter_space
+  sampled_infections$exp <- experiment
+  sampled_infections$scenario <- scenario
+  sampled_infections$run <- run
   
   # Extract statistics
   if (nrow(summary_general)%%sampling_period==1){# The beginning of the data set in E00 has a timestap of 0 and this line is unnecesary. So remove it
@@ -82,7 +87,7 @@ get_data <- function(parameter_space, scenario, experiment, run, sampling_period
   # Host age structure
   hosts <- dbGetQuery(db, 'SELECT * FROM hosts')
   names(hosts)[1] <- 'host_id'
-  hosts$lifespan <- round((hosts$death_time-hosts$birth_time)/30)
+  hosts$lifespan <- round((hosts$death_time-hosts$birth_time))
   hosts <- subset(hosts, host_id%in%sampled_infections$host_id)
   sampled_infections <- left_join(sampled_infections, hosts, by='host_id')
   sampled_infections$host_age <- round((sampled_infections$time-sampled_infections$birth_time)/30)
@@ -130,14 +135,25 @@ PS03_N_01 <- get_data(parameter_space = '03', scenario = 'N', experiment = '01',
 PS03_N_02 <- get_data(parameter_space = '03', scenario = 'N', experiment = '02', run = 1)
 PS03_N_03 <- get_data(parameter_space = '03', scenario = 'N', experiment = '03', run = 1)
 
-plots <- generate_plots(PS03_N_02)
-plots[[1]]  
+PS03_G_00 <- get_data(parameter_space = '03', scenario = 'G', experiment = '00', run = 1)
+PS03_G_01 <- get_data(parameter_space = '03', scenario = 'G', experiment = '01', run = 1)
+PS03_G_02 <- get_data(parameter_space = '03', scenario = 'G', experiment = '02', run = 1)
+PS03_G_03 <- get_data(parameter_space = '03', scenario = 'G', experiment = '03', run = 1)
+
+plots <- generate_plots(PS03_N_01)
+splot <- plots[[3]]  
+gplot <- plots[[3]]  
+nplot <- plots[[3]]  
+splot
+
+rbind(PS03_S_01)
+
 
 # Compare between experiments ---------------------------------------------
 
-d <- rbind(PS03_S_01[[1]],
-           PS03_S_02[[1]],
-           PS03_S_03[[1]])
+d <- rbind(PS03_G_01[[1]],
+           PS03_G_02[[1]],
+           PS03_G_03[[1]])
 
 # mintime=d %>% group_by(exp) %>% summarise(m=max(time)) %>% summarise(min(m))
 # mintime=mintime[1,1]
@@ -162,9 +178,66 @@ d %>%
 dev.off()
 
 
-png('~/Documents/malaria_interventions/burnin_test.png', 1200, 800)
-d %>% filter(time>1440) %>% gather(variable, value, -time, -exp) %>% ggplot(aes(time, value, color=exp))+geom_line()+facet_wrap(~variable, scales = 'free')
-dev.off()
+# Compare between scenarios ---------------------------------------------
+
+d <- rbind(PS03_S_01[[1]],
+           PS03_N_01[[1]],
+           PS03_G_01[[1]])
+
+# mintime=d %>% group_by(exp) %>% summarise(m=max(time)) %>% summarise(min(m))
+# mintime=mintime[1,1]
+# pdf('seasonal_comparison.pdf',16,10)
+time_range <- c(33000,36000)
+d %>%
+  select(-year, -month, -n_infected) %>% 
+  filter(time>time_range[1]&time<time_range[2]) %>%
+  gather(variable, value, -time, -exp, -PS, -scenario, -run) %>% 
+  ggplot(aes(x=time, y=value, color=scenario, group=scenario))+
+  geom_line()+
+  # geom_vline(xintercept = c(21600,21960,22320,22680,23040,23400))+
+  scale_x_continuous(breaks=pretty(x=subset(d, time>time_range[1]&time<time_range[2])$time,n=5))+
+  facet_wrap(~variable, scales = 'free')+mytheme
+
+# This part compares the fits of the duration curve of the selection and the generalized immunity.
+parameter_space <- '03'
+experiment <- '01'
+run <- 1
+
+sqlite_file <- paste('/home/shai/Documents/malaria_interventions_sqlite/','PS',parameter_space,'_S_E',experiment,'_R',run,'.sqlite',sep='')
+db <- dbConnect(SQLite(), dbname = sqlite_file)
+sampled_duration <- dbGetQuery(db, 'SELECT time, duration,infection_id FROM sampled_duration')
+sampled_duration %>% group_by(infection_id) %>% summarise(n=length(duration)) %>% ggplot()
+
+x <- sampled_duration$infection_id
+y <- sampled_duration$duration
+setwd('/home/shai/Documents/malaria_interventions')
+fit <- set_generalized_immunity(parameter_space=parameter_space, run=run)[[1]]
+generalImmunityParams <- python.get('generalImmunityParams')
+a=generalImmunityParams[1]
+b=generalImmunityParams[2]
+c=generalImmunityParams[3]
+d=generalImmunityParams[4]
+# Check fit
+x.fit <- 0:max(x)
+y.fit <- ((b*exp(-c*x.fit))/(d*x.fit+1)^d)+a
+plot(x,y, ylim = c(0,500))
+points(x.fit,y.fit,col='blue')
+
+sqlite_file <- paste('/home/shai/Documents/malaria_interventions_sqlite/','PS',parameter_space,'_G_E',experiment,'_R',run,'.sqlite',sep='')
+db <- dbConnect(SQLite(), dbname = sqlite_file)
+sampled_duration <- dbGetQuery(db, 'SELECT time, duration,infection_id FROM sampled_duration')
+tmp <- sampled_duration %>% group_by(infection_id) %>% summarise(meanDOI=mean(duration))
+x <- tmp$infection_id
+y <- tmp$meanDOI
+points(x,y,col='red')
+
+# This compares the age distribution of infected hosts
+d <- rbind(PS03_S_01[[2]],PS03_G_01[[2]],PS03_N_01[[2]])
+d %>% ggplot(aes(x=host_age, fill=scenario))+geom_histogram() + 
+  labs(x='Infected host age (months)') + 
+  geom_vline(xintercept = 60) +
+  mytheme
+
 
 
 # Structure ---------------------------------------------------------------

@@ -41,8 +41,12 @@ loadExperiments_GoogleSheets <- function(workBookName='malaria_interventions_des
 # A function to remove sqlite and parameter files, or any other file for
 # specific combinations of parameter space, scenario and experiment. Will remove
 # across all runs.
-clear_previous_files <- function(parameter_space=NULL, scenario=NULL, experiment=NULL){
+clear_previous_files <- function(parameter_space=NULL, scenario=NULL, experiment=NULL, exclude_sqlite=T){
   files <- list.files(path = '~/Documents/malaria_interventions_sqlite', full.names = T)
+  if(exclude_sqlite){
+    files <- files[!str_detect(files,'\\.sqlite')]
+  }
+  
   if (!is.null(parameter_space)){
     files <- files[str_detect(files,paste('PS',parameter_space,sep=''))]
   }
@@ -313,10 +317,10 @@ generate_files <- function(row_range, run_range, random_seed=NULL){
 
 design <- loadExperiments_GoogleSheets() # Get data design 
 
-clear_previous_files(parameter_space='03', scenario = 'G')
+clear_previous_files(parameter_space='03', scenario = 'S')
 
 setwd('~/Documents/malaria_interventions/')
-generate_files(row_range = 11:18, run_range = 1)
+generate_files(row_range = 7:10, run_range = 1)
 system('mv PS*.py /home/shai/Documents/malaria_interventions_sqlite/')
 system('mv PS*.sbatch /home/shai/Documents/malaria_interventions_sqlite/')
 
