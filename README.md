@@ -21,7 +21,7 @@ The neutral scenarios are always counterpart to the immune selection scenario. T
 1. Generate parameter files for all experiments in a given paramter space (e.g., 01) in S.
 2. Run `PS01SE00.sbatch` for `PS01_S_E00.py`
 3. Run the rest of the experiments that depend on E00. This can be done manually, wating for `PS01SE00.sbatch` to finish or with: `sbatch -d afterok:jobid PS01SE01.sbatch`, where jobid is the job id of `PS01SE00.sbatch`
-4. Copy the resulting sqlite files to my local computer: `cp PS01_S*.sqlite shai@192.170.193.140:/home/shai/Documents/malaria_interventions_sqlite`.
+4. Copy the resulting sqlite files to my local computer: `scp PS01_S*.sqlite shai@192.170.193.140:/home/shai/Documents/malaria_interventions_sqlite`.
 5. Generate parameter files for the N and G scenarios based on `PS01_S_E01_Rw`. Note that only the control experiemt (E01) acn be used for that because the N and G are created by matching duration of infection of the counterpart S experiment. In the R code, the neutral scenario is matched by averaging the duration of infection. This averaging is done across all available runs for E01 (i.e., PS01_S_E01_R1, PS01_S_E01_R2, PS01_S_E01_R3, ...). In contrast, the G scenario is matched by fitting a curve and this is done per run. Therefore, PS01_G_Exx_R**1** will match PS01_S_E01_R**1**, PS01_G_Exx_R**2** will match PS01_S_E01_R**2**, etc (always match to E01, separately per run).
 6. Run `PS01NE00.sbatch` for `PS01_N_E00.py` (and analogously for the G scenario).
 7.  Run the rest of the experiments that depend on E00 (as in step 3) for N and G.
