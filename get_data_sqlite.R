@@ -36,7 +36,6 @@ get_biting_rate <- function(parameter_file, sampling_period=30){
   sapply(BITING_RATE, mean)
 }
 
-setwd('~/Documents/malaria_interventions_sqlite/')
 get_data <- function(parameter_space, scenario, experiment, run, sampling_period=30){
   require(sqldf)
   # Initialize
@@ -124,7 +123,7 @@ generate_plots <- function(data, time_range=NULL){
   return(list(plot_variables, plot_eir, plot_age_structure))
 }
 
-
+setwd('~/Documents/malaria_interventions_sqlite/')
 PS03_S_00 <- get_data(parameter_space = '03', scenario = 'S', experiment = '00', run = 1)
 PS03_S_01 <- get_data(parameter_space = '03', scenario = 'S', experiment = '01', run = 1)
 PS03_S_02 <- get_data(parameter_space = '03', scenario = 'S', experiment = '02', run = 1)
@@ -151,14 +150,14 @@ rbind(PS03_S_01)
 
 # Compare between experiments ---------------------------------------------
 
-d <- rbind(PS03_G_01[[1]],
-           PS03_G_02[[1]],
-           PS03_G_03[[1]])
+d <- rbind(PS03_S_00[[1]],
+           PS03_S_01[[1]]
+           )
 
 # mintime=d %>% group_by(exp) %>% summarise(m=max(time)) %>% summarise(min(m))
 # mintime=mintime[1,1]
 # pdf('seasonal_comparison.pdf',16,10)
-time_range <- c(30000,36000)
+time_range <- c(27000,33000)
 d %>%
   select(-year, -month, -n_infected) %>% 
   filter(time>time_range[1]&time<time_range[2]) %>%
@@ -187,7 +186,8 @@ d <- rbind(PS03_S_01[[1]],
 # mintime=d %>% group_by(exp) %>% summarise(m=max(time)) %>% summarise(min(m))
 # mintime=mintime[1,1]
 # pdf('seasonal_comparison.pdf',16,10)
-time_range <- c(33000,36000)
+time_range <- c(28900,36000)
+png('scenario_comparison_1.png',1800,1000)
 d %>%
   select(-year, -month, -n_infected) %>% 
   filter(time>time_range[1]&time<time_range[2]) %>%
@@ -197,6 +197,8 @@ d %>%
   # geom_vline(xintercept = c(21600,21960,22320,22680,23040,23400))+
   scale_x_continuous(breaks=pretty(x=subset(d, time>time_range[1]&time<time_range[2])$time,n=5))+
   facet_wrap(~variable, scales = 'free')+mytheme
+dev.off()
+
 
 # This part compares the fits of the duration curve of the selection and the generalized immunity.
 parameter_space <- '03'
@@ -206,10 +208,7 @@ run <- 1
 sqlite_file <- paste('/home/shai/Documents/malaria_interventions_sqlite/','PS',parameter_space,'_S_E',experiment,'_R',run,'.sqlite',sep='')
 db <- dbConnect(SQLite(), dbname = sqlite_file)
 sampled_duration <- dbGetQuery(db, 'SELECT time, duration,infection_id FROM sampled_duration')
-sampled_duration %>% group_by(infection_id) %>% summarise(n=length(duration)) %>% ggplot()
 
-x <- sampled_duration$infection_id
-y <- sampled_duration$duration
 setwd('/home/shai/Documents/malaria_interventions')
 fit <- set_generalized_immunity(parameter_space=parameter_space, run=run)[[1]]
 generalImmunityParams <- python.get('generalImmunityParams')
@@ -217,19 +216,27 @@ a=generalImmunityParams[1]
 b=generalImmunityParams[2]
 c=generalImmunityParams[3]
 d=generalImmunityParams[4]
+
+p <- sampled_duration %>% ggplot(aes(infection_id, duration))+
+  geom_point()
 # Check fit
-x.fit <- 0:max(x)
+x.fit <- 0:max(sampled_duration$infection_id)
 y.fit <- ((b*exp(-c*x.fit))/(d*x.fit+1)^d)+a
-plot(x,y, ylim = c(0,500))
-points(x.fit,y.fit,col='blue')
+fit <- data.frame(infection_id=x.fit, duration=y.fit)
+p <- p+geom_point(data=fit, color='red')
+
 
 sqlite_file <- paste('/home/shai/Documents/malaria_interventions_sqlite/','PS',parameter_space,'_G_E',experiment,'_R',run,'.sqlite',sep='')
 db <- dbConnect(SQLite(), dbname = sqlite_file)
 sampled_duration <- dbGetQuery(db, 'SELECT time, duration,infection_id FROM sampled_duration')
-tmp <- sampled_duration %>% group_by(infection_id) %>% summarise(meanDOI=mean(duration))
-x <- tmp$infection_id
-y <- tmp$meanDOI
-points(x,y,col='red')
+generalized <- sampled_duration %>% group_by(infection_id) %>% summarise(meanDOI=mean(duration))
+fit_generalized <-  data.frame(infection_id=generalized$infection_id, duration=generalized$meanDOI)
+
+p <- p+geom_point(data=fit_generalized, color='blue')
+
+png('scenario_comparison_2.png',1800,1000)
+p
+dev.off()
 
 # This compares the age distribution of infected hosts
 d <- rbind(PS03_S_01[[2]],PS03_G_01[[2]],PS03_N_01[[2]])
@@ -238,7 +245,7 @@ d %>% ggplot(aes(x=host_age, fill=scenario))+geom_histogram() +
   geom_vline(xintercept = 60) +
   mytheme
 
-
+dev.off()
 
 # Structure ---------------------------------------------------------------
 require(sqldf)
