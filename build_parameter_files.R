@@ -320,7 +320,7 @@ design <- loadExperiments_GoogleSheets() # Get data design
 clear_previous_files(parameter_space='03', scenario = 'N', exclude_sqlite = T)
 
 setwd('~/Documents/malaria_interventions/')
-generate_files(row_range = 15:16, run_range = 1)
+generate_files(row_range = 17:18, run_range = 1, random_seed = 3335106)
 system('mv PS*.py /home/shai/Documents/malaria_interventions_sqlite/')
 system('mv PS*.sbatch /home/shai/Documents/malaria_interventions_sqlite/')
 

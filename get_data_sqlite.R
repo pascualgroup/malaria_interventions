@@ -150,20 +150,22 @@ rbind(PS03_S_01)
 
 # Compare between experiments ---------------------------------------------
 
-d <- rbind(PS03_S_00[[1]],
-           PS03_S_01[[1]]
+d <- rbind(PS03_G_01[[1]],
+           PS03_G_02[[1]],
+           PS03_G_03[[1]]
            )
 
 # mintime=d %>% group_by(exp) %>% summarise(m=max(time)) %>% summarise(min(m))
 # mintime=mintime[1,1]
 # pdf('seasonal_comparison.pdf',16,10)
-time_range <- c(27000,33000)
+time_range <- c(27000,36000)
 d %>%
   select(-year, -month, -n_infected) %>% 
   filter(time>time_range[1]&time<time_range[2]) %>%
   gather(variable, value, -time, -exp, -PS, -scenario, -run) %>% 
   ggplot(aes(x=time, y=value, color=exp, group=exp))+
   geom_line()+
+  scale_color_manual(values=c('blue','orange','red'))+
   # geom_vline(xintercept = c(21600,21960,22320,22680,23040,23400))+
   scale_x_continuous(breaks=pretty(x=subset(d, time>time_range[1]&time<time_range[2])$time,n=5))+
   facet_wrap(~variable, scales = 'free')+mytheme
@@ -180,14 +182,14 @@ dev.off()
 # Compare between scenarios ---------------------------------------------
 
 d <- rbind(PS03_S_01[[1]],
-           PS03_N_01[[1]],
-           PS03_G_01[[1]])
+           PS03_N_03[[1]],
+           PS03_G_03[[1]])
 
 # mintime=d %>% group_by(exp) %>% summarise(m=max(time)) %>% summarise(min(m))
 # mintime=mintime[1,1]
 # pdf('seasonal_comparison.pdf',16,10)
-time_range <- c(28900,36000)
-png('scenario_comparison_1.png',1800,1000)
+time_range <- c(28000,36000)
+# png('scenario_comparison_1.png',1800,1000)
 d %>%
   select(-year, -month, -n_infected) %>% 
   filter(time>time_range[1]&time<time_range[2]) %>%
@@ -196,8 +198,9 @@ d %>%
   geom_line()+
   # geom_vline(xintercept = c(21600,21960,22320,22680,23040,23400))+
   scale_x_continuous(breaks=pretty(x=subset(d, time>time_range[1]&time<time_range[2])$time,n=5))+
+  scale_color_manual(values=c('blue','orange','red'))+
   facet_wrap(~variable, scales = 'free')+mytheme
-dev.off()
+# dev.off()
 
 
 # This part compares the fits of the duration curve of the selection and the generalized immunity.
@@ -223,7 +226,7 @@ p <- sampled_duration %>% ggplot(aes(infection_id, duration))+
 x.fit <- 0:max(sampled_duration$infection_id)
 y.fit <- ((b*exp(-c*x.fit))/(d*x.fit+1)^d)+a
 fit <- data.frame(infection_id=x.fit, duration=y.fit)
-p <- p+geom_point(data=fit, color='red')
+p <- p+geom_point(data=fit, color='red',size=3)
 
 
 sqlite_file <- paste('/home/shai/Documents/malaria_interventions_sqlite/','PS',parameter_space,'_G_E',experiment,'_R',run,'.sqlite',sep='')
@@ -232,19 +235,20 @@ sampled_duration <- dbGetQuery(db, 'SELECT time, duration,infection_id FROM samp
 generalized <- sampled_duration %>% group_by(infection_id) %>% summarise(meanDOI=mean(duration))
 fit_generalized <-  data.frame(infection_id=generalized$infection_id, duration=generalized$meanDOI)
 
-p <- p+geom_point(data=fit_generalized, color='blue')
+p <- p+geom_point(data=fit_generalized, color='blue',size=3)
 
 png('scenario_comparison_2.png',1800,1000)
-p
+p+mytheme
 dev.off()
 
 # This compares the age distribution of infected hosts
 d <- rbind(PS03_S_01[[2]],PS03_G_01[[2]],PS03_N_01[[2]])
+png('scenario_comparison_3.png',1800,1000)
 d %>% ggplot(aes(x=host_age, fill=scenario))+geom_histogram() + 
   labs(x='Infected host age (months)') + 
   geom_vline(xintercept = 60) +
+  scale_fill_manual(values=c('blue','orange','red'))+
   mytheme
-
 dev.off()
 
 # Structure ---------------------------------------------------------------
