@@ -1,4 +1,5 @@
 library(tidyverse)
+library(magrittr)
 library(sqldf)
 
 # Functions ---------------------------------------------------------------
@@ -123,7 +124,7 @@ generate_plots <- function(data, time_range=NULL){
   return(list(plot_variables, plot_eir, plot_age_structure))
 }
 
-setwd('~/GitHub/malaria_interventions_sqlite/')
+setwd('~/Documents/malaria_interventions_sqlite/')
 PS03_S_00 <- get_data(parameter_space = '03', scenario = 'S', experiment = '00', run = 1)
 PS03_S_01 <- get_data(parameter_space = '03', scenario = 'S', experiment = '01', run = 1)
 PS03_S_02 <- get_data(parameter_space = '03', scenario = 'S', experiment = '02', run = 1)
@@ -251,6 +252,7 @@ d %>% ggplot(aes(x=host_age, fill=scenario))+geom_histogram() +
   mytheme
 dev.off()
 
+
 # Structure ---------------------------------------------------------------
 require(sqldf)
 # Initialize
@@ -269,41 +271,181 @@ names(sampled_strains)[1] <- c('strain_id')
 sampled_alleles <- as.tibble(dbGetQuery(db, 'SELECT * FROM sampled_alleles'))
 names(sampled_alleles)[3] <- c('allele_id')
 sampled_strains <- full_join(sampled_strains, sampled_alleles)
+sampled_strains$allele_locus <- paste(sampled_strains$allele_id,sampled_strains$locus,sep='_') # each allele in a locus is unique
+
 sampled_infections <- PS03_S_01[[2]]
-identical(unique(sampled_infections$strain_id),unique(sampled_strains$strain_id))
+sampled_infections$layer <- group_indices(sampled_infections, time) # Add layer numbers. Each time point is a layer
+sampled_infections %<>% arrange(layer,strain_id,host_id) %>% group_by(layer,strain_id) %>% mutate(strain_copy = row_number()) # add unique id for each strain copy within each layer. A strain copy is an instance of a strain in a particualr host
+sampled_infections$strain_id_unique=paste(sampled_infections$strain_id,sampled_infections$strain_copy,sep='_') # Create the unique strains
 
-sampled_infections %<>% select(time, host_id, strain_id) %>% left_join(x)
-sampled_infections$allele_locus <- paste(sampled_infections$allele_id,sampled_infections$locus,sep='_')
+# Integrate the strain composition into the infections table
+identical(unique(sampled_infections$strain_id),unique(sampled_strains$strain_id)) # This pretty important
+sampled_infections %<>% select(time, layer, host_id, strain_id, strain_copy, strain_id_unique) %>% left_join(sampled_strains)
 
-sampled_infections_layer <- sampled_infections %>% filter(time==28815)
-sampled_infections_layer %<>% group_by(strain_id) %>% mutate(freq = n()/120)
-
-strains <- unique(sampled_infections_layer$strain_id)
-map(strains, function(s){
-  tmp <- sampled_infections_layer %>% select(host_id,strain_id)%>% filter(strain_id==s) %>% group_by(host_id)
-  tmp=rowid_to_column(tmp,"id")
-  tmp$pid2=paste(tmp$personal_id,tmp$id,sep='_')
-  return(tmp)
-}) %>% bind_rows()
+#sampled_infections <- subset(sampled_infections, layer<=10)
 
 
-sampled_infections_layer$strain_host <- paste(sampled_infections_layer$strain_id,sampled_infections_layer$host_id,sep='_')
+overlapAlleleAdj<-function(mat){
+  newmat<-tcrossprod(mat>0)
+  newmat<-newmat/rowSums(mat>0)
+  return(newmat)  
+}
 
-sampled_infections_layer %>% 
-  mutate(group_id = group_indices(., host_id))
+# A function to build the similarity matrix for a single layer and calculate some summary stats
+build_layer <- function(l){
+  sampled_infections_layer <- subset(sampled_infections, layer==l) # This is MUCH faster than sampled_infections_layer <- sampled_infections %>% filter(layer==l)
+  sampled_infections_layer %<>% group_by(strain_id) %>% mutate(freq = n()/120) %>% arrange(strain_id_unique) # strain frequency (the number of strain copies should be equal to the frequency)
+  # Calculate the edges
+  similarity_matrix <- table(sampled_infections_layer$strain_id_unique, sampled_infections_layer$allele_locus)
+  similarity_matrix <- overlapAlleleAdj(similarity_matrix)
+  # Some summary
+  layer_summary <- with(sampled_infections_layer, 
+                        data.frame(hosts=length(unique(host_id)),
+                                   strains=length(unique(strain_id)),
+                                   total_infections=length(unique(strain_id_unique))
+                                   ))
+  return(list(similarity_matrix=similarity_matrix, infections=sampled_infections_layer, layer_summary=layer_summary))
+}
 
+Layers <- list()
+for (l in 1:max(sampled_infections$layer)){
+  cat(paste('[',Sys.time(), '] building layer ',l,'\n',sep=''))
+  Layers[[l]] <- build_layer(l)  
+}
 
-x <- x[rep(row.names(x), x$freq), 1:3]
-strainCompositionLayer$freq <- strainFrequency[match(strainCompositionLayer$strainId,names(strainFrequency))]
-# Rename strains so to create duplicates
-strainCompositionLayer$freqChar <- ifelse(str_detect(rownames(strainCompositionLayer),'\\.'),
-                  splitText(rownames(strainCompositionLayer)),'x')
-strainCompositionLayer$strainCopy <- paste(strainCompositionLayer$strainId, strainCompositionLayer$freqChar,sep='.')
-strainCompositionLayer$strainCopy <- gsub(".x", "", strainCompositionLayer$strainCopy)
+# Get just the matrices
+temporal_network <- unique(lapply(Layers, function(x) head(x, 1)$similarity_matrix))
+sapply(temporal_network, dim)
 
-                                                                                          
-                                                                                          
-table(sampled_infections_layer$strain_id)/120
+# Apply a cutoff
+x <- xtabs(~strain_id+allele_locus, subset(sampled_strains, strain_id%in%sampled_infections$strain_id))
+similarityMatrix <- overlapAlleleAdj(x)
+dim(similarityMatrix)
+# # Write similarity matrix without cutoff. This used to plot the edge weight distributions.
+# write.table(similarityMatrix, paste('../',filenameBase,'_similarityMatrix_nocutoff.csv',sep=''), row.names = T, col.names = T, sep=',')
+cutoffValue <- quantile(as.vector(similarityMatrix), probs = 0.9)
+print(cutoffValue)
+# hist(as.vector(similarityMatrix));abline(v=cutoffValue,col='red')
+similarityMatrix[similarityMatrix<cutoffValue] <- 0
+# write.table(similarityMatrix, paste(filenameBase,'_similarityMatrix.csv',sep=''), row.names = T, col.names = T, sep=',')
+# write.table(similarityMatrix, paste('../',filenameBase,'_similarityMatrix.csv',sep=''), row.names = T, col.names = T, sep=',')
+
+for (i in 1:length(temporal_network)){
+  print(i)
+  x <- temporal_network[[i]]
+  x[x<cutoffValue] <- 0
+  temporal_network[[i]] <- x
+}
+
+# This function takes a list of temporal matrices and returns an intralayer and
+# interlayer edge lists in a format: [layer_source, node_source, layer_target node_target, weight].
+# It also returns the list of node names
+build_infomap_objects <- function(temporal_network, write_to_infomap_file=T, return_objects=T){
+  require(igraph)
+  
+  # Define functions
+  
+  ## A function to get the repertoire names from unique repertoire copy names
+  splitText <- function(str,after=T,splitchar='\\.'){
+    if (after){
+      return(sapply(strsplit(str, split=splitchar), tail, 1))
+    }
+    if (after==F){
+      return(sapply(strsplit(str, split=splitchar), head, 1))
+    }
+  }
+  
+  ##  A function that gets the layer as a matrix and writes it for infomap as an edge list
+  matrix_to_infomap <- function(l){
+    require(igraph)
+    current_layer <- temporal_network[[l]]
+    if(nrow(current_layer)<2){
+      print(paste('No strains in layer',l,'!!! skipping intralayer edges'))
+      next
+    }
+    g <- graph.adjacency(current_layer, mode = 'directed', weighted = T)
+    current_layer_el <- as.tibble(as_data_frame(g, what = 'edges'))
+    names(current_layer_el) <- c('node_s','node_t','w')
+    current_layer_el$layer_s <- l
+    current_layer_el$layer_t <- l
+    current_layer_el$node_s <- nodeList$nodeID[match(current_layer_el$node_s,nodeList$nodeLabel)]
+    current_layer_el$node_t <- nodeList$nodeID[match(current_layer_el$node_t,nodeList$nodeLabel)]
+    current_layer_el %<>% select(layer_s, node_s, layer_t, node_t, w)
+    print(paste('[',Sys.time(), '] Created edge list of layer ',l,' for Infomap | ', nrow(current_layer_el),' edges',sep=''))
+    return(current_layer_el)
+  }
+  
+  ## A function that calculates interlayer edges between layer t and t+1
+  build_interlayer_edges_1step <- function(t){
+    strain_copies_t <- rownames(temporal_network[[t]]) # repertoires at time t
+    strain_copies_t1 <- rownames(temporal_network[[t+1]]) # repertoires at time t+1
+    if (length(strain_copies_t)<2 | length(strain_copies_t1)<2){
+      print(paste('No interlayer edges between layers',t, 'and',t+1,'because there are < 2 repertoires.'))
+      next} # need minimum of 2 strains in t and t+1 to build a matrix
+    # Pull the similarity values between the repertoires from the general similarity matrix, then write back the repertoire copy names
+    inter_layer_edges_matrix <- similarityMatrix[splitText(strain_copies_t, after = F, '_'),splitText(strain_copies_t1, after = F, '_')] 
+    rownames(inter_layer_edges_matrix) <- strain_copies_t
+    colnames(inter_layer_edges_matrix) <- strain_copies_t1
+    if (all(inter_layer_edges_matrix==0)){
+      print(paste('All interlayer edges between layers',t, 'and',t+1,' are 0 (due to the cutoff). skipping.'))
+      next
+    }
+    # transform to an edge list
+    g <- graph.incidence(inter_layer_edges_matrix, directed = T, mode = 'out', weighted = T)
+    inter_layer_edges <- as.tibble(as_data_frame(g, what = 'edges'))
+    names(inter_layer_edges) <- c('node_s','node_t','w')
+    inter_layer_edges$layer_s <- t
+    inter_layer_edges$layer_t <- t+1
+    inter_layer_edges$node_s <- nodeList$nodeID[match(inter_layer_edges$node_s,nodeList$nodeLabel)]
+    inter_layer_edges$node_t <- nodeList$nodeID[match(inter_layer_edges$node_t,nodeList$nodeLabel)]
+    inter_layer_edges %<>% select(layer_s, node_s, layer_t, node_t, w)
+    print(paste('Built interlayer edges for layers: ',t,'-->',t+1,' | ', nrow(inter_layer_edges),' edges',sep=''))
+    return(inter_layer_edges)
+  }
+  
+  # Get the node list
+  nodeLabel <- sort(unique(unlist(lapply(temporal_network,rownames))))
+  nodeList <- data.frame(nodeID=1:length(nodeLabel), nodeLabel)
+  
+  # Create intralayer edge lists
+  layers <- 1:length(temporal_network)
+  infomap_intralayer <- map(layers, matrix_to_infomap) %>% bind_rows()
+  
+  # create interlayer edge lists
+  layers <- layers[-length(layers)]
+  infomap_interlayer <- map(layers, build_interlayer_edges_1step) %>% bind_rows()
+  
+  if (write_to_infomap_file){
+    sink.reset <- function(){
+      for(i in seq_len(sink.number())){
+        sink(NULL)
+      }
+    }
+    ## Write file for infomap
+    print('Writing Infomap files')
+    file <- paste(base_name,'_Infomap_multilayer','.txt',sep='')
+    print(paste('Infomap file:',file))
+    if (file.exists(file)){unlink(file)}
+    sink(file, append = T)
+    cat("# A network in a general multiplex format");cat('\n')
+    cat(paste("*Vertices",nrow(nodeList)));cat('\n')
+    write.table(nodeList, file, append = T,sep=' ', quote = T, row.names = F, col.names = F)
+    cat("*Multiplex");cat('\n')
+    cat("# layer node layer node [weight]");cat('\n')
+    cat("# Intralayer edges");cat('\n')
+    write.table(infomap_intralayer, file, sep = ' ', row.names = F, col.names = F, quote = F, append = T)
+    cat("# Interlayer edges");cat('\n')
+    write.table(infomap_interlayer, file, sep = ' ', row.names = F, col.names = F, quote = F, append = T)
+    sink.reset()
+  }
+  
+  if (return_objects){
+    return(list(infomap_intralayer=infomap_intralayer, infomap_interlayer=infomap_interlayer, nodeList=nodeList))
+  }
+}
+
+infomap_objects <- build_infomap_objects(temporal_network)
+
 
 
 # Calendar ----------------------------------------------------------------
