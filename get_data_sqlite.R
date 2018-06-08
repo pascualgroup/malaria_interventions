@@ -123,7 +123,7 @@ generate_plots <- function(data, time_range=NULL){
   return(list(plot_variables, plot_eir, plot_age_structure))
 }
 
-setwd('~/Documents/malaria_interventions_sqlite/')
+setwd('~/GitHub/malaria_interventions_sqlite/')
 PS03_S_00 <- get_data(parameter_space = '03', scenario = 'S', experiment = '00', run = 1)
 PS03_S_01 <- get_data(parameter_space = '03', scenario = 'S', experiment = '01', run = 1)
 PS03_S_02 <- get_data(parameter_space = '03', scenario = 'S', experiment = '02', run = 1)
@@ -268,13 +268,43 @@ sampled_strains <- as.tibble(dbGetQuery(db, 'SELECT id, gene_id FROM sampled_str
 names(sampled_strains)[1] <- c('strain_id')
 sampled_alleles <- as.tibble(dbGetQuery(db, 'SELECT * FROM sampled_alleles'))
 names(sampled_alleles)[3] <- c('allele_id')
-x <- full_join(sampled_strains, sampled_alleles)
-nrow(x)
+sampled_strains <- full_join(sampled_strains, sampled_alleles)
+sampled_infections <- PS03_S_01[[2]]
+identical(unique(sampled_infections$strain_id),unique(sampled_strains$strain_id))
 
-y <- PS03_S_01[[2]]
-sum(unique(y$strain_id)%in%x$strain_id)/length(unique(y$strain_id))
+sampled_infections %<>% select(time, host_id, strain_id) %>% left_join(x)
+sampled_infections$allele_locus <- paste(sampled_infections$allele_id,sampled_infections$locus,sep='_')
 
-# Found a problem with mergeing the hosts and sampled_infections tables. get all NA in the columns coming from hosts
+sampled_infections_layer <- sampled_infections %>% filter(time==28815)
+sampled_infections_layer %<>% group_by(strain_id) %>% mutate(freq = n()/120)
+
+strains <- unique(sampled_infections_layer$strain_id)
+map(strains, function(s){
+  tmp <- sampled_infections_layer %>% select(host_id,strain_id)%>% filter(strain_id==s) %>% group_by(host_id)
+  tmp=rowid_to_column(tmp,"id")
+  tmp$pid2=paste(tmp$personal_id,tmp$id,sep='_')
+  return(tmp)
+}) %>% bind_rows()
+
+
+sampled_infections_layer$strain_host <- paste(sampled_infections_layer$strain_id,sampled_infections_layer$host_id,sep='_')
+
+sampled_infections_layer %>% 
+  mutate(group_id = group_indices(., host_id))
+
+
+x <- x[rep(row.names(x), x$freq), 1:3]
+strainCompositionLayer$freq <- strainFrequency[match(strainCompositionLayer$strainId,names(strainFrequency))]
+# Rename strains so to create duplicates
+strainCompositionLayer$freqChar <- ifelse(str_detect(rownames(strainCompositionLayer),'\\.'),
+                  splitText(rownames(strainCompositionLayer)),'x')
+strainCompositionLayer$strainCopy <- paste(strainCompositionLayer$strainId, strainCompositionLayer$freqChar,sep='.')
+strainCompositionLayer$strainCopy <- gsub(".x", "", strainCompositionLayer$strainCopy)
+
+                                                                                          
+                                                                                          
+table(sampled_infections_layer$strain_id)/120
+
 
 # Calendar ----------------------------------------------------------------
 
