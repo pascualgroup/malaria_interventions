@@ -41,12 +41,8 @@ loadExperiments_GoogleSheets <- function(workBookName='malaria_interventions_des
 # A function to remove sqlite and parameter files, or any other file for
 # specific combinations of parameter space, scenario and experiment. Will remove
 # across all runs.
-clear_previous_files <- function(parameter_space=NULL, scenario=NULL, experiment=NULL, exclude_sqlite=T){
+clear_previous_files <- function(parameter_space=NULL, scenario=NULL, experiment=NULL, exclude_sqlite=T, exclude_CP=T, exclute_control=T){
   files <- list.files(path = '~/Documents/malaria_interventions_sqlite', full.names = T)
-  if(exclude_sqlite){
-    files <- files[!str_detect(files,'\\.sqlite')]
-  }
-  
   if (!is.null(parameter_space)){
     files <- files[str_detect(files,paste('PS',parameter_space,sep=''))]
   }
@@ -55,6 +51,15 @@ clear_previous_files <- function(parameter_space=NULL, scenario=NULL, experiment
   }
   if (!is.null(experiment)){
     files <- files[str_detect(files,paste('E',experiment,sep=''))]
+  }
+  if(exclude_CP){
+    files <- files[!str_detect(files,'E00')]
+  }
+  if(exclute_control){
+    files <- files[!str_detect(files,'E01')]
+  }
+  if(exclude_sqlite){
+    files <- files[!str_detect(files,'\\.sqlite')]
   }
   file.remove(files)
 }
@@ -108,8 +113,8 @@ require('rPython')
 set_IRS <- function(design_ID, run, IRS_START_TIME, IRS_input, IRS_IMMIGRATION){
   # Regime
   parameter_space <- design$PS[design_ID]
-  scenario <- design$Scenario[design_ID]
-  experiment <- design$Experiment[design_ID] # Use 00 for checkpoints and control
+  scenario <- design$scenario[design_ID]
+  experiment <- design$exp[design_ID] # Use 00 for checkpoints and control
   base_name <- paste('PS',parameter_space,'_',scenario,'_E',experiment,'_R',run,sep='')
   output_file <- paste(base_name,'.py',sep = '')
   param_data <- get_parameter_reference(output_file)
@@ -144,8 +149,8 @@ set_IRS <- function(design_ID, run, IRS_START_TIME, IRS_input, IRS_IMMIGRATION){
 set_MDA <- function(design_ID, run){
   # Regime
   parameter_space <- design$PS[design_ID]
-  scenario <- design$Scenario[design_ID]
-  experiment <- design$Experiment[design_ID] # Use 00 for checkpoints and control
+  scenario <- design$scenario[design_ID]
+  experiment <- design$exp[design_ID] # Use 00 for checkpoints and control
   base_name <- paste('PS',parameter_space,'_',scenario,'_E',experiment,'_R',run,sep='')
   output_file <- paste(base_name,'.py',sep = '')
   param_data <- get_parameter_reference(output_file)
@@ -172,8 +177,8 @@ set_MDA <- function(design_ID, run){
 create_run <- function(design_ID, run, RANDOM_SEED){
   # Regime
   parameter_space <- design$PS[design_ID]
-  scenario <- design$Scenario[design_ID]
-  experiment <- design$Experiment[design_ID] # Use 00 for checkpoints and control
+  scenario <- design$scenario[design_ID]
+  experiment <- design$exp[design_ID] # Use 00 for checkpoints and control
   base_name <- paste('PS',parameter_space,'_',scenario,'_E',experiment,'_R',run,sep='')
   param_data <- get_parameter_reference()
   
@@ -272,8 +277,8 @@ generate_files <- function(row_range, run_range, random_seed=NULL){
   SLURM_ARRAY_RANGE <- paste("\'",min(run_range),'-',max(run_range),"\'",sep='')
   for (design_ID in row_range){
     parameter_space <- design$PS[design_ID]
-    scenario <- design$Scenario[design_ID]
-    experiment <- design$Experiment[design_ID] # Use 00 for checkpoints and control
+    scenario <- design$scenario[design_ID]
+    experiment <- design$exp[design_ID] # Use 00 for checkpoints and control
     base_name <- paste('PS',parameter_space,scenario,'E',experiment,sep='')
     # Write the job file for the exepriment
     job_lines <- readLines('job_file_ref.sbatch')
@@ -301,15 +306,15 @@ generate_files <- function(row_range, run_range, random_seed=NULL){
   # Printout of generated file names
   cat('Generated files:\n')
   for (e in row_range){
-    cat(paste('PS',design$PS[e],design$Scenario[e],'E',design$Experiment[e],'.sbatch','\n',sep=''))
+    cat(paste('PS',design$PS[e],design$scenario[e],'E',design$exp[e],'.sbatch','\n',sep=''))
     for (r in run_range){
-      cat(paste('--- PS',design$PS[e],'_',design$Scenario[e],'_E',design$Experiment[e],'_R',r,'\n',sep=''))
+      cat(paste('--- PS',design$PS[e],'_',design$scenario[e],'_E',design$exp[e],'_R',r,'\n',sep=''))
     }
   }
   
   cat('Run this on Midway: \n')
   for (e in row_range){
-    cat(paste('sbatch PS',design$PS[e],design$Scenario[e],'E',design$Experiment[e],'.sbatch','\n',sep=''))
+    cat(paste('sbatch PS',design$PS[e],design$scenario[e],'E',design$exp[e],'.sbatch','\n',sep=''))
   }
 }
 
@@ -317,13 +322,16 @@ generate_files <- function(row_range, run_range, random_seed=NULL){
 
 design <- loadExperiments_GoogleSheets() # Get data design 
 
-clear_previous_files(parameter_space='03', scenario = 'N', exclude_sqlite = T)
+#clear_previous_files(parameter_space='04', scenario = 'S', exclude_sqlite = T, exclude_CP = T, exclute_control = T)
 
 setwd('~/Documents/malaria_interventions/')
-generate_files(row_range = 17:18, run_range = 1, random_seed = 3335106)
+generate_files(row_range = 20:48, run_range = 1, random_seed = 9161840)
 system('mv PS*.py /home/shai/Documents/malaria_interventions_sqlite/')
 system('mv PS*.sbatch /home/shai/Documents/malaria_interventions_sqlite/')
 
+for (e in 20:48){
+  cat(paste('sbatch PS',design$PS[e],design$scenario[e],'E',design$exp[e],'.sbatch','\n',sep=''))
+}
 
 
 # plots -------------------------------------------------------------------

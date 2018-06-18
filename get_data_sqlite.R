@@ -10,6 +10,7 @@ mytheme <- theme_bw() + theme(
   legend.key = element_blank(),
   legend.text  = element_text(colour = "black", size=17),
   panel.background = element_blank(),
+  panel.grid.major = element_blank(),
   panel.grid.minor = element_blank(),
   axis.text = element_text(color='black', family="Helvetica", size=10),
   strip.text.x = element_text(family = "Helvetica", size = 10),
@@ -19,6 +20,11 @@ mytheme <- theme_bw() + theme(
   strip.background = element_rect( fill = "transparent", size = 1.3, colour = "black"  ),
   strip.text = element_text(size = 19)
 )
+
+gg_color_hue <- function(n, hue_min = 10, hue_max = 280, l = 62, c = 100) {
+  hues = seq(hue_min, hue_max, length=n+1)
+  hcl(h=hues, l=l, c=c)[1:n]
+}
 
 chunk2 <- function(x,n) split(x, cut(seq_along(x), n, labels = FALSE)) 
 
@@ -140,7 +146,7 @@ PS03_G_01 <- get_data(parameter_space = '03', scenario = 'G', experiment = '01',
 PS03_G_02 <- get_data(parameter_space = '03', scenario = 'G', experiment = '02', run = 1)
 PS03_G_03 <- get_data(parameter_space = '03', scenario = 'G', experiment = '03', run = 1)
 
-plots <- generate_plots(PS03_N_01)
+plots <- generate_plots(PS03_S_01)
 splot <- plots[[3]]  
 gplot <- plots[[3]]  
 nplot <- plots[[3]]  
@@ -148,25 +154,63 @@ splot
 
 rbind(PS03_S_01)
 
+PS02_S_00 <- get_data(parameter_space = '02', scenario = 'S', experiment = '00', run = 1)
+PS02_S_01 <- get_data(parameter_space = '02', scenario = 'S', experiment = '01', run = 1)
+PS02_S_02 <- get_data(parameter_space = '02', scenario = 'S', experiment = '02', run = 1)
+
+for (i in sprintf('%0.2d', 0:5)){
+  print(i)
+  assign(paste('PS04_S_',i,sep=''), get_data(parameter_space = '04', scenario = 'S', experiment = i, run = 1))
+}
 
 # Compare between experiments ---------------------------------------------
+setwd('~/Documents/malaria_interventions_sqlite/')
+e <- sprintf('%0.2d', 01:29)
+d <- map(e, function(i){
+  cat(i)
+  tmp <- get_data(parameter_space = '04', scenario = 'S', experiment = i, run = 1)
+  return(tmp[[1]])
+}) %>% bind_rows()
 
-d <- rbind(PS03_G_01[[1]],
-           PS03_G_02[[1]],
-           PS03_G_03[[1]]
-           )
+d <- rbind(PS04_S_01[[1]],
+           PS04_S_02[[1]],
+           PS04_S_03[[1]],
+           PS04_S_04[[1]],
+           PS04_S_05[[1]])
+d <- rbind(PS04_S_01[[1]],
+           PS04_S_02[[1]],
+           PS04_S_06[[1]],
+           PS04_S_10[[1]])
+
+intervention_design <- subset(design, PS=='04' & scenario=='S' & exp %in% sprintf('%0.2d', 01:29),
+                              select=c("PS","scenario","exp","IRS_input","IRS_IMMIGRATION"))
+intervention_design %<>% mutate(coverage=sapply(str_split(intervention_design$IRS_input,"_"), function(x) x[4])) %>% 
+  mutate(length=parse_number(sapply(str_split(intervention_design$IRS_input,"_"), function(x) x[5])))
+intervention_design[1,4:7] <- rep('control',4)
 
 # mintime=d %>% group_by(exp) %>% summarise(m=max(time)) %>% summarise(min(m))
 # mintime=mintime[1,1]
 # pdf('seasonal_comparison.pdf',16,10)
-time_range <- c(27000,36000)
+time_range <- c(28815,39945)
+intervention_start <- 29175
+# my_cols <- c('black','orange','blue','purple','brown')
+my_cols <- gg_color_hue(10, hue_min = 10, hue_max = 280, l = 62, c = 200)
+
 d %>%
   select(-year, -month, -n_infected) %>% 
   filter(time>time_range[1]&time<time_range[2]) %>%
   gather(variable, value, -time, -exp, -PS, -scenario, -run) %>% 
-  ggplot(aes(x=time, y=value, color=exp, group=exp))+
+  filter(variable %in% c('prevalence', 'n_infections','n_circulating_strains', 'n_circulating_genes')) %>%
+  
+  left_join(intervention_design) %>% filter(length=='7200' | length=='control') %>%
+  # left_join(intervention_design) %>% filter(IRS_IMMIGRATION==0.1 | IRS_IMMIGRATION=='control') %>%
+  
+  # ggplot(aes(x=time, y=value, color=exp, group=exp))+
+  ggplot(aes(x=time, y=value, color=IRS_IMMIGRATION, group=IRS_IMMIGRATION))+
+  geom_vline(xintercept = intervention_start+seq(0,7200,1800),color='gray')+
+  # geom_vline(xintercept = seq(28800,39960,720),color='gray')+
   geom_line()+
-  scale_color_manual(values=c('blue','orange','red'))+
+  scale_color_manual(values=my_cols)+
   # geom_vline(xintercept = c(21600,21960,22320,22680,23040,23400))+
   scale_x_continuous(breaks=pretty(x=subset(d, time>time_range[1]&time<time_range[2])$time,n=5))+
   facet_wrap(~variable, scales = 'free')+mytheme
@@ -179,12 +223,16 @@ d %>%
   mytheme
 dev.off()
 
+# Calculate stats at the end of interventions
+
+d %>% left_join(design) %>% filter(time %in% c(intervention_start+seq(0,7200,1800))) %>% 
+  ggplot(aes(x=as.numeric(exp), y=prevalence))+geom_point()
 
 # Compare between scenarios ---------------------------------------------
 
 d <- rbind(PS03_S_01[[1]],
-           PS03_N_03[[1]],
-           PS03_G_03[[1]])
+           PS03_N_01[[1]],
+           PS03_G_01[[1]])
 
 # mintime=d %>% group_by(exp) %>% summarise(m=max(time)) %>% summarise(min(m))
 # mintime=mintime[1,1]
@@ -253,8 +301,11 @@ d %>% ggplot(aes(x=host_age, fill=scenario))+geom_histogram() +
 dev.off()
 
 
+# Calculate stats ---------------------------------------------------------
+
+# This calcualtes the 
+
 # Structure ---------------------------------------------------------------
-require(sqldf)
 # Initialize
 parameter_space <- '03'
 scenario <- 'S'
