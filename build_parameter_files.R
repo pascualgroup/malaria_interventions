@@ -85,7 +85,7 @@ set_transition_rate_neutral <- function(parameter_space, experiment='01', N_GENE
   
   mean_doi <- mean(doi$duration)
   TRANSITION_RATE_NOT_IMMUNE <- 1/(mean_doi/N_GENES_PER_STRAIN)
-  setwd('~/Documents/malaria_interventions/')
+  # setwd('~/Documents/malaria_interventions/')
   return(TRANSITION_RATE_NOT_IMMUNE)
 }
 
@@ -371,10 +371,10 @@ immigration_range <- seq(0,0.1,0.01)
 length_range <- 360*seq(5,20,5)
 coverage_range <- seq(0.8,1,0.05)
 design_irs <- create_intervention_scheme_IRS(PS_benchmark = '04', IRS_START_TIMES = '29160', immigration_range, length_range, coverage_range, 20)
-generate_files(row_range = 1:nrow(design), run_range = 1, random_seed = 9161840, design_irs)
+generate_files(row_range = 1:nrow(design_irs), run_range = 1, random_seed = 9161840, design_irs)
 
 # Generate command to run experiment jobs
-paste('for i in ', paste(sprintf('%0.3d', 10:100), collapse=' '),'; do sbatch PS04SE$i.sbatch; done', sep='')
+paste('for i in ', paste(sprintf('%0.3d', 101:221), collapse=' '),'; do sbatch PS04SE$i.sbatch; done', sep='')
 
 
 
