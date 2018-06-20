@@ -20,7 +20,7 @@ PS = 'XXX' # the parameter space
 scenario = 'XXX' # Can be: 'S', 'G' or 'N'
 exp='XXX' # The experiment ID
 run=$SLURM_ARRAY_TASK_ID # The run in the parameter space
-base_folder='/home/pilosofs/malaria_interventions/' # Where all the source files are and where the experiment folders will be created
+base_folder='/scratch/midway2/pilosofs/malaria_interventions/' # Where all the source files are and where the experiment folders will be created
 base_name='PS'$PS'_'$scenario'_E'$exp'_R'$run
 ABM_file=varmodel2.zip
 CHECKPOINT='create' # Can be: 'create', 'load', or 'none'
@@ -43,37 +43,41 @@ if [ "$CHECKPOINT" = "create" ]; then
 	./bin/varmodel2
 	cp *.sqlite $base_folder'/sqlite' 	# Copy sqlite files to the sqlite folder (include checkpoint files)
 	# Arrange files
-	cd ..
-	rm -r sqlite3
-	rm -r src
-	rm build.py
-	rm generate_managers.py
-	rm generate_parameters.py
-	rm *.pyc
-	cd $base_name
-	mv -v * $base_folder$base_name
-	cd ..
-	rm -rf $base_name
+#	cd ..
+#	rm -r sqlite3
+#	rm -r src
+#	rm build.py
+#	rm generate_managers.py
+#	rm generate_parameters.py
+#	rm *.pyc
+#	cd $base_name
+#	mv -v * $base_folder$base_name
+#	cd ..
+#	rm -rf $base_name
+	# Or just delete the whole folder
+	rm -rf $base_folder$base_name
 fi
 
 if [ "$CHECKPOINT" = "load" ]; then
-	cp $base_folder'sqlite/PS'$PS'_'$scenario'_E00_R'$run'_CP.sqlite' $base_folder$base_name'/'$base_name # The control experiments are with E00
+	cp $base_folder'sqlite/PS'$PS'_'$scenario'_E000_R'$run'_CP.sqlite' $base_folder$base_name'/'$base_name # The control experiments are with E00
 	cd $base_name
 	# Run the ABM
 	./bin/varmodel2
 	# Arrange files
 	cp *.sqlite $base_folder'/sqlite'
 	# Arrange files
-	cd ..
-	rm -r sqlite3
-	rm -r src
-	rm build.py
-	rm generate_managers.py
-	rm generate_parameters.py
-	rm *.pyc
-	cd $base_name
-	rm *'_CP.sqlite'
-	mv -v * $base_folder$base_name
-	cd ..
+#	cd ..
+#	rm -r sqlite3
+#	rm -r src
+#	rm build.py
+#	rm generate_managers.py
+#	rm generate_parameters.py
+#	rm *.pyc
+#	cd $base_name
+#	rm *'_CP.sqlite'
+#	mv -v * $base_folder$base_name
+#	cd ..
 	rm -rf $base_name
+	# Or just delete the whole folder
+	rm -rf $base_folder$base_name
 fi

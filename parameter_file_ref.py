@@ -74,10 +74,10 @@ BITING_RATE_FACTORS = []
 IRS_IMMIGRATION_RATE_FACTORS = []
 
 MDA_ON = False
-MDA_START_TIMES = [250,300]
-HOST_FAIL_RATE = [0.2,0.2] # % of hosts that did not take the drug
-DRUG_EFF_DURATION = [15,15] # How long the drug remains effective in the body
-MDA_IMMIGRATION_RATE_FACTORS = [0.2,0.6]
+MDA_START_TIMES = []
+HOST_FAIL_RATE = [] # % of hosts that did not take the drug
+DRUG_EFF_DURATION = [] # How long the drug remains effective in the body
+MDA_IMMIGRATION_RATE_FACTORS = []
 
 
 IMMIGRATION_ON = True

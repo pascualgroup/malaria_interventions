@@ -12,7 +12,7 @@ set_parameter <- function(param_data, parameter, value){
 }
 
 # Function to get reference parameter file
-get_parameter_reference <- function(parameter_file_ref='parameter_file_ref.py'){
+get_parameter_reference <- function(parameter_file_ref='~/Documents/malaria_interventions/parameter_file_ref.py'){
   reference <- readLines(parameter_file_ref)
   lines <- 1:length(reference)
   parameters <- map(lines, function(l){
@@ -42,7 +42,7 @@ loadExperiments_GoogleSheets <- function(workBookName='malaria_interventions_des
 # specific combinations of parameter space, scenario and experiment. Will remove
 # across all runs.
 clear_previous_files <- function(parameter_space=NULL, scenario=NULL, experiment=NULL, exclude_sqlite=T, exclude_CP=T, exclute_control=T){
-  files <- list.files(path = '~/Documents/malaria_interventions_sqlite', full.names = T)
+  files <- list.files(path = '~/Documents/malaria_interventions_data/', full.names = T)
   if (!is.null(parameter_space)){
     files <- files[str_detect(files,paste('PS',parameter_space,sep=''))]
   }
@@ -53,10 +53,10 @@ clear_previous_files <- function(parameter_space=NULL, scenario=NULL, experiment
     files <- files[str_detect(files,paste('E',experiment,sep=''))]
   }
   if(exclude_CP){
-    files <- files[!str_detect(files,'E00')]
+    files <- files[!str_detect(files,'E000')]
   }
   if(exclute_control){
-    files <- files[!str_detect(files,'E01')]
+    files <- files[!str_detect(files,'E001')]
   }
   if(exclude_sqlite){
     files <- files[!str_detect(files,'\\.sqlite')]
@@ -72,7 +72,7 @@ clear_previous_files <- function(parameter_space=NULL, scenario=NULL, experiment
 # scenario. it makes more sense to take the duration from the control
 # experiment, otherwise interventions can affect it, so I set exepriment=01 as default.
 set_transition_rate_neutral <- function(parameter_space, experiment='01', N_GENES_PER_STRAIN = 60){
-  sqlite_files <- list.files(path = '~/Documents/malaria_interventions_sqlite', pattern=paste('PS',parameter_space,'_S_E',experiment,'_R',sep=''), full.names = T)
+  sqlite_files <- list.files(path = '~/Documents/malaria_interventions_data/', pattern=paste('PS',parameter_space,'_S_E',experiment,'_R',sep=''), full.names = T)
   sqlite_files <- sqlite_files[str_detect(sqlite_files,'\\.sqlite')] # only sqlite files
   sqlite_files <- sqlite_files[!str_detect(sqlite_files,'_CP')] # no checkpoint files
   
@@ -96,7 +96,7 @@ set_transition_rate_neutral <- function(parameter_space, experiment='01', N_GENE
 #cannot be aggregated across runs.
 set_generalized_immunity <- function(parameter_space, experiment='01', run){
 require('rPython')
-  sqlite_file <- paste('/home/shai/Documents/malaria_interventions_sqlite/','PS',parameter_space,'_S_E',experiment,'_R',run,'.sqlite',sep='')
+  sqlite_file <- paste('/home/shai/Documents/malaria_interventions_data//','PS',parameter_space,'_S_E',experiment,'_R',run,'.sqlite',sep='')
   pyFile <- readLines('generalized_immunity_fitting.py')
   pyFile[11] <- paste('path=','"',sqlite_file,'"',sep='')
   writeLines(pyFile,'generalized_immunity_fitting_experiment.py')
@@ -114,7 +114,7 @@ set_IRS <- function(design_ID, run, IRS_START_TIME, IRS_input, IRS_IMMIGRATION){
   # Regime
   parameter_space <- design$PS[design_ID]
   scenario <- design$scenario[design_ID]
-  experiment <- design$exp[design_ID] # Use 00 for checkpoints and control
+  experiment <- design$exp[design_ID] # Use 000 for checkpoints and 001 for control
   base_name <- paste('PS',parameter_space,'_',scenario,'_E',experiment,'_R',run,sep='')
   output_file <- paste(base_name,'.py',sep = '')
   param_data <- get_parameter_reference(output_file)
@@ -150,7 +150,7 @@ set_MDA <- function(design_ID, run){
   # Regime
   parameter_space <- design$PS[design_ID]
   scenario <- design$scenario[design_ID]
-  experiment <- design$exp[design_ID] # Use 00 for checkpoints and control
+  experiment <- design$exp[design_ID] # Use 000 for checkpoints and 001 for control
   base_name <- paste('PS',parameter_space,'_',scenario,'_E',experiment,'_R',run,sep='')
   output_file <- paste(base_name,'.py',sep = '')
   param_data <- get_parameter_reference(output_file)
@@ -178,7 +178,7 @@ create_run <- function(design_ID, run, RANDOM_SEED){
   # Regime
   parameter_space <- design$PS[design_ID]
   scenario <- design$scenario[design_ID]
-  experiment <- design$exp[design_ID] # Use 00 for checkpoints and control
+  experiment <- design$exp[design_ID] # Use 000 for checkpoints and 001 for control
   base_name <- paste('PS',parameter_space,'_',scenario,'_E',experiment,'_R',run,sep='')
   param_data <- get_parameter_reference()
   
@@ -219,7 +219,7 @@ create_run <- function(design_ID, run, RANDOM_SEED){
   
   # Checkpoints
   T_BURNIN <- design$T_BURNIN[design_ID]
-  if (experiment == '00'){
+  if (experiment == '000'){
     param_data[param_data$param=='SAMPLE_DB_FILENAME',] <- set_parameter(param_data, 'SAMPLE_DB_FILENAME', paste('\'\"',base_name,'.sqlite\"\'',sep='')) # The run ID will be added while running the job (in the sbatch execution).
     param_data[param_data$param=='SAVE_TO_CHECKPOINT',] <- set_parameter(param_data, 'SAVE_TO_CHECKPOINT', 'True')
     param_data[param_data$param=='CHECKPOINT_SAVE_PERIOD',] <- set_parameter(param_data, 'CHECKPOINT_SAVE_PERIOD', T_END) # The save period should be the T_END
@@ -228,13 +228,13 @@ create_run <- function(design_ID, run, RANDOM_SEED){
     param_data[param_data$param=='CHECKPOINT_LOAD_FILENAME',] <- set_parameter(param_data, 'CHECKPOINT_LOAD_FILENAME', '\'\"\"\'')
     param_data[param_data$param=='T_BURNIN',] <- set_parameter(param_data, 'T_BURNIN', T_BURNIN)
   }
-  if (experiment != '00'){ # This section prepares a parameter file to load a checkpoint and run an experiment
+  if (experiment != '000'){ # This section prepares a parameter file to load a checkpoint and run an experiment
     param_data[param_data$param=='SAMPLE_DB_FILENAME',] <- set_parameter(param_data, 'SAMPLE_DB_FILENAME', paste('\'\"',base_name,'.sqlite\"\'',sep='')) # The run ID will be added while running the job (in the sbatch execution).
     param_data[param_data$param=='SAVE_TO_CHECKPOINT',] <- set_parameter(param_data, 'SAVE_TO_CHECKPOINT', 'False')
     param_data[param_data$param=='CHECKPOINT_SAVE_PERIOD',] <- set_parameter(param_data, 'CHECKPOINT_SAVE_PERIOD', 0)
     param_data[param_data$param=='CHECKPOINT_SAVE_FILENAME',] <- set_parameter(param_data, 'CHECKPOINT_SAVE_FILENAME', '\'\"\"\'')
     param_data[param_data$param=='LOAD_FROM_CHECKPOINT',] <- set_parameter(param_data, 'LOAD_FROM_CHECKPOINT', 'True')
-    param_data[param_data$param=='CHECKPOINT_LOAD_FILENAME',] <- set_parameter(param_data, 'CHECKPOINT_LOAD_FILENAME', paste('\'\"PS',parameter_space,'_',scenario,'_E00','_R',run,'_CP.sqlite\"\'',sep=''))
+    param_data[param_data$param=='CHECKPOINT_LOAD_FILENAME',] <- set_parameter(param_data, 'CHECKPOINT_LOAD_FILENAME', paste('\'\"PS',parameter_space,'_',scenario,'_E000','_R',run,'_CP.sqlite\"\'',sep=''))
     param_data[param_data$param=='T_BURNIN',] <- set_parameter(param_data, 'T_BURNIN', T_BURNIN) # The burnin value should be the value where the checkpoint was taken
   }
   
@@ -248,7 +248,7 @@ create_run <- function(design_ID, run, RANDOM_SEED){
 # several experiments and runs. It keeps the random seed for each RUN the same.
 # Also possible to provide a random seed.
 # row_range is the row numbers in the design data frame
-generate_files <- function(row_range, run_range, random_seed=NULL){
+generate_files <- function(row_range, run_range, random_seed=NULL, design){
   # Generate a parameter file for each combination of experiment and run
   for (RUN in run_range){
     # Keep random seed the same across runs
@@ -278,10 +278,10 @@ generate_files <- function(row_range, run_range, random_seed=NULL){
   for (design_ID in row_range){
     parameter_space <- design$PS[design_ID]
     scenario <- design$scenario[design_ID]
-    experiment <- design$exp[design_ID] # Use 00 for checkpoints and control
+    experiment <- design$exp[design_ID] # Use 000 for checkpoints and 001 for control
     base_name <- paste('PS',parameter_space,scenario,'E',experiment,sep='')
     # Write the job file for the exepriment
-    job_lines <- readLines('job_file_ref.sbatch')
+    job_lines <- readLines('~/Documents/malaria_interventions/job_file_ref.sbatch')
     wall_time <-  design$wall_time[design_ID]
     mem_per_cpu <-  design$mem_per_cpu[design_ID]
     job_lines[2] <- paste('#SBATCH --job-name=',base_name,sep='')
@@ -293,10 +293,10 @@ generate_files <- function(row_range, run_range, random_seed=NULL){
     job_lines[19] <- paste("PS='",parameter_space,"'",sep='')
     job_lines[20] <- paste("scenario='",scenario,"'",sep='')
     job_lines[21] <- paste("exp='",experiment,"'",sep='')
-    if (experiment == '00'){
+    if (experiment == '000'){
       job_lines[26] <- "CHECKPOINT='create'"
     }
-    if (experiment != '00'){
+    if (experiment != '000'){
       job_lines[26] <- "CHECKPOINT='load'"
     }
     output_file=paste(base_name,'.sbatch',sep = '')
@@ -318,20 +318,70 @@ generate_files <- function(row_range, run_range, random_seed=NULL){
   }
 }
 
+
+create_intervention_scheme_IRS <- function(PS_benchmark, IRS_START_TIMES=NULL, immigration_range, length_range, coverage_range, write_to_file=T){
+  # This fixes the 1. in the file name produced in Mathematica
+  files <- list.files(path = '~/Documents/malaria_interventions_data/', full.names = T, pattern = '1\\._')
+  if(length(files)>0){sapply(files, function(x){file.rename(from = x, to = str_replace(x, '\\.', ''))})}
+  
+  # PS_benchmark is the parameter space for which intervention is tested. it should already have the checkpoint (000) and control (001) experiments in the google sheet.
+  # IRS_START_TIMES can also be something like: '29000,35000'
+  design_ref <- loadExperiments_GoogleSheets() # Get data design
+  reference_row <- which(grepl(PS_benchmark, design_ref$PS))[2] # reference_row is the row in the design data set which is the reference for this set of IRS exepriments. Should be the line of the control experiment (not the checkpoint)
+  
+  scheme <- expand.grid(PS=design_ref$PS[reference_row],
+                        scenario=design_ref$scenario[reference_row],
+                        BITING_RATE_MEAN=design_ref$BITING_RATE_MEAN[reference_row],
+                        DAILY_BITING_RATE_DISTRIBUTION=design_ref$DAILY_BITING_RATE_DISTRIBUTION[reference_row],
+                        N_GENES_INITIAL=design_ref$N_GENES_INITIAL[reference_row],
+                        N_LOCI=design_ref$N_LOCI[reference_row],
+                        N_ALLELES_INITIAL=design_ref$N_ALLELES_INITIAL[reference_row],
+                        T_BURNIN=design_ref$T_BURNIN[reference_row],
+                        T_END=design_ref$T_END[reference_row],
+                        IRS_START_TIMES=IRS_START_TIMES,
+                        IRS_IMMIGRATION=immigration_range,
+                        IRS_length=length_range,
+                        IRS_coverage=coverage_range,
+                        MDA_START=NA, # This so to not have an MDA (for function generate_files)
+                        wall_time=design_ref$wall_time[reference_row],
+                        mem_per_cpu=design_ref$mem_per_cpu[reference_row],
+                        stringsAsFactors = F)
+  scheme$exp <- sprintf('%0.3d', 2:(nrow(scheme)+1)) # Start with 002 because 000 and 001 are checkpoint and control
+  # Important!!! The files for the IRS in the next line are generated separately in Mathematica, and should already exist.
+  scheme$IRS_input <- paste('IRS_120_300_',scheme$IRS_coverage,'_',scheme$IRS_length,'.csv',sep='')
+  if (write_to_file){
+    write_csv(scheme, paste('PS',scheme$PS[1],'_',scheme$scenario[1],'_IRS_scheme.csv',sep=''))
+  }
+  return(scheme)
+}
+
+
 # Create parameter and job files -------------------------------------------
 
+setwd('~/Documents/malaria_interventions_data/')
+
+# Clear previous files if necessary
+clear_previous_files(parameter_space='04', scenario = 'S', exclude_sqlite = T, exclude_CP = T, exclute_control = T)
+# Create the reference experiments (checkpoint and control)
 design <- loadExperiments_GoogleSheets() # Get data design 
+generate_files(row_range = 19:20, run_range = 1, random_seed = 9161840, design)
 
-#clear_previous_files(parameter_space='04', scenario = 'S', exclude_sqlite = T, exclude_CP = T, exclute_control = T)
+# Create the corresponding IRS experiments  
+immigration_range <- seq(0,0.1,0.01)
+length_range <- 360*seq(5,20,5)
+coverage_range <- seq(0.8,1,0.05)
+design_irs <- create_intervention_scheme_IRS(PS_benchmark = '04', IRS_START_TIMES = '29160', immigration_range, length_range, coverage_range, 20)
+generate_files(row_range = 1:nrow(design), run_range = 1, random_seed = 9161840, design_irs)
 
-setwd('~/Documents/malaria_interventions/')
-generate_files(row_range = 20:48, run_range = 1, random_seed = 9161840)
-system('mv PS*.py /home/shai/Documents/malaria_interventions_sqlite/')
-system('mv PS*.sbatch /home/shai/Documents/malaria_interventions_sqlite/')
+# Generate command to run experiment jobs
+paste('for i in ', paste(sprintf('%0.3d', 10:100), collapse=' '),'; do sbatch PS04SE$i.sbatch; done', sep='')
 
-for (e in 20:48){
-  cat(paste('sbatch PS',design$PS[e],design$scenario[e],'E',design$exp[e],'.sbatch','\n',sep=''))
-}
+
+
+
+
+
+
 
 
 # plots -------------------------------------------------------------------

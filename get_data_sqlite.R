@@ -165,7 +165,7 @@ for (i in sprintf('%0.2d', 0:5)){
 
 # Compare between experiments ---------------------------------------------
 setwd('~/Documents/malaria_interventions_sqlite/')
-e <- sprintf('%0.2d', 01:29)
+e <- sprintf('%0.2d', 01:44)
 d <- map(e, function(i){
   cat(i)
   tmp <- get_data(parameter_space = '04', scenario = 'S', experiment = i, run = 1)
@@ -182,7 +182,7 @@ d <- rbind(PS04_S_01[[1]],
            PS04_S_06[[1]],
            PS04_S_10[[1]])
 
-intervention_design <- subset(design, PS=='04' & scenario=='S' & exp %in% sprintf('%0.2d', 01:29),
+intervention_design <- subset(design, PS=='04' & scenario=='S' & exp %in% sprintf('%0.2d', 01:44),
                               select=c("PS","scenario","exp","IRS_input","IRS_IMMIGRATION"))
 intervention_design %<>% mutate(coverage=sapply(str_split(intervention_design$IRS_input,"_"), function(x) x[4])) %>% 
   mutate(length=parse_number(sapply(str_split(intervention_design$IRS_input,"_"), function(x) x[5])))
@@ -191,10 +191,11 @@ intervention_design[1,4:7] <- rep('control',4)
 # mintime=d %>% group_by(exp) %>% summarise(m=max(time)) %>% summarise(min(m))
 # mintime=mintime[1,1]
 # pdf('seasonal_comparison.pdf',16,10)
-time_range <- c(28815,39945)
+time_range <- c(28815,40000)
 intervention_start <- 29175
 # my_cols <- c('black','orange','blue','purple','brown')
-my_cols <- gg_color_hue(10, hue_min = 10, hue_max = 280, l = 62, c = 200)
+my_cols <- c(gg_color_hue(length(unique(intervention_design$IRS_IMMIGRATION))-1, hue_min = 10, hue_max = 280, l = 62, c = 200),'black')
+my_cols <- c(gg_color_hue(length(unique(intervention_design$length))-1, hue_min = 10, hue_max = 280, l = 62, c = 200),'black')
 
 d %>%
   select(-year, -month, -n_infected) %>% 
@@ -202,12 +203,12 @@ d %>%
   gather(variable, value, -time, -exp, -PS, -scenario, -run) %>% 
   filter(variable %in% c('prevalence', 'n_infections','n_circulating_strains', 'n_circulating_genes')) %>%
   
-  left_join(intervention_design) %>% filter(length=='7200' | length=='control') %>%
+  left_join(intervention_design) %>% filter(IRS_IMMIGRATION==0.1 & length==1800) %>%
   # left_join(intervention_design) %>% filter(IRS_IMMIGRATION==0.1 | IRS_IMMIGRATION=='control') %>%
   
   # ggplot(aes(x=time, y=value, color=exp, group=exp))+
-  ggplot(aes(x=time, y=value, color=IRS_IMMIGRATION, group=IRS_IMMIGRATION))+
-  geom_vline(xintercept = intervention_start+seq(0,7200,1800),color='gray')+
+  ggplot(aes(x=time, y=value, color=coverage, group=coverage))+
+  # geom_vline(xintercept = intervention_start+seq(0,7200,1800),color='gray')+
   # geom_vline(xintercept = seq(28800,39960,720),color='gray')+
   geom_line()+
   scale_color_manual(values=my_cols)+
