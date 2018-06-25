@@ -60,6 +60,11 @@ get_data <- function(parameter_space, scenario, experiment, run, sampling_period
   summary_general$year <- gl(n = max(summary_general$time)/360, length = nrow(summary_general), k = 1)
   summary_general$month <- gl(n = 12, k = 1, length = nrow(summary_general),labels = c('Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'), ordered = F)
   
+  summary_alleles <- dbGetQuery(db, 'SELECT * FROM summary_alleles')
+  summary_alleles %<>% group_by(time) %>% summarise(n_alleles=sum(n_circulating_alleles))
+  
+  summary_general %<>% left_join(summary_alleles)
+  
   sampled_infections <- dbGetQuery(db, 'SELECT * FROM sampled_infections')
   sampled_infections$PS <- parameter_space
   sampled_infections$exp <- experiment
@@ -130,7 +135,7 @@ generate_plots <- function(data, time_range=NULL){
   return(list(plot_variables, plot_eir, plot_age_structure))
 }
 
-setwd('~/Documents/malaria_interventions_sqlite/')
+setwd('~/Documents/malaria_interventions_data/')
 PS03_S_00 <- get_data(parameter_space = '03', scenario = 'S', experiment = '00', run = 1)
 PS03_S_01 <- get_data(parameter_space = '03', scenario = 'S', experiment = '01', run = 1)
 PS03_S_02 <- get_data(parameter_space = '03', scenario = 'S', experiment = '02', run = 1)
@@ -164,57 +169,72 @@ for (i in sprintf('%0.2d', 0:5)){
 }
 
 # Compare between experiments ---------------------------------------------
-setwd('~/Documents/malaria_interventions_sqlite/')
-e <- sprintf('%0.2d', 01:44)
+setwd('~/Documents/malaria_interventions_data/')
+e <- sprintf('%0.3d', 1:17)
 d <- map(e, function(i){
   cat(i)
   tmp <- get_data(parameter_space = '04', scenario = 'S', experiment = i, run = 1)
   return(tmp[[1]])
 }) %>% bind_rows()
 
-d <- rbind(PS04_S_01[[1]],
-           PS04_S_02[[1]],
-           PS04_S_03[[1]],
-           PS04_S_04[[1]],
-           PS04_S_05[[1]])
-d <- rbind(PS04_S_01[[1]],
-           PS04_S_02[[1]],
-           PS04_S_06[[1]],
-           PS04_S_10[[1]])
+# d <- rbind(PS04_S_01[[1]],
+#            PS04_S_02[[1]],
+#            PS04_S_03[[1]],
+#            PS04_S_04[[1]],
+#            PS04_S_05[[1]])
+# d <- rbind(PS04_S_01[[1]],
+#            PS04_S_02[[1]],
+#            PS04_S_06[[1]],
+#            PS04_S_10[[1]])
 
-intervention_design <- subset(design, PS=='04' & scenario=='S' & exp %in% sprintf('%0.2d', 01:44),
-                              select=c("PS","scenario","exp","IRS_input","IRS_IMMIGRATION"))
-intervention_design %<>% mutate(coverage=sapply(str_split(intervention_design$IRS_input,"_"), function(x) x[4])) %>% 
-  mutate(length=parse_number(sapply(str_split(intervention_design$IRS_input,"_"), function(x) x[5])))
-intervention_design[1,4:7] <- rep('control',4)
+# Add control to the design_irs data frame, which is created in build_parameter_diles.R
+design_irs %<>% slice(rep(1, each = 1)) %>% bind_rows(design_irs)
+design_irs[1, 'exp'] <- '001'
+design_irs[1, grepl("IRS", names(design_irs))] <- 'control'
+# design_irs[nrow(design_irs), 'IRS_coverage'] <- 'none'
 
 # mintime=d %>% group_by(exp) %>% summarise(m=max(time)) %>% summarise(min(m))
 # mintime=mintime[1,1]
 # pdf('seasonal_comparison.pdf',16,10)
 time_range <- c(28815,40000)
 intervention_start <- 29175
-# my_cols <- c('black','orange','blue','purple','brown')
-my_cols <- c(gg_color_hue(length(unique(intervention_design$IRS_IMMIGRATION))-1, hue_min = 10, hue_max = 280, l = 62, c = 200),'black')
-my_cols <- c(gg_color_hue(length(unique(intervention_design$length))-1, hue_min = 10, hue_max = 280, l = 62, c = 200),'black')
 
+my_cols <- c(gg_color_hue(length(unique(design_irs$IRS_length))-1, hue_min = 10, hue_max = 280, l = 62, c = 200),'gray')
 d %>%
   select(-year, -month, -n_infected) %>% 
   filter(time>time_range[1]&time<time_range[2]) %>%
   gather(variable, value, -time, -exp, -PS, -scenario, -run) %>% 
-  filter(variable %in% c('prevalence', 'n_infections','n_circulating_strains', 'n_circulating_genes')) %>%
-  
-  left_join(intervention_design) %>% filter(IRS_IMMIGRATION==0.1 & length==1800) %>%
-  # left_join(intervention_design) %>% filter(IRS_IMMIGRATION==0.1 | IRS_IMMIGRATION=='control') %>%
-  
-  # ggplot(aes(x=time, y=value, color=exp, group=exp))+
-  ggplot(aes(x=time, y=value, color=coverage, group=coverage))+
+  filter(variable %in% c('prevalence', 'meanMOI','n_circulating_strains', 'n_circulating_genes')) %>%
+  left_join(design_irs) %>% 
+  filter(IRS_IMMIGRATION=='1' | IRS_IMMIGRATION=='control') %>%
+  filter(IRS_coverage=='0.9' | IRS_coverage=='control') %>%
+  ggplot(aes(x=time, y=value, color=IRS_length))+
   # geom_vline(xintercept = intervention_start+seq(0,7200,1800),color='gray')+
   # geom_vline(xintercept = seq(28800,39960,720),color='gray')+
   geom_line()+
   scale_color_manual(values=my_cols)+
-  # geom_vline(xintercept = c(21600,21960,22320,22680,23040,23400))+
   scale_x_continuous(breaks=pretty(x=subset(d, time>time_range[1]&time<time_range[2])$time,n=5))+
   facet_wrap(~variable, scales = 'free')+mytheme
+
+my_cols <- c(gg_color_hue(length(unique(design_irs$IRS_IMMIGRATION))-1, hue_min = 10, hue_max = 280, l = 62, c = 200),'black')
+d %>%
+  select(-year, -month, -n_infected) %>% 
+  filter(time>time_range[1]&time<time_range[2]) %>%
+  gather(variable, value, -time, -exp, -PS, -scenario, -run) %>% 
+  filter(variable %in% c('prevalence', 'meanMOI','n_circulating_strains', 'n_circulating_genes')) %>%
+  
+  left_join(design_irs) %>% 
+  filter(IRS_length=='7200' | IRS_length=='control') %>%
+  filter(IRS_coverage=='0.9' | IRS_coverage=='control') %>%
+  ggplot(aes(x=time, y=value, color=IRS_IMMIGRATION))+
+  # geom_vline(xintercept = intervention_start+seq(0,7200,1800),color='gray')+
+  # geom_vline(xintercept = seq(28800,39960,720),color='gray')+
+  geom_line()+
+  scale_color_manual(values=my_cols)+
+  scale_x_continuous(breaks=pretty(x=subset(d, time>time_range[1]&time<time_range[2])$time,n=5))+
+  facet_wrap(~variable, scales = 'free')+mytheme
+
+
 d %>% 
   ggplot(aes(x=month,y=EIR, color=exp, group=exp))+
   # geom_boxplot()+
@@ -222,18 +242,30 @@ d %>%
   # scale_y_continuous(limits = c(0,10))+
   stat_summary(fun.y=mean, geom="line")+
   mytheme
-dev.off()
+#dev.off()
 
-# Calculate stats at the end of interventions
 
-d %>% left_join(design) %>% filter(time %in% c(intervention_start+seq(0,7200,1800))) %>% 
-  ggplot(aes(x=as.numeric(exp), y=prevalence))+geom_point()
+# Calculate stats at the end of interventions -----------------------------
+sample_times <- c(intervention_start+seq(0,7200,1800))
+length_range # This comes from build_parameter_files.R
+
+x <- map(sample_times, function(s){
+  d %>% left_join(design_irs) %>% 
+    filter(IRS_length!='control') %>% 
+    filter(time %in% s) %>% 
+    filter(IRS_coverage==0.9)
+}) %>% bind_rows()
+
+x %>% ggplot(aes(x=IRS_IMMIGRATION, y=n_infections, color=as.numeric(IRS_IMMIGRATION)))+geom_point()+facet_wrap(~IRS_length)
+
+
 
 # Compare between scenarios ---------------------------------------------
+PS04_S_001 <- get_data(parameter_space = '04', scenario = 'S', experiment = '001', run = 1)
+PS04_N_001 <- get_data(parameter_space = '04', scenario = 'N', experiment = '001', run = 1)
 
-d <- rbind(PS03_S_01[[1]],
-           PS03_N_01[[1]],
-           PS03_G_01[[1]])
+d <- rbind(PS04_S_001[[1]],
+           PS04_N_001[[1]])
 
 # mintime=d %>% group_by(exp) %>% summarise(m=max(time)) %>% summarise(min(m))
 # mintime=mintime[1,1]
