@@ -106,6 +106,87 @@ get_data <- function(parameter_space, scenario, experiment, run, sampling_period
   return(list(summary_general=as.tibble(summary_general), sampled_infections=as.tibble(sampled_infections)))
 }
 
+
+
+get_data2 <- function(parameter_space, scenario, experiment, run, sampling_period=30){
+  require(sqldf)
+  # Initialize
+  base_name <- paste('PS',parameter_space,'_',scenario,'_E',experiment,'_R',run,sep='')
+  sqlite_file <- paste(base_name,'.sqlite',sep='')
+  # parameter_file <- paste(base_name,'.py',sep='') # This may be necessary so I leave it
+  
+  # Extract data from sqlite. variable names correspond to table names
+  db <- dbConnect(SQLite(), dbname = sqlite_file)
+  hosts <- as.tibble(dbGetQuery(db, 'SELECT * FROM hosts'))
+  names(hosts)[1] <- 'host_id'
+  sampled_alleles <- as.tibble(dbGetQuery(db, 'SELECT * FROM sampled_alleles'))
+  sampled_duration <- as.tibble(dbGetQuery(db, 'SELECT * FROM sampled_duration'))
+  sampled_infections <- as.tibble(dbGetQuery(db, 'SELECT * FROM sampled_infections'))
+  sampled_genes <- as.tibble(dbGetQuery(db, 'SELECT * FROM sampled_genes'))
+  names(sampled_genes)[1] <- 'gene_id'
+  sampled_strains <- as.tibble(dbGetQuery(db, 'SELECT * FROM sampled_strains'))
+  names(sampled_strains)[1] <- 'strain_id'
+  
+  summary_general <- left_join(sampled_infections,hosts)
+  data %>% group_by(time) %>% summarise(n_infections=length(infection_id))
+  
+  
+  
+  summary_general <- dbGetQuery(db, 'SELECT * FROM summary')
+  summary_general$PS <- parameter_space
+  summary_general$exp <- experiment
+  summary_general$scenario <- scenario
+  summary_general$run <- run
+  summary_general$year <- gl(n = max(summary_general$time)/360, length = nrow(summary_general), k = 1)
+  summary_general$month <- gl(n = 12, k = 1, length = nrow(summary_general),labels = c('Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'), ordered = F)
+  
+  summary_alleles <- dbGetQuery(db, 'SELECT * FROM summary_alleles')
+  summary_alleles %<>% group_by(time) %>% summarise(n_alleles=sum(n_circulating_alleles))
+  
+  summary_general %<>% left_join(summary_alleles)
+  
+  sampled_infections <- dbGetQuery(db, 'SELECT * FROM sampled_infections')
+  sampled_infections$PS <- parameter_space
+  sampled_infections$exp <- experiment
+  sampled_infections$scenario <- scenario
+  sampled_infections$run <- run
+  
+  # Extract statistics
+  if (nrow(summary_general)%%sampling_period==1){# The beginning of the data set in E00 has a timestap of 0 and this line is unnecesary. So remove it
+    summary_general <- summary_general[-1,]
+  }
+  
+  ## Prevalence
+  summary_general$prevalence <- summary_general$n_infected/10^4
+  
+  ## Or get EIR from the table in the sqlite
+  summary_general$EIR <- summary_general$n_infected_bites/10000 # 10000 is the size of the human population
+  
+  # ##EIR can also be calculated manually as EIR=biting_rate * prevalence
+  # biting_rate <- get_biting_rate(parameter_file)
+  # summary_general$b <- NA
+  # summary_general$b[] <- biting_rate # The [] is for recycling the biting_rate
+  # summary_general$EIR1 <- summary_general$prevalence*summary_general$b*sampling_period
+  
+  # # Annual EIR is given by dividing by the sampling period to get a daily EIR, then multiplying by 360
+  # summary_general %>% mutate(eir_y=EIR2/sampling_period*360) %>% group_by(year) %>% summarise(EIR_Year=mean(eir_y))
+  
+  # MOI#
+  meanMOI <- sampled_infections %>% group_by(time, host_id) %>% summarise(MOI=length(strain_id)) %>% group_by(time) %>% summarise(meanMOI=mean(MOI))
+  summary_general <- inner_join(summary_general, meanMOI) # Add MOI to the summary
+  
+  # Host age structure
+  hosts <- dbGetQuery(db, 'SELECT * FROM hosts')
+  names(hosts)[1] <- 'host_id'
+  hosts$lifespan <- round((hosts$death_time-hosts$birth_time))
+  hosts <- subset(hosts, host_id%in%sampled_infections$host_id)
+  sampled_infections <- left_join(sampled_infections, hosts, by='host_id')
+  sampled_infections$host_age <- round((sampled_infections$time-sampled_infections$birth_time)/30)
+  
+  return(list(summary_general=as.tibble(summary_general), sampled_infections=as.tibble(sampled_infections)))
+}
+
+
 # This function uses the list obtained by get_data() and generates relevant plots
 generate_plots <- function(data, time_range=NULL){
   data1 <- data[[1]]
