@@ -175,6 +175,12 @@ set_MDA <- function(design_ID, run, experimental_design){
 # Function to create the necesary files and pipeline for a single run of an experiment.
 # Each run has its own random seed across experiments.
 create_run <- function(design_ID, run, RANDOM_SEED, experimental_design){
+  
+  collapse_with_commas <- function(x){
+    paste('[',paste(x,collapse=','),']',sep='')
+  }
+  
+  
   # Regime
   parameter_space <- experimental_design$PS[design_ID]
   scenario <- experimental_design$scenario[design_ID]
@@ -203,12 +209,31 @@ create_run <- function(design_ID, run, RANDOM_SEED, experimental_design){
     param_data[param_data$param=='CLEARANCE_RATE_IMMUNE',] <- set_parameter(param_data, 'CLEARANCE_RATE_IMMUNE', x[[3]])
   }
   
+  # Populations. This duplicates the following parameters as the number of populations.
+  N_POPULATIONS <- experimental_design$N_POPULATIONS[design_ID]
+  param_data[param_data$param=='N_POPULATIONS',] <- set_parameter(param_data, 'N_POPULATIONS', N_POPULATIONS)
+  # This creates the distance matrix, assuming equal distances between all populations (parameter populations_dist)
+  DISTANCE_MAT <- matrix(experimental_design$populations_dist[design_ID], ncol=N_POPULATIONS, nrow=N_POPULATIONS)
+  diag(DISTANCE_MAT) <- 1
+  DISTANCE_MAT_vectorized <- c()
+  for (i in 1:N_POPULATIONS){
+    DISTANCE_MAT_vectorized <- paste(DISTANCE_MAT_vectorized, collapse_with_commas(DISTANCE_MAT[i,]), sep=',')
+  }
+  DISTANCE_MAT <- paste(str_replace(DISTANCE_MAT_vectorized,',','['),']',sep='')
+  param_data[param_data$param=='DISTANCE_MAT',] <- set_parameter(param_data, 'DISTANCE_MAT', DISTANCE_MAT)
+  # Here are some parameters with fixed values
+  param_data[param_data$param=='N_HOSTS',] <- set_parameter(param_data, 'N_HOSTS', collapse_with_commas(rep(10000,N_POPULATIONS)))
+  param_data[param_data$param=='N_INITIAL_INFECTIONS',] <- set_parameter(param_data, 'N_INITIAL_INFECTIONS', collapse_with_commas(rep(20,N_POPULATIONS)))
+  param_data[param_data$param=='BITING_RATE_RELATIVE_AMPLITUDE',] <- set_parameter(param_data, 'BITING_RATE_RELATIVE_AMPLITUDE', collapse_with_commas(rep(0,N_POPULATIONS)))
+  param_data[param_data$param=='BITING_RATE_PEAK_PHASE',] <- set_parameter(param_data, 'BITING_RATE_PEAK_PHASE', collapse_with_commas(rep(0,N_POPULATIONS)))
+  param_data[param_data$param=='IMMIGRATION_RATE',] <- set_parameter(param_data, 'IMMIGRATION_RATE', collapse_with_commas(rep(1,N_POPULATIONS)))
+  
   # Biting rates
   BITING_RATE_MEAN <- experimental_design$BITING_RATE_MEAN[design_ID]
+  param_data[param_data$param=='BITING_RATE_MEAN',] <- set_parameter(param_data, 'BITING_RATE_MEAN', paste('[',paste(rep(BITING_RATE_MEAN,N_POPULATIONS),collapse = ','),']',sep=''))
   mathematica_file <- experimental_design$DAILY_BITING_RATE_DISTRIBUTION[design_ID]
   biting_rate_mathematica <- read_csv(mathematica_file, col_names = c('day','num_mosquitos'))
   DAILY_BITING_RATE_DISTRIBUTION <- biting_rate_mathematica$num_mosquitos
-  param_data[param_data$param=='BITING_RATE_MEAN',] <- set_parameter(param_data, 'BITING_RATE_MEAN', paste('[',BITING_RATE_MEAN,']',sep=''))
   param_data[param_data$param=='DAILY_BITING_RATE_DISTRIBUTION',] <- set_parameter(param_data, 'DAILY_BITING_RATE_DISTRIBUTION', paste('[',paste(DAILY_BITING_RATE_DISTRIBUTION, collapse=','),']',sep=''))
   
   # Genetic diversity
@@ -337,6 +362,8 @@ create_intervention_scheme_IRS <- function(PS_benchmark, scenario_benchmark, IRS
                         N_GENES_INITIAL=design_ref$N_GENES_INITIAL[reference_row],
                         N_LOCI=design_ref$N_LOCI[reference_row],
                         N_ALLELES_INITIAL=design_ref$N_ALLELES_INITIAL[reference_row],
+                        N_POPULATIONS=design_ref$N_POPULATIONS[reference_row],
+                        populations_dist=design_ref$populations_dist[reference_row],
                         T_BURNIN=design_ref$T_BURNIN[reference_row],
                         T_END=design_ref$T_END[reference_row],
                         IRS_START_TIMES=IRS_START_TIMES,
@@ -362,10 +389,10 @@ create_intervention_scheme_IRS <- function(PS_benchmark, scenario_benchmark, IRS
 setwd('~/Documents/malaria_interventions_data/')
 
 # Clear previous files if necessary
-clear_previous_files(parameter_space='04', scenario = 'N', exclude_sqlite = F, exclude_CP = T, exclute_control = T)
+clear_previous_files(parameter_space='05', scenario = 'S', exclude_sqlite = F, exclude_CP = T, exclute_control = T)
 # Create the reference experiments (checkpoint and control)
 design <- loadExperiments_GoogleSheets() # Get data design 
-generate_files(row_range = 23:24, run_range = 1, experimental_design = design)
+generate_files(row_range = 25:26, run_range = 1, experimental_design = design)
 
 # Create the corresponding IRS experiments  
 immigration_range <- seq(0,0.1,0.01)
@@ -373,7 +400,12 @@ length_range <- 360*seq(5,20,5)
 coverage_range <- seq(0.8,1,0.05)
 design_irs <- create_intervention_scheme_IRS(PS_benchmark = '04', scenario_benchmark = 'S', IRS_START_TIMES = '29160', immigration_range=c(0.001,0.01,0.1,1), length_range=360*seq(5,20,5), coverage_range=0.9, write_to_file = T)
 design_irs <- create_intervention_scheme_IRS(PS_benchmark = '04', scenario_benchmark = 'N', IRS_START_TIMES = '29160', immigration_range=c(0.001,0.01,0.1,1), length_range=360*seq(5,20,5), coverage_range=0.9, write_to_file = T)
-generate_files(row_range = 1:nrow(design_irs), run_range = 1, random_seed = 140132, design_irs)
+
+design_irs <- create_intervention_scheme_IRS(PS_benchmark = '05', scenario_benchmark = 'S', IRS_START_TIMES = '29160', immigration_range=c(0.001,0.01,0.1,1), length_range=1800, coverage_range=0.9, write_to_file = T)
+
+
+generate_files(row_range = 1:nrow(design_irs), run_range = 1, random_seed = 9027010, design_irs)
+
 
 # Generate command to run experiment jobs
 paste('for i in ', paste(sprintf('%0.3d', 101:221), collapse=' '),'; do sbatch PS04SE$i.sbatch; done', sep='')
