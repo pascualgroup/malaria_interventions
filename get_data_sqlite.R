@@ -249,26 +249,64 @@ for (i in sprintf('%0.2d', 0:5)){
   assign(paste('PS04_S_',i,sep=''), get_data(parameter_space = '04', scenario = 'S', experiment = i, run = 1))
 }
 
-# Compare between experiments ---------------------------------------------
+
+# Compare between PS ------------------------------------------------------
 setwd('~/Documents/malaria_interventions_data/')
-e <- sprintf('%0.3d', 1:17)
+e <- sprintf('%0.2d', 6:10)
 d <- map(e, function(i){
   cat(i)
-  tmp <- get_data(parameter_space = '04', scenario = 'S', experiment = i, run = 1)
+  tmp <- get_data(parameter_space = i, scenario = 'S', experiment = '002', run = 1)
   return(tmp[[1]])
 }) %>% bind_rows()
 
-# d <- rbind(PS04_S_01[[1]],
-#            PS04_S_02[[1]],
-#            PS04_S_03[[1]],
-#            PS04_S_04[[1]],
-#            PS04_S_05[[1]])
-# d <- rbind(PS04_S_01[[1]],
-#            PS04_S_02[[1]],
-#            PS04_S_06[[1]],
-#            PS04_S_10[[1]])
+time_range <- c(28800,40000)
 
-# Add control to the design_irs data frame, which is created in build_parameter_diles.R
+my_cols <- gg_color_hue(length(unique(d$PS)), hue_min = 10, hue_max = 280, l = 62, c = 200)
+my_cols <- c('red','green','blue','orange','black')
+d %>%
+  left_join(subset(design, select=c(PS,BITING_RATE_MEAN,N_GENES_INITIAL)), by='PS') %>% 
+  select(-year, -month, -n_infected) %>% 
+  filter(time>time_range[1]&time<time_range[2]) %>%
+  gather(variable, value, -time, -exp, -PS, -scenario, -run,-N_GENES_INITIAL, -BITING_RATE_MEAN) %>% 
+  filter(variable %in% c('prevalence', 'meanMOI','n_circulating_strains', 'n_circulating_genes', 'n_alleles', 'n_infected_bites')) %>%
+  # filter(variable %in% c('n_circulating_strains', 'n_circulating_genes', 'n_alleles')) %>%
+  mutate(N_GENES_INITIAL=as.factor(N_GENES_INITIAL)) %>% 
+  ggplot(aes(x=time, y=value, color=N_GENES_INITIAL))+
+  geom_line()+
+  geom_vline(xintercept = c(29160,29160+1800), linetype='dashed')+
+  # geom_vline(xintercept = 29160, linetype='dashed')+
+  scale_color_manual(values=my_cols)+
+  scale_x_continuous(breaks=pretty(x=subset(d, time>time_range[1]&time<time_range[2])$time,n=5))+
+  facet_wrap(~variable, scales = 'free')+
+  mytheme
+
+
+e <- sprintf('%0.2d', 6:10)
+d <- map(e, function(i){
+  cat(i)
+  tmp <- get_data(parameter_space = i, scenario = 'S', experiment = '001', run = 1)
+  return(tmp[[1]])
+}) %>% bind_rows()
+d %>% 
+  ggplot(aes(x=month,y=EIR, color=PS, group=PS))+
+  # geom_boxplot()+
+  geom_point(stat='summary', fun.y=mean)+
+  # scale_y_continuous(limits = c(0,10))+
+  stat_summary(fun.y=mean, geom="line")+
+  mytheme
+
+
+# Compare between experiments ---------------------------------------------
+setwd('~/Documents/malaria_interventions_data/')
+e <- sprintf('%0.3d', 1:5)
+d <- map(e, function(i){
+  cat(i)
+  tmp <- get_data(parameter_space = '09', scenario = 'S', experiment = i, run = 1)
+  return(tmp[[1]])
+}) %>% bind_rows()
+
+# Add control to the design_irs data frame, which is created in build_parameter_files.R
+design_irs <- create_intervention_scheme_IRS(PS_benchmark = '09', scenario_benchmark = 'S', IRS_START_TIMES = '29160', immigration_range=c(0,0.001), length_range=c(1800,3600), coverage_range=0.9, write_to_file = T, design_ref=design)
 design_irs %<>% slice(rep(1, each = 1)) %>% bind_rows(design_irs)
 design_irs[1, 'exp'] <- '001'
 design_irs[1, grepl("IRS", names(design_irs))] <- 'control'
@@ -277,20 +315,20 @@ design_irs[1, grepl("IRS", names(design_irs))] <- 'control'
 # mintime=d %>% group_by(exp) %>% summarise(m=max(time)) %>% summarise(min(m))
 # mintime=mintime[1,1]
 # pdf('seasonal_comparison.pdf',16,10)
-time_range <- c(28815,40000)
+time_range <- c(28800,40000)
 intervention_start <- 29175
 
-my_cols <- c(gg_color_hue(length(unique(design_irs$IRS_length))-1, hue_min = 10, hue_max = 280, l = 62, c = 200),'gray')
+my_cols <- c('black',gg_color_hue(length(unique(design_irs$exp))-1, hue_min = 10, hue_max = 280, l = 62, c = 200))
 d %>%
   select(-year, -month, -n_infected) %>% 
   filter(time>time_range[1]&time<time_range[2]) %>%
   gather(variable, value, -time, -exp, -PS, -scenario, -run) %>% 
-  filter(variable %in% c('prevalence', 'meanMOI','n_circulating_strains', 'n_circulating_genes')) %>%
-  left_join(design_irs) %>% 
-  filter(IRS_IMMIGRATION=='1' | IRS_IMMIGRATION=='control') %>%
-  filter(IRS_coverage=='0.9' | IRS_coverage=='control') %>%
-  ggplot(aes(x=time, y=value, color=IRS_length))+
-  # geom_vline(xintercept = intervention_start+seq(0,7200,1800),color='gray')+
+  filter(variable %in% c('prevalence', 'meanMOI','n_circulating_strains', 'n_circulating_genes', 'n_alleles', 'n_infected_bites')) %>%
+  left_join(design_irs) %>%
+  # filter(IRS_IMMIGRATION=='1' | IRS_IMMIGRATION=='control') %>%
+  # filter(IRS_coverage=='0.9' | IRS_coverage=='control') %>%
+  ggplot(aes(x=time, y=value, color=exp))+
+  geom_vline(xintercept = c(29160,29160+1800), linetype='dashed')+
   # geom_vline(xintercept = seq(28800,39960,720),color='gray')+
   geom_line()+
   scale_color_manual(values=my_cols)+

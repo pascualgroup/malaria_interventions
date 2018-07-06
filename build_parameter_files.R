@@ -172,6 +172,15 @@ set_MDA <- function(design_ID, run, experimental_design){
 
 # Functions to generate files ---------------------------------------------
 
+get_random_seed <- function(PS, scenario, run_range){
+  seeds <- c()
+  for (run in run_range){
+    x <- readLines(paste('PS',PS,'_',scenario,'_','E000_R',run,'.py',sep=''))
+    seeds <- c(seeds, parse_number(x[1]))
+  }
+  return(seeds)
+}
+
 # Function to create the necesary files and pipeline for a single run of an experiment.
 # Each run has its own random seed across experiments.
 create_run <- function(design_ID, run, RANDOM_SEED, experimental_design){
@@ -277,7 +286,7 @@ generate_files <- function(row_range, run_range, random_seed=NULL, experimental_
   # Generate a parameter file for each combination of experiment and run
   for (RUN in run_range){
     # Keep random seed the same across runs
-    RANDOM_SEED <- ifelse(is.null(random_seed),round(runif(n = 1, min=1, max=10^7),0),random_seed)
+    RANDOM_SEED <- ifelse(is.null(random_seed),round(runif(n = 1, min=1, max=10^7),0),random_seed[RUN])
     for (design_ID in row_range){
       # Create parameter file with main parameters
       create_run(design_ID, RUN, RANDOM_SEED, experimental_design)
@@ -309,7 +318,7 @@ generate_files <- function(row_range, run_range, random_seed=NULL, experimental_
     job_lines <- readLines('~/Documents/malaria_interventions/job_file_ref.sbatch')
     wall_time <-  experimental_design$wall_time[design_ID]
     mem_per_cpu <-  experimental_design$mem_per_cpu[design_ID]
-    job_lines[2] <- paste('#SBATCH --job-name=',base_name,sep='')
+    job_lines[2] <- paste('#SBATCH --job-name=',paste(parameter_space,scenario,'E',experiment,sep=''),sep='')
     job_lines[3] <- paste('#SBATCH --time=',wall_time,sep='')
     job_lines[4] <- paste('#SBATCH --output=slurm_output/',base_name,'_%A_%a.out',sep='')
     job_lines[5] <- paste('#SBATCH --error=slurm_output/',base_name,'_%A_%a.err',sep='')
@@ -344,14 +353,16 @@ generate_files <- function(row_range, run_range, random_seed=NULL, experimental_
 }
 
 
-create_intervention_scheme_IRS <- function(PS_benchmark, scenario_benchmark, IRS_START_TIMES=NULL, immigration_range, length_range, coverage_range, write_to_file=T){
+create_intervention_scheme_IRS <- function(PS_benchmark, scenario_benchmark, IRS_START_TIMES=NULL, immigration_range, length_range, coverage_range, write_to_file=T, design_ref=NULL){
   # This fixes the 1. in the file name produced in Mathematica
   files <- list.files(path = '~/Documents/malaria_interventions_data/', full.names = T, pattern = '1\\._')
   if(length(files)>0){sapply(files, function(x){file.rename(from = x, to = str_replace(x, '\\.', ''))})}
   
   # PS_benchmark is the parameter space for which intervention is tested. it should already have the checkpoint (000) and control (001) experiments in the google sheet.
   # IRS_START_TIMES can also be something like: '29000,35000'
-  design_ref <- loadExperiments_GoogleSheets() # Get data design
+  if(is.null(design_ref)){
+    design_ref <- loadExperiments_GoogleSheets() # Get data design
+  }
   design_ref <- subset(design_ref, PS==PS_benchmark & scenario==scenario_benchmark)
   reference_row <- which(grepl(PS_benchmark, design_ref$PS))[2] # reference_row is the row in the design data set which is the reference for this set of IRS exepriments. Should be the line of the control experiment (not the checkpoint)
   
@@ -389,32 +400,43 @@ create_intervention_scheme_IRS <- function(PS_benchmark, scenario_benchmark, IRS
 setwd('~/Documents/malaria_interventions_data/')
 
 # Clear previous files if necessary
-clear_previous_files(parameter_space='05', scenario = 'S', exclude_sqlite = F, exclude_CP = T, exclute_control = T)
+clear_previous_files(parameter_space='12', scenario = 'S', exclude_sqlite = F, exclude_CP = F, exclute_control = F)
 # Create the reference experiments (checkpoint and control)
 design <- loadExperiments_GoogleSheets() # Get data design 
-generate_files(row_range = 25:26, run_range = 1, experimental_design = design)
+generate_files(row_range = 23:24, run_range = 1:2, experimental_design = design, random_seed = c(9198087,3012346))
 
 # Create the corresponding IRS experiments  
-immigration_range <- seq(0,0.1,0.01)
-length_range <- 360*seq(5,20,5)
-coverage_range <- seq(0.8,1,0.05)
-design_irs <- create_intervention_scheme_IRS(PS_benchmark = '04', scenario_benchmark = 'S', IRS_START_TIMES = '29160', immigration_range=c(0.001,0.01,0.1,1), length_range=360*seq(5,20,5), coverage_range=0.9, write_to_file = T)
-design_irs <- create_intervention_scheme_IRS(PS_benchmark = '04', scenario_benchmark = 'N', IRS_START_TIMES = '29160', immigration_range=c(0.001,0.01,0.1,1), length_range=360*seq(5,20,5), coverage_range=0.9, write_to_file = T)
+PS <- sprintf('%0.2d', 12)
+for (ps in PS){
+  design_irs <- create_intervention_scheme_IRS(PS_benchmark = ps, scenario_benchmark = 'S', IRS_START_TIMES = '29160', immigration_range=c(0), length_range=c(720,1800,3600), coverage_range=0.9, write_to_file = T, design_ref=design)
+  generate_files(row_range = 1:nrow(design_irs), run_range = 1:2, random_seed = get_random_seed(ps, 'S', 1:2), design_irs)
+}
 
-design_irs <- create_intervention_scheme_IRS(PS_benchmark = '05', scenario_benchmark = 'S', IRS_START_TIMES = '29160', immigration_range=c(0.001,0.01,0.1,1), length_range=1800, coverage_range=0.9, write_to_file = T)
-
-
-generate_files(row_range = 1:nrow(design_irs), run_range = 1, random_seed = 9027010, design_irs)
+for (ps in PS){
+  print(get_random_seed(ps, 'S', 1:2))
+}
 
 
 # Generate command to run experiment jobs
 paste('for i in ', paste(sprintf('%0.3d', 101:221), collapse=' '),'; do sbatch PS04SE$i.sbatch; done', sep='')
 
+# First run the checkpoints
+for i in 06 07 08 09 10 11; do sbatch 'PS'$i'SE000.sbatch'; done;
+
+# Then run control and interventions
+exp <- sprintf('%0.3d', 1:4)
+PS <- sprintf('%0.2d', 12)
+jobids <- c('47323910') # 1 job id per PS
+for (ps in PS){
+  for (e in exp){
+    cat(paste('sbatch -d afterok:',jobids[which(PS==ps)],' PS',ps,'SE',e,'.sbatch',sep=''));cat('\n')
+  }
+}
+    
+for x in 001 002 003 004; do for i in 06 07 08; do sbatch 'PS'$i'SE'$x'.sbatch'; done; done
 
 
-
-
-
+design_irs <- create_intervention_scheme_IRS(PS_benchmark = '09', scenario_benchmark = 'S', IRS_START_TIMES = '29160', immigration_range=c(0,0.001), length_range=c(1800,3600), coverage_range=0.9, write_to_file = T, design_ref=design)
 
 
 
