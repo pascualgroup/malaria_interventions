@@ -41,7 +41,7 @@ loadExperiments_GoogleSheets <- function(workBookName='malaria_interventions_des
 # A function to remove sqlite and parameter files, or any other file for
 # specific combinations of parameter space, scenario and experiment. Will remove
 # across all runs.
-clear_previous_files <- function(parameter_space=NULL, scenario=NULL, experiment=NULL, exclude_sqlite=T, exclude_CP=T, exclute_control=T){
+clear_previous_files <- function(parameter_space=NULL, scenario=NULL, experiment=NULL, exclude_sqlite=T, exclude_CP=T, exclude_control=T, test=F){
   files <- list.files(path = '~/Documents/malaria_interventions_data/', full.names = T)
   if (!is.null(parameter_space)){
     files <- files[str_detect(files,paste('PS',parameter_space,sep=''))]
@@ -55,13 +55,19 @@ clear_previous_files <- function(parameter_space=NULL, scenario=NULL, experiment
   if(exclude_CP){
     files <- files[!str_detect(files,'E000')]
   }
-  if(exclute_control){
+  if(exclude_control){
     files <- files[!str_detect(files,'E001')]
   }
   if(exclude_sqlite){
     files <- files[!str_detect(files,'\\.sqlite')]
   }
-  file.remove(files)
+  if (test){
+    print('test mode, not actually removing')
+    print(files)
+  } else {
+    print(files)
+    file.remove(files)
+  }
 }
 
 
@@ -400,16 +406,16 @@ create_intervention_scheme_IRS <- function(PS_benchmark, scenario_benchmark, IRS
 setwd('~/Documents/malaria_interventions_data/')
 
 # Clear previous files if necessary
-clear_previous_files(parameter_space='12', scenario = 'S', exclude_sqlite = F, exclude_CP = F, exclute_control = F)
+clear_previous_files(scenario = 'S', exclude_sqlite = T, exclude_CP = F, exclude_control = F, test = T)
 # Create the reference experiments (checkpoint and control)
 design <- loadExperiments_GoogleSheets() # Get data design 
-generate_files(row_range = 23:24, run_range = 1:2, experimental_design = design, random_seed = c(9198087,3012346))
+generate_files(row_range = 1:78, run_range = 1, experimental_design = design)
 
 # Create the corresponding IRS experiments  
-PS <- sprintf('%0.2d', 12)
+PS <- sprintf('%0.2d', 1:39)
 for (ps in PS){
   design_irs <- create_intervention_scheme_IRS(PS_benchmark = ps, scenario_benchmark = 'S', IRS_START_TIMES = '29160', immigration_range=c(0), length_range=c(720,1800,3600), coverage_range=0.9, write_to_file = T, design_ref=design)
-  generate_files(row_range = 1:nrow(design_irs), run_range = 1:2, random_seed = get_random_seed(ps, 'S', 1:2), design_irs)
+  generate_files(row_range = 1:nrow(design_irs), run_range = 1, random_seed = get_random_seed(ps, 'S', 1), design_irs)
 }
 
 for (ps in PS){
@@ -421,19 +427,26 @@ for (ps in PS){
 paste('for i in ', paste(sprintf('%0.3d', 101:221), collapse=' '),'; do sbatch PS04SE$i.sbatch; done', sep='')
 
 # First run the checkpoints
-for i in 06 07 08 09 10 11; do sbatch 'PS'$i'SE000.sbatch'; done;
+cat('for i in ');cat(unique(design$PS));cat("; do sbatch 'PS'$i'SE000.sbatch'; done;")
 
 # Then run control and interventions
 exp <- sprintf('%0.3d', 1:4)
-PS <- sprintf('%0.2d', 12)
-jobids <- c('47323910') # 1 job id per PS
+PS <- sprintf('%0.2d', 1:39)
+# Run in Midway terminal:
+cat("sacct -u pilosofs --format=jobid,jobname --name=");cat(paste(paste(PS,'SE000',sep=''),collapse = ','));cat(" >> 'job_ids.txt'")
+# Copy file from Midway and run:
+jobids <- read.table('job_ids.txt', header = F, skip=2) 
+jobids <- na.omit(unique(parse_number(jobids$V1))) # 1 job id per PS
+length(jobids)==length(PS)
+# Copy the output of the following loop and paste in Midway
 for (ps in PS){
   for (e in exp){
     cat(paste('sbatch -d afterok:',jobids[which(PS==ps)],' PS',ps,'SE',e,'.sbatch',sep=''));cat('\n')
   }
 }
-    
-for x in 001 002 003 004; do for i in 06 07 08; do sbatch 'PS'$i'SE'$x'.sbatch'; done; done
+   
+
+
 
 
 design_irs <- create_intervention_scheme_IRS(PS_benchmark = '09', scenario_benchmark = 'S', IRS_START_TIMES = '29160', immigration_range=c(0,0.001), length_range=c(1800,3600), coverage_range=0.9, write_to_file = T, design_ref=design)
