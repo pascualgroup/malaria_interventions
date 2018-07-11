@@ -409,13 +409,13 @@ setwd('~/Documents/malaria_interventions_data/')
 clear_previous_files(scenario = 'S', exclude_sqlite = T, exclude_CP = F, exclude_control = F, test = T)
 # Create the reference experiments (checkpoint and control)
 design <- loadExperiments_GoogleSheets() # Get data design 
-generate_files(row_range = 1:78, run_range = 1, experimental_design = design)
+generate_files(row_range = 53:78, run_range = 1:5, experimental_design = design)
 
 # Create the corresponding IRS experiments  
-PS <- sprintf('%0.2d', 1:39)
+PS <- sprintf('%0.2d', 27:39)
 for (ps in PS){
   design_irs <- create_intervention_scheme_IRS(PS_benchmark = ps, scenario_benchmark = 'S', IRS_START_TIMES = '29160', immigration_range=c(0), length_range=c(720,1800,3600), coverage_range=0.9, write_to_file = T, design_ref=design)
-  generate_files(row_range = 1:nrow(design_irs), run_range = 1, random_seed = get_random_seed(ps, 'S', 1), design_irs)
+  generate_files(row_range = 1:nrow(design_irs), run_range = 1:5, random_seed = get_random_seed(ps, 'S', 1:5), design_irs)
 }
 
 for (ps in PS){
@@ -424,16 +424,16 @@ for (ps in PS){
 
 
 # Generate command to run experiment jobs
-paste('for i in ', paste(sprintf('%0.3d', 101:221), collapse=' '),'; do sbatch PS04SE$i.sbatch; done', sep='')
+# paste('for i in ', paste(sprintf('%0.3d', 101:221), collapse=' '),'; do sbatch PS04SE$i.sbatch; done', sep='')
 
 # First run the checkpoints
-cat('for i in ');cat(unique(design$PS));cat("; do sbatch 'PS'$i'SE000.sbatch'; done;")
+cat('for i in ');cat(unique(design$PS)[27:39]);cat("; do sbatch 'PS'$i'SE000.sbatch'; done;")
 
 # Then run control and interventions
 exp <- sprintf('%0.3d', 1:4)
-PS <- sprintf('%0.2d', 1:39)
+PS <- sprintf('%0.2d', 27:39)
 # Run in Midway terminal:
-cat("sacct -u pilosofs --format=jobid,jobname --name=");cat(paste(paste(PS,'SE000',sep=''),collapse = ','));cat(" >> 'job_ids.txt'")
+cat("sacct -u pilosofs --format=jobid,jobname --starttime 2018-07-11T13:50:00 --name=");cat(paste(paste(PS,'SE000',sep=''),collapse = ','));cat(" >> 'job_ids.txt'")
 # Copy file from Midway and run:
 jobids <- read.table('job_ids.txt', header = F, skip=2) 
 jobids <- na.omit(unique(parse_number(jobids$V1))) # 1 job id per PS

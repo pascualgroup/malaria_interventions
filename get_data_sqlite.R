@@ -216,6 +216,115 @@ generate_plots <- function(data, time_range=NULL){
   return(list(plot_variables, plot_eir, plot_age_structure))
 }
 
+
+# This function compares an experiment to control and calculates statistics for the intervention
+post_intervention_stats <- function(PS, scenario='S', exp, run, post_intervention_lag=360, control_data=NULL, plot.it=F, design_irs){
+  
+  plots_out <- list()
+  
+  # If a data frame with control data is not included (NULL), then load the
+  # control experiment
+  if (is.null(control_data)){
+    control_data <- get_data(parameter_space = PS, scenario = scenario, experiment = '001', run = run)[[1]]
+  }
+  
+  # Calculate variable means (across time) for control
+  control_means <- control_data %>% select(-year, -month, -n_infected) %>% 
+    gather(variable, value, -time, -exp, -PS, -scenario, -run, -pop_id) %>% 
+    group_by(PS, exp, variable) %>% summarise(mean_value=mean(value, na.rm = T))
+  
+  # Plot control and means
+  if (plot.it){
+    plots_out$control <- control_data %>% select(-year, -month, -n_infected) %>%
+      gather(variable, value, -time, -exp, -PS, -scenario, -run, -pop_id) %>%
+      ggplot(aes(x=time, y=value))+
+      geom_line()+
+      facet_wrap(~variable,scales='free')+
+      geom_hline(aes(yintercept=mean_value), data=control_means, color='blue')+
+      mytheme
+  }
+  
+  # Load experiment data
+  experiment_data <- get_data(parameter_space = PS, scenario = scenario, experiment = exp, run = run)[[1]]
+  
+  # Plot control vs experiment
+  if (plot.it){
+    plots_out$control_experiment <- bind_rows(control_data, experiment_data) %>%
+      select(-year, -month, -n_infected) %>% 
+      gather(variable, value, -time, -exp, -PS, -scenario, -run, -pop_id) %>% 
+      ggplot(aes(x=time, y=value, color=exp))+
+      geom_vline(xintercept = c(29160,29160+1800), linetype='dashed', color='tomato')+
+      geom_line()+
+      scale_color_manual(values=c('#504E4E','purple'))+
+      scale_x_continuous(breaks=pretty(x=subset(d, time>time_range[1]&time<time_range[2])$time,n=5))+
+      geom_hline(aes(yintercept=mean_value), data=control_means, color='tomato')+
+      facet_wrap(~variable, scales = 'free')+mytheme
+  }
+  
+  # Calculate absolute difference from control at every timepoint
+  x <- control_data %>%
+    select(-year, -month, -n_infected) %>% 
+    gather(variable, value, -time, -exp, -PS, -scenario, -run, -pop_id)
+  y <- experiment_data %>%
+    select(-year, -month, -n_infected) %>% 
+    gather(variable, value, -time, -exp, -PS, -scenario, -run, -pop_id)
+  diff_control <- inner_join(x,y,by=c('pop_id','PS','scenario','run','time','variable')) %>% 
+    mutate(diff=value.y-value.x, ratio=value.y/value.x) %>% 
+    select(variable, time, diff, ratio)
+  
+  if (plot.it){
+    plots_out$control_diff <- diff_control %>%
+      ggplot(aes(time, diff))+
+      geom_line()+
+      facet_wrap(~variable,scales='free')+
+      geom_hline(aes(yintercept=mean_value), data=control_means, color='blue')+
+      geom_vline(xintercept = c(29160,29160+3600), color='red')+
+      mytheme
+  }
+  
+  # Maximum amplitudes after an intervention
+  amplitude <- experiment_data %>% left_join(subset(design_irs, select=c(IRS_START_TIMES,IRS_length,exp)), by='exp') %>% 
+    mutate(intervention_lift=as.numeric(IRS_START_TIMES)+as.numeric(IRS_length)) %>% 
+    filter(time>intervention_lift) %>% 
+    select(-year, -month, -n_infected) %>% 
+    gather(variable, value, -time, -exp, -PS, -scenario, -run, -pop_id,-IRS_START_TIMES,-IRS_length) %>% 
+    group_by(variable) %>% summarise(max_value=max(value))
+  
+  # New mean from some lag post intervention
+  new_mean <- experiment_data %>% left_join(subset(design_irs, select=c(IRS_START_TIMES,IRS_length,exp)), by='exp') %>% 
+    mutate(intervention_lift=as.numeric(IRS_START_TIMES)+as.numeric(IRS_length)) %>% 
+    filter(time>intervention_lift+post_intervention_lag) %>% 
+    select(-year, -month, -n_infected) %>% 
+    gather(variable, value, -time, -exp, -PS, -scenario, -run, -pop_id,-IRS_START_TIMES,-IRS_length) %>% 
+    group_by(variable) %>% summarise(mean_value=mean(value, na.rm = T))
+  
+  # Time when extinction occured (last time point with data)
+  time_extinct <- experiment_data %>% left_join(subset(design_irs, select=c(IRS_START_TIMES,IRS_length,exp)), by='exp') %>% 
+    select(-year, -month, -n_infected) %>% 
+    gather(variable, value, -time, -exp, -PS, -scenario, -run, -pop_id,-IRS_START_TIMES,-IRS_length) %>% 
+    group_by(variable) %>% summarise(time_extinct=max(time))
+  
+  summary_stats <- left_join(time_extinct, new_mean)
+  summary_stats <- left_join(summary_stats, amplitude)
+  summary_stats$PS <- PS
+  summary_stats$scenario <- scenario
+  summary_stats$exp <- exp
+  summary_stats$run <- run  
+  
+  diff_control$PS <- PS
+  diff_control$scenario <- scenario
+  diff_control$exp <- exp
+  diff_control$run <- run 
+  
+  if (plot.it){
+    return(list(plots=plots_out,stats=list(diff_control=diff_control, summary_stats=summary_stats)))
+  } else {
+    return(list(diff_control=diff_control, summary_stats=summary_stats))  
+  }
+}
+
+
+# Get data trials ---------------------------------------------------------
 setwd('~/Documents/malaria_interventions_data/')
 PS03_S_00 <- get_data(parameter_space = '03', scenario = 'S', experiment = '00', run = 1)
 PS03_S_01 <- get_data(parameter_space = '03', scenario = 'S', experiment = '01', run = 1)
@@ -252,12 +361,15 @@ for (i in sprintf('%0.2d', 0:5)){
 
 # Compare between PS ------------------------------------------------------
 setwd('~/Documents/malaria_interventions_data/')
-ps <- sprintf('%0.2d',6:12)
-d <- map(ps, function(i){
-  cat(i)
-  tmp <- get_data(parameter_space = i, scenario = 'S', experiment = '003', run = 1)
-  return(tmp[[1]])
-}) %>% bind_rows()
+ps <- sprintf('%0.2d',c(27:36,38,39))
+d <- map(1:5, function(r){
+      map(ps, function(i){
+        cat(i)
+        tmp <- get_data(parameter_space = i, scenario = 'S', experiment = '004', run = r)
+        return(tmp[[1]])
+      }) %>% bind_rows()
+    }) %>% bind_rows()
+
 
 time_range <- c(28800,40000)
 
@@ -265,19 +377,21 @@ my_cols <- gg_color_hue(length(unique(d$PS)), hue_min = 10, hue_max = 280, l = 6
 # my_cols <- c('red','green','blue','orange','black')
 d %>%
   left_join(subset(design, select=c(PS,BITING_RATE_MEAN,N_GENES_INITIAL)), by='PS') %>% 
+  mutate(N_GENES_INITIAL=as.factor(N_GENES_INITIAL)) %>% 
   select(-year, -month, -n_infected) %>% 
   filter(time>time_range[1]&time<time_range[2]) %>%
-  gather(variable, value, -time, -exp, -PS, -scenario, -run,-N_GENES_INITIAL, -BITING_RATE_MEAN) %>% 
+  gather(variable, value, -pop_id, -time, -exp, -PS, -scenario, -run,-N_GENES_INITIAL, -BITING_RATE_MEAN) %>% 
+  group_by(pop_id, time, exp, PS, scenario, N_GENES_INITIAL, BITING_RATE_MEAN, variable) %>%
+  summarise(value_mean=mean(value), value_sd=sd(value)) %>% 
   # filter(variable %in% c('prevalence', 'meanMOI','n_circulating_strains', 'n_circulating_genes', 'n_alleles', 'n_infected_bites')) %>%
-  filter(variable %in% c('prevalence','n_circulating_strains')) %>%
-  mutate(N_GENES_INITIAL=as.factor(N_GENES_INITIAL)) %>% 
-  ggplot(aes(x=time, y=value, color=N_GENES_INITIAL))+
-  geom_line(position='jitter')+
+  filter(variable %in% c('n_circulating_strains')) %>%
+  ggplot(aes(x=time, y=value_mean, color=N_GENES_INITIAL))+
+  geom_line()+
   geom_vline(xintercept = c(29160,29160+3600), linetype='dashed')+
   # geom_vline(xintercept = 29160, linetype='dashed')+
   scale_color_manual(values=my_cols)+
   scale_x_continuous(breaks=pretty(x=subset(d, time>time_range[1]&time<time_range[2])$time,n=5))+
-  facet_wrap(N_GENES_INITIAL~variable, scales = 'free_y')+
+  facet_wrap(N_GENES_INITIAL~variable)+
   mytheme
 
 
@@ -297,24 +411,25 @@ d %>%
 
 
 # Compare between experiments ---------------------------------------------
-control <- get_data(parameter_space = '12', scenario = 'S', experiment = '001', run = 1)[[1]]
+control <- get_data(parameter_space = '39', scenario = 'S', experiment = '001', run = 1)[[1]]
 control_means <- control %>% select(-year, -month, -n_infected) %>% 
-  gather(variable, value, -time, -exp, -PS, -scenario, -run) %>% 
+  gather(variable, value, -time, -exp, -PS, -scenario, -run, -pop_id) %>% 
   group_by(PS, exp, variable) %>% summarise(mean_value=mean(value))
 control %>% select(-year, -month, -n_infected) %>% 
-  gather(variable, value, -time, -exp, -PS, -scenario, -run) %>% 
+  gather(variable, value, -time, -exp, -PS, -scenario, -run, -pop_id) %>% 
   ggplot(aes(x=time, y=value))+
   geom_line()+
   facet_wrap(~variable,scales='free')+
   geom_hline(aes(yintercept=mean_value), data=control_means, color='blue')+
   mytheme
 
-setwd('~/Documents/malaria_interventions_data/')
 e <- sprintf('%0.3d', c(1,4))
-d <- map(e, function(i){
-  cat(i)
-  tmp <- get_data(parameter_space = '12', scenario = 'S', experiment = i, run = 1)
-  return(tmp[[1]])
+d <- map(1:5, function(r){
+  map(e, function(i){
+    cat(i)
+    tmp <- get_data(parameter_space = '39', scenario = 'S', experiment = i, run = r)
+    return(tmp[[1]])
+  }) %>% bind_rows()
 }) %>% bind_rows()
 
 # Add control to the design_irs data frame, which is created in build_parameter_files.R
@@ -328,7 +443,6 @@ design_irs[1, grepl("IRS", names(design_irs))] <- 'control'
 # mintime=mintime[1,1]
 # pdf('seasonal_comparison.pdf',16,10)
 time_range <- c(28800,40000)
-intervention_start <- 29175
 
 my_cols <- c('black',gg_color_hue(length(unique(design_irs$exp))-1, hue_min = 10, hue_max = 280, l = 62, c = 200))
 d %>%
@@ -340,7 +454,7 @@ d %>%
   # filter(IRS_IMMIGRATION=='1' | IRS_IMMIGRATION=='control') %>%
   # filter(IRS_coverage=='0.9' | IRS_coverage=='control') %>%
   ggplot(aes(x=time, y=value, color=exp))+
-  geom_vline(xintercept = c(29160,29160+1800), linetype='dashed')+
+  geom_vline(xintercept = c(29160,29160+3600), linetype='dashed')+
   # geom_vline(xintercept = seq(28800,39960,720),color='gray')+
   geom_line()+
   scale_color_manual(values=my_cols)+
@@ -384,138 +498,83 @@ d %>%
 # genes) after an intervention is lifted. The comparison is done to the control
 # experiment. 
 
-# This function compares an experiment to control and calculates statistics for the intervention
-post_intervention_stats <- function(PS, scenario='S', exp, run, control_data=NULL, plot.it=F, design_irs){
-  
-  plots_out <- list()
-  
-  # If a data frame with control data is not included (NULL), then load the
-  # control experiment
-  control_data <- get_data(parameter_space = PS, scenario = scenario, experiment = '001', run = run)[[1]]
-  
-  # Calculate variable means for control
-  control_means <- control_data %>% select(-year, -month, -n_infected) %>% 
-    gather(variable, value, -time, -exp, -PS, -scenario, -run) %>% 
-    group_by(PS, exp, variable) %>% summarise(mean_value=mean(value))
-  
-  # Plot control and means
-  if (plot.it){
-    plots_out$control <- control_data %>% select(-year, -month, -n_infected) %>%
-      gather(variable, value, -time, -exp, -PS, -scenario, -run) %>%
-      ggplot(aes(x=time, y=value))+
-      geom_line()+
-      facet_wrap(~variable,scales='free')+
-      geom_hline(aes(yintercept=mean_value), data=control_means, color='blue')+
-      mytheme
-  }
-  
-  # Load experiment data
-  experiment_data <- get_data(parameter_space = PS, scenario = scenario, experiment = exp, run = run)[[1]]
-  
-  # Plot control vs experiment
-  if (plot.it){
-    plots_out$control_experiment <- bind_rows(control_data, experiment_data) %>%
-      select(-year, -month, -n_infected) %>% 
-      gather(variable, value, -time, -exp, -PS, -scenario, -run) %>% 
-      ggplot(aes(x=time, y=value, color=exp))+
-      geom_vline(xintercept = c(29160,29160+1800), linetype='dashed', color='tomato')+
-      geom_line()+
-      scale_color_manual(values=c('#504E4E','purple'))+
-      scale_x_continuous(breaks=pretty(x=subset(d, time>time_range[1]&time<time_range[2])$time,n=5))+
-      geom_hline(aes(yintercept=mean_value), data=control_means, color='tomato')+
-      facet_wrap(~variable, scales = 'free')+mytheme
-  }
-  
-  # Calculate absolute difference from control at every timepoint
-  x <- control_data %>%
-    select(-year, -month, -n_infected) %>% 
-    gather(variable, value, -time, -exp, -PS, -scenario, -run)
-  y <- experiment_data %>%
-    select(-year, -month, -n_infected) %>% 
-    gather(variable, value, -time, -exp, -PS, -scenario, -run)
-  diff_control <- inner_join(x,y,by=c('PS','scenario','run','time','variable')) %>% mutate(diff=value.x-value.y) %>% 
-    select(variable, time, diff)
-  
-  if (plot.it){
-    plots_out$control_diff <- diff_control %>%
-      ggplot(aes(time, diff))+
-      geom_line()+
-      facet_wrap(~variable,scales='free')+
-      geom_hline(aes(yintercept=mean_value), data=control_means, color='blue')+
-      geom_vline(xintercept = c(29160,29160+3600), color='red')+
-      mytheme
-  }
-
-  # Maximum amplitudes after an intervention
-  amplitude <- experiment_data %>% left_join(subset(design_irs, select=c(IRS_START_TIMES,IRS_length,exp)), by='exp') %>% 
-    mutate(intervention_lift=as.numeric(IRS_START_TIMES)+as.numeric(IRS_length)) %>% 
-    filter(time>intervention_lift) %>% 
-    select(-year, -month, -n_infected) %>% 
-    gather(variable, value, -time, -exp, -PS, -scenario, -run,-IRS_START_TIMES,-IRS_length) %>% 
-    group_by(variable) %>% summarise(max_value=max(value))
-  
-  # New mean from 1-year post intervention
-  new_mean <- experiment_data %>% left_join(subset(design_irs, select=c(IRS_START_TIMES,IRS_length,exp)), by='exp') %>% 
-    mutate(intervention_lift=as.numeric(IRS_START_TIMES)+as.numeric(IRS_length)) %>% 
-    filter(time>intervention_lift+360) %>% 
-    select(-year, -month, -n_infected) %>% 
-    gather(variable, value, -time, -exp, -PS, -scenario, -run,-IRS_START_TIMES,-IRS_length) %>% 
-    group_by(variable) %>% summarise(mean_value=mean(value))
-  
-  # Time when extinction occured (last time point with data)
-  time_extinct <- experiment_data %>% left_join(subset(design_irs, select=c(IRS_START_TIMES,IRS_length,exp)), by='exp') %>% 
-    select(-year, -month, -n_infected) %>% 
-    gather(variable, value, -time, -exp, -PS, -scenario, -run,-IRS_START_TIMES,-IRS_length) %>% 
-    group_by(variable) %>% summarise(time_extinct=max(time))
-    
-  summary_stats <- left_join(time_extinct, new_mean)
-  summary_stats <- left_join(summary_stats, amplitude)
-  summary_stats$PS <- PS
-  summary_stats$scenario <- scenario
-  summary_stats$exp <- exp
-  summary_stats$run <- run  
-  
-  diff_control$PS <- PS
-  diff_control$scenario <- scenario
-  diff_control$exp <- exp
-  diff_control$run <- run 
-  
-  if (plot.it){
-    return(list(plots=plots_out,stats=list(diff_control=diff_control, amplitude=amplitude, new_mean=new_mean)))
-  } else {
-    return(list(diff_control=diff_control, summary_stats=summary_stats))  
-  }
-}
 
 intervention_stats <- c()
 intervention_stats_diff <- c()
-PS <- sprintf('%0.2d', 1:12)
+PS <- sprintf('%0.2d', 27:39)
 exp <- sprintf('%0.3d', 2:4)
-for (ps in PS){
-  for (e in exp){
-    print(ps)
-    x <- post_intervention_stats(PS = ps, scenario = 'S', exp=e, 1, plot.it = F, design_irs = design_irs)
-    intervention_stats <- rbind(intervention_stats, x$summary_stats)
-    intervention_stats_diff <- rbind(intervention_stats_diff, x$diff_control)
+
+for (run in 1:5){
+  for (ps in PS){
+    if (file.exists(paste('~/Documents/malaria_interventions_data/PS',ps,'_S_E001_R',run,'.sqlite',sep=''))){
+      control_data <- get_data(parameter_space = ps, scenario = 'S', experiment = '001', run = run)[[1]]
+    }
+    for (e in exp){
+      print(paste(Sys.time(),run,ps,e,sep=' | '))
+      if (file.exists(paste('~/Documents/malaria_interventions_data/PS',ps,'_S_E',e,'_R',run,'.sqlite',sep=''))){
+        x <- post_intervention_stats(PS = ps, scenario = 'S', exp=e, run = run, plot.it = F, control_data = control_data, design_irs = design_irs)
+        intervention_stats <- rbind(intervention_stats, x$summary_stats)
+        intervention_stats_diff <- rbind(intervention_stats_diff, x$diff_control)
+      } else {
+        cat('missing file: ');cat(paste('PS',ps,'_S_E',e,'_R',run,'.sqlite',sep=''));cat('\n')
+      }
+    }
   }
 }
 
+# Time to extinction as a function of the diversity
 intervention_stats %>% left_join(subset(design, select=c(PS,BITING_RATE_MEAN,N_GENES_INITIAL)), by='PS') %>% 
-  filter(variable %in% c('n_alleles','n_circulating_genes','n_circulating_strains','prevalence')) %>% 
-  ggplot(aes(x=PS, y=max_value, shape=BITING_RATE_MEAN, color=as.factor(N_GENES_INITIAL)))+
-  geom_point(size=3)+
-  facet_wrap(BITING_RATE_MEAN~variable,scales='free_y')+
+  filter(BITING_RATE_MEAN=='0.0005') %>% 
+  group_by(PS, BITING_RATE_MEAN, N_GENES_INITIAL, scenario, exp) %>% summarise(time_ext_max=max(time_extinct), time_ext_mean=mean(time_extinct)) %>% 
+  ggplot()+
+  geom_point(aes(x=PS, y=time_ext_max), size=3, color='red')+
+  geom_point(aes(x=PS, y=time_ext_mean), size=3, color='blue')+
+  labs(y='Mean and max time to extinction')+
+  facet_grid(~exp)+
   mytheme
 
-intervention_stats_diff %>%
-  filter(exp=='003') %>% 
+
+# This calculates the average value of variables POST-intervention.
+intervention_stats_diff %>% 
   left_join(subset(design, select=c(PS,BITING_RATE_MEAN,N_GENES_INITIAL)), by='PS') %>% 
+  left_join(subset(design_irs, select=c(exp,IRS_START_TIMES,IRS_length))) %>%
+  mutate(time_threshold=as.numeric(IRS_START_TIMES)+as.numeric(IRS_length)+360) %>%
+  filter(time>=time_threshold) %>% 
+  
   filter(variable %in% c('n_alleles','n_circulating_genes','n_circulating_strains','prevalence')) %>% 
-  ggplot(aes(x=time, y=diff, color=as.factor(N_GENES_INITIAL)))+
-  scale_color_manual(values = gg_color_hue(7,hue_min = 10, 400))+
+  
+  # select(variable, mean_value, PS, exp, run) %>% arrange(variable, PS, run, exp)
+  group_by(PS, BITING_RATE_MEAN, N_GENES_INITIAL, scenario, exp, variable) %>% 
+  summarise(mean_diff=mean(diff), 
+            mean_ratio=mean(ratio),
+            sd_ratio=sd(ratio)) %>%
+  mutate(error_up=mean_ratio+sd_ratio,
+         error_low=mean_ratio-sd_ratio) %>% 
+  ggplot(aes(x=PS, y=mean_ratio, color=exp, group=exp))+
+  geom_point(size=3)+
   geom_line()+
-  facet_wrap(BITING_RATE_MEAN~variable, scales='free_y')+
+  # geom_errorbar(aes(ymin=error_low, ymax=error_up), width=0.1)+
+  # geom_line(aes(x=PS, y=error_up, color=exp, group=exp), linetype='dashed')+
+  # geom_line(aes(x=PS, y=error_low, color=exp, group=exp), linetype='dashed')+
+  # facet_wrap(BITING_RATE_MEAN~variable,scales='free_y')+
   mytheme
+
+# Time series of difference from control (i.e., experiment-control)
+intervention_stats_diff %>%
+  left_join(subset(design, select=c(PS,BITING_RATE_MEAN,N_GENES_INITIAL)), by='PS') %>% 
+  filter(variable %in% c('n_circulating_strains','prevalence')) %>% 
+  # filter(exp=='004') %>% filter(PS=='27') %>% 
+  group_by(time,variable,PS,scenario,exp,BITING_RATE_MEAN,N_GENES_INITIAL) %>% 
+  summarise(diff=mean(diff)) %>% 
+  ggplot(aes(x=time, y=diff, color=as.factor(N_GENES_INITIAL)))+
+  scale_color_manual(values = gg_color_hue(length(PS),hue_min = 10, 400))+
+  geom_line()+
+  geom_hline(yintercept = 0, color='black')+
+  facet_wrap(variable~BITING_RATE_MEAN+exp, scales='free_y')+
+  mytheme
+
+
+
 
 # Also can look at a bulk:
 # First get all data across PS, experiments and runs
@@ -636,9 +695,7 @@ d %>% ggplot(aes(x=host_age, fill=scenario))+geom_histogram() +
 dev.off()
 
 
-# Calculate stats ---------------------------------------------------------
 
-# This calcualtes the 
 
 # Structure ---------------------------------------------------------------
 # Initialize
