@@ -361,7 +361,7 @@ for (i in sprintf('%0.2d', 0:5)){
 
 # Compare between PS ------------------------------------------------------
 setwd('~/Documents/malaria_interventions_data/')
-ps <- sprintf('%0.2d',c(27:36,38,39))
+ps <- sprintf('%0.2d',1:13)
 d <- map(1:5, function(r){
       map(ps, function(i){
         cat(i)
@@ -423,7 +423,7 @@ control %>% select(-year, -month, -n_infected) %>%
   geom_hline(aes(yintercept=mean_value), data=control_means, color='blue')+
   mytheme
 
-e <- sprintf('%0.3d', c(1,4))
+e <- sprintf('%0.3d', 1:4)
 d <- map(1:5, function(r){
   map(e, function(i){
     cat(i)
@@ -535,13 +535,14 @@ intervention_stats %>% left_join(subset(design, select=c(PS,BITING_RATE_MEAN,N_G
 
 
 # This calculates the average value of variables POST-intervention.
+design_irs <- create_intervention_scheme_IRS(PS_benchmark = '27', scenario_benchmark = 'S', IRS_START_TIMES = '29160', immigration_range=c(0), length_range=c(720,1800,3600), coverage_range=0.9, write_to_file = F, design_ref=design)
 intervention_stats_diff %>% 
   left_join(subset(design, select=c(PS,BITING_RATE_MEAN,N_GENES_INITIAL)), by='PS') %>% 
   left_join(subset(design_irs, select=c(exp,IRS_START_TIMES,IRS_length))) %>%
   mutate(time_threshold=as.numeric(IRS_START_TIMES)+as.numeric(IRS_length)+360) %>%
   filter(time>=time_threshold) %>% 
   
-  filter(variable %in% c('n_alleles','n_circulating_genes','n_circulating_strains','prevalence')) %>% 
+  filter(variable %in% c('n_alleles','n_circulating_genes','n_circulating_strains','prevalence','n_total_bites','meanMOI')) %>% 
   
   # select(variable, mean_value, PS, exp, run) %>% arrange(variable, PS, run, exp)
   group_by(PS, BITING_RATE_MEAN, N_GENES_INITIAL, scenario, exp, variable) %>% 
@@ -556,7 +557,7 @@ intervention_stats_diff %>%
   # geom_errorbar(aes(ymin=error_low, ymax=error_up), width=0.1)+
   # geom_line(aes(x=PS, y=error_up, color=exp, group=exp), linetype='dashed')+
   # geom_line(aes(x=PS, y=error_low, color=exp, group=exp), linetype='dashed')+
-  # facet_wrap(BITING_RATE_MEAN~variable,scales='free_y')+
+  facet_wrap(BITING_RATE_MEAN~variable,scales='free_y')+
   mytheme
 
 # Time series of difference from control (i.e., experiment-control)
