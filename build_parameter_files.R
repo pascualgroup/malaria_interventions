@@ -178,10 +178,10 @@ set_MDA <- function(design_ID, run, experimental_design){
 
 # Functions to generate files ---------------------------------------------
 
-get_random_seed <- function(PS, scenario, run_range){
+get_random_seed <- function(PS, scenario, experiment='000', run_range){
   seeds <- c()
   for (run in run_range){
-    x <- readLines(paste('PS',PS,'_',scenario,'_','E000_R',run,'.py',sep=''))
+    x <- readLines(paste('PS',PS,'_',scenario,'_','E',experiment,'_R',run,'.py',sep=''))
     seeds <- c(seeds, parse_number(x[1]))
   }
   return(seeds)
@@ -445,11 +445,9 @@ cat('for i in ');cat(unique(design$PS)[27:39]);cat("; do sbatch 'PS'$i'NE000.sba
 
 # Then run control and interventions
 exp <- sprintf('%0.3d', 1:4)
-PS <- sprintf('%0.2d', 19:26)
+PS <- sprintf('%0.2d', (31:39)[-7])
 # Run in Midway terminal:
-
-cat("rm job_ids.txt; sacct -u pilosofs --format=jobid,jobname --starttime 2018-07-12T09:50:00 --name=");cat(paste(paste(PS,'NE000',sep=''),collapse = ','));cat(" >> 'job_ids.txt'")
-
+cat("rm job_ids.txt; sacct -u pilosofs --format=jobid,jobname --starttime 2018-07-13T13:40:00 --name=");cat(paste(paste(PS,'NE000',sep=''),collapse = ','));cat(" >> 'job_ids.txt'")
 # Copy file from Midway and run:
 jobids <- read.table('job_ids.txt', header = F, skip=2) 
 jobids <- na.omit(unique(parse_number(jobids$V1))) # 1 job id per PS
@@ -457,16 +455,31 @@ length(jobids)==length(PS)
 # Copy the output of the following loop and paste in Midway
 for (ps in PS){
   for (e in exp){
-    cat(paste('sbatch -d afterok:',jobids[which(PS==ps)],' PS',ps,'SE',e,'.sbatch',sep=''));cat('\n')
+    cat(paste('sbatch -d afterok:',jobids[which(PS==ps)],' PS',ps,'NE',e,'.sbatch',sep=''));cat('\n')
   }
 }
    
 
-for (ps in 23:26){
-  for (e in exp){
-    cat(paste('sbatch PS',ps,'SE',e,'.sbatch',sep=''));cat('\n')
+
+# Extract the random seeds of all experiments and runs
+random_seeds <- c()
+for (ps in sprintf('%0.2d', c(27:36,38,39))){
+  for (e in sprintf('%0.3d', 0:4)){
+    for(r in 1:5){
+      x <- data.frame(ps,e,r,seed=get_random_seed(PS = ps, scenario = 'N', run_range = r))
+      random_seeds <- rbind(random_seeds, x)
+    }
   }
 }
+y <- random_seeds %>% group_by(ps,r,seed) %>% summarise(s=length(seed))
+
+
+for (ps in sprintf('%0.2d', 27:31)){
+  for (e in sprintf('%0.3d', 1:4)){
+    cat(paste('sbatch PS',ps,'NE',e,'.sbatch',sep=''));cat('\n')
+  }
+}
+
 
 
 design_irs <- create_intervention_scheme_IRS(PS_benchmark = '09', scenario_benchmark = 'S', IRS_START_TIMES = '29160', immigration_range=c(0,0.001), length_range=c(1800,3600), coverage_range=0.9, write_to_file = T, design_ref=design)

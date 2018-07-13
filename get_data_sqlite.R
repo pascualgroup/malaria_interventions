@@ -361,11 +361,11 @@ for (i in sprintf('%0.2d', 0:5)){
 
 # Compare between PS ------------------------------------------------------
 setwd('~/Documents/malaria_interventions_data/')
-ps <- sprintf('%0.2d',1:13)
+ps <- sprintf('%0.2d',14:26)
 d <- map(1:5, function(r){
       map(ps, function(i){
         cat(i)
-        tmp <- get_data(parameter_space = i, scenario = 'S', experiment = '004', run = r)
+        tmp <- get_data(parameter_space = i, scenario = 'S', experiment = '003', run = r)
         return(tmp[[1]])
       }) %>% bind_rows()
     }) %>% bind_rows()
@@ -501,8 +501,13 @@ d %>%
 
 intervention_stats <- c()
 intervention_stats_diff <- c()
-PS <- sprintf('%0.2d', 27:39)
-exp <- sprintf('%0.3d', 2:4)
+PS <- sprintf('%0.2d', (27:39)[-11])
+exp <- sprintf('%0.3d', 1:4)
+design_irs <- create_intervention_scheme_IRS(PS_benchmark = '27', scenario_benchmark = 'S', IRS_START_TIMES = '29160', immigration_range=c(0), length_range=c(720,1800,3600), coverage_range=0.9, write_to_file = F, design_ref=design)
+# Add control to the design_irs data frame, which is created in build_parameter_files.R
+design_irs %<>% slice(rep(1, each = 1)) %>% bind_rows(design_irs)
+design_irs[1, 'exp'] <- '001'
+design_irs[1, 'IRS_length'] <- 0
 
 for (run in 1:5){
   for (ps in PS){
@@ -524,8 +529,9 @@ for (run in 1:5){
 
 # Time to extinction as a function of the diversity
 intervention_stats %>% left_join(subset(design, select=c(PS,BITING_RATE_MEAN,N_GENES_INITIAL)), by='PS') %>% 
-  filter(BITING_RATE_MEAN=='0.0005') %>% 
-  group_by(PS, BITING_RATE_MEAN, N_GENES_INITIAL, scenario, exp) %>% summarise(time_ext_max=max(time_extinct), time_ext_mean=mean(time_extinct)) %>% 
+  # filter(BITING_RATE_MEAN=='0.0005') %>% 
+  group_by(PS, BITING_RATE_MEAN, N_GENES_INITIAL, scenario, exp) %>% 
+  summarise(time_ext_max=max(time_extinct), time_ext_mean=mean(time_extinct)) %>% 
   ggplot()+
   geom_point(aes(x=PS, y=time_ext_max), size=3, color='red')+
   geom_point(aes(x=PS, y=time_ext_mean), size=3, color='blue')+
@@ -533,9 +539,23 @@ intervention_stats %>% left_join(subset(design, select=c(PS,BITING_RATE_MEAN,N_G
   facet_grid(~exp)+
   mytheme
 
+# Calculate probability of extinction as a proportion of runs which went extinct
+intervention_stats %>% 
+  left_join(subset(design, select=c(PS,BITING_RATE_MEAN,N_GENES_INITIAL)), by='PS') %>% 
+  left_join(subset(design_irs, select=c(exp,IRS_START_TIMES,IRS_length))) %>%
+  distinct(PS, exp, run, time_extinct,IRS_START_TIMES,IRS_length) %>% 
+  mutate(extinct=ifelse(time_extinct<as.numeric(IRS_START_TIMES)+as.numeric(IRS_length),1,0)) %>%
+  group_by(PS, exp) %>% 
+  summarise(extinct_prob=sum(extinct)/max(intervention_stats$run)) %>% 
+  ggplot(aes(x=PS, y=extinct_prob, group=exp, color=exp))+
+  geom_point(size=4)+
+  geom_line()+
+  facet_wrap(~exp)+mytheme
 
-# This calculates the average value of variables POST-intervention.
-design_irs <- create_intervention_scheme_IRS(PS_benchmark = '27', scenario_benchmark = 'S', IRS_START_TIMES = '29160', immigration_range=c(0), length_range=c(720,1800,3600), coverage_range=0.9, write_to_file = F, design_ref=design)
+         
+# This calculates the ratio of the value of variables POST-intervention compared
+# to control. For example, we can say that intervention has reduced the
+# prevalence by 50% compared to control in a given PS and experiment.
 intervention_stats_diff %>% 
   left_join(subset(design, select=c(PS,BITING_RATE_MEAN,N_GENES_INITIAL)), by='PS') %>% 
   left_join(subset(design_irs, select=c(exp,IRS_START_TIMES,IRS_length))) %>%
