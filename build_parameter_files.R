@@ -410,12 +410,21 @@ clear_previous_files(parameter_space = '27', scenario = 'N', exclude_sqlite = F,
 # Get data design 
 design <- loadExperiments_GoogleSheets() 
 # Create the reference experiments (checkpoint and control)
-generate_files(row_range = 87:104, run_range = 1:5, experimental_design = design)
+generate_files(row_range = 79:104, run_range = 1:5, experimental_design = design)
+
+# Create the reference experiments (control only)
+for (ps in sprintf('%0.2d', 28:39)){
+  design_control <- subset(design, PS==ps & scenario == 'N' & exp=='001')
+  clear_previous_files(parameter_space = ps, scenario = 'N', exclude_sqlite = F, exclude_CP = T, exclude_control = F, test = F)
+  seeds <- get_random_seed(PS = ps, scenario = 'N', run_range = 1:5)
+  generate_files(row_range = 1, run_range = 1:5, experimental_design = design_control, random_seed = seeds)
+}
+
 # Create the corresponding IRS experiments  
-PS <- sprintf('%0.2d', 31:39)
+PS <- sprintf('%0.2d', 27:39)
 for (ps in PS){
   design_irs <- create_intervention_scheme_IRS(PS_benchmark = ps, scenario_benchmark = 'N', IRS_START_TIMES = '29160', immigration_range=c(0), length_range=c(720,1800,3600), coverage_range=0.9, write_to_file = F, design_ref=design)
-  generate_files(row_range = 1:nrow(design_irs), run_range = 1:5, random_seed = get_random_seed(ps, 'S', 1:5), design_irs)
+  generate_files(row_range = 1:nrow(design_irs), run_range = 1:5, random_seed = get_random_seed(ps, 'N', run_range = 1:5), design_irs)
 }
 # ZIP all the PY and sbatch files
 sink.reset <- function(){
@@ -423,20 +432,22 @@ sink.reset <- function(){
     sink(NULL)
   }
 }
+unlink('files_to_zip.txt')
 sink('files_to_zip.txt', append = T)
 for (ps in sprintf('%0.2d', c(27:36,38,39))){
-  for (e in sprintf('%0.3d', 0:4)){
+  for (e in sprintf('%0.3d', 1:4)){
     cat(paste('PS',ps,'NE',e,'.sbatch',sep=''));cat('\n')
   }
 }
 for (ps in sprintf('%0.2d', c(27:36,38,39))){
-  for (e in sprintf('%0.3d', 0:4)){
+  for (e in sprintf('%0.3d', 1:4)){
     for(r in 1:5){
       cat(paste('PS',ps,'_N_E',e,'_R',r,'.py',sep=''));cat('\n')
     }
   }
 }
 sink.reset()
+unlink('files_to_run.zip')
 system('zip files_to_run.zip -@ < files_to_run.txt')
 # Copy the file to Midway and unzip it
 
@@ -459,7 +470,36 @@ for (ps in PS){
   }
 }
    
+# Or, if checkpoints are already finished:
+for (ps in sprintf('%0.2d', (27:30))){
+  for (e in exp){
+    cat(paste('sbatch PS',ps,'NE',e,'.sbatch',sep=''));cat('\n')
+  }
+}
 
+
+# Verify files ------------------------------------------------------------
+
+files <- list.files(path = '~/Documents/malaria_interventions_data/', pattern = 'sqlite', full.names = F) 
+# Also consider adding following information: extracting random seeds; existence of corresponding parameter files
+files_df <- tibble(filename=files,
+                    PS = sapply(str_split(files,'_'),function (x) parse_number(x[1])),
+                    scenario=sapply(str_split(files,'_'),function (x) x[2]),
+                    experiment=sapply(str_split(files,'_'),function (x) str_sub(x[3],2,4)),
+                    run= sapply(str_split(files,'_'),function (x) parse_number(x[4])),
+                    CP=sapply(str_split(files,'_'),function (x) str_detect(x[5],'CP')),
+                    size=round(file.size(files)/1024^2,2)
+                   
+)
+files_df$PS <- sprintf('%0.2d', files_df$PS)
+files_df %<>% arrange(CP, scenario, PS, experiment, run)         
+files_df %<>% filter(is.na(CP) & as.numeric(PS)>=27) %>% group_by(PS,scenario,experiment) %>% summarise(r=length(run))
+          
+
+
+
+
+# General stuff -----------------------------------------------------------
 
 # Extract the random seeds of all experiments and runs
 random_seeds <- c()

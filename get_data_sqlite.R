@@ -361,11 +361,11 @@ for (i in sprintf('%0.2d', 0:5)){
 
 # Compare between PS ------------------------------------------------------
 setwd('~/Documents/malaria_interventions_data/')
-ps <- sprintf('%0.2d',14:26)
+ps <- sprintf('%0.2d',27:39)[-11]
 d <- map(1:5, function(r){
       map(ps, function(i){
         cat(i)
-        tmp <- get_data(parameter_space = i, scenario = 'S', experiment = '003', run = r)
+        tmp <- get_data(parameter_space = i, scenario = 'N', experiment = '002', run = r)
         return(tmp[[1]])
       }) %>% bind_rows()
     }) %>% bind_rows()
@@ -383,15 +383,15 @@ d %>%
   gather(variable, value, -pop_id, -time, -exp, -PS, -scenario, -run,-N_GENES_INITIAL, -BITING_RATE_MEAN) %>% 
   group_by(pop_id, time, exp, PS, scenario, N_GENES_INITIAL, BITING_RATE_MEAN, variable) %>%
   summarise(value_mean=mean(value), value_sd=sd(value)) %>% 
-  # filter(variable %in% c('prevalence', 'meanMOI','n_circulating_strains', 'n_circulating_genes', 'n_alleles', 'n_infected_bites')) %>%
-  filter(variable %in% c('n_circulating_strains')) %>%
+  filter(variable %in% c('prevalence', 'meanMOI','n_circulating_strains', 'n_circulating_genes', 'n_alleles', 'n_infected_bites')) %>%
+  # filter(variable %in% c('n_circulating_strains')) %>%
   ggplot(aes(x=time, y=value_mean, color=N_GENES_INITIAL))+
   geom_line()+
   geom_vline(xintercept = c(29160,29160+3600), linetype='dashed')+
   # geom_vline(xintercept = 29160, linetype='dashed')+
   scale_color_manual(values=my_cols)+
   scale_x_continuous(breaks=pretty(x=subset(d, time>time_range[1]&time<time_range[2])$time,n=5))+
-  facet_wrap(N_GENES_INITIAL~variable)+
+  facet_wrap(~variable, scales='free')+
   mytheme
 
 
