@@ -1,9 +1,24 @@
 library(tidyverse)
+library(magrittr)
 library(sqldf)
 setwd('~/Documents/malaria_interventions')
 
 
 # General functions -------------------------------------------------------
+
+collapse_with_commas <- function(x, use_brackets=T){
+  if (use_brackets){
+    paste('[',paste(x,collapse=','),']',sep='')
+  } else {
+    paste(x,collapse=',')
+  }
+}
+
+sink.reset <- function(){
+  for(i in seq_len(sink.number())){
+    sink(NULL)
+  }
+}
 
 # Function to set a parameter
 set_parameter <- function(param_data, parameter, value){
@@ -99,20 +114,27 @@ set_transition_rate_neutral <- function(parameter_space, experiment='001', N_GEN
 #A function to set the parameters for generazlied immunity scenario. Unlike the
 #set_transition_rate_neutral, which returns a single value, this function
 #returns a list which describes a fit of a curve of a particualr run, so it
-#cannot be aggregated across runs.
+#cannot be aggregated across runs. It makes most sense to fir the curve to an
+#experiment without interevntions and in stable state, so 001 is by default.
 set_generalized_immunity <- function(parameter_space, experiment='001', run){
-require('rPython')
+  require('rPython')
   sqlite_file <- paste('/home/shai/Documents/malaria_interventions_data/','PS',parameter_space,'_S_E',experiment,'_R',run,'.sqlite',sep='')
   pyFile <- readLines('/home/shai/Documents/malaria_interventions/generalized_immunity_fitting.py')
   pyFile[11] <- paste('path=','"',sqlite_file,'"',sep='')
   writeLines(pyFile,'generalized_immunity_fitting_experiment.py')
-  python.load('generalized_immunity_fitting_experiment.py')
-  GENERAL_IMMUNITY_PARAMS <- python.get('generalImmunityParams')
-  GENERAL_IMMUNITY_PARAMS <- paste('[',paste(GENERAL_IMMUNITY_PARAMS, collapse = ','),']',sep='')
-  N_INFECTIONS_FOR_GENERAL_IMMUNITY <- python.get('infectionTimesToImmune')
-  CLEARANCE_RATE_IMMUNE <- python.get('clearanceRateConstantImmune')
-  file.remove('generalized_immunity_fitting_experiment.py')
-  return(list(GENERAL_IMMUNITY_PARAMS,N_INFECTIONS_FOR_GENERAL_IMMUNITY,CLEARANCE_RATE_IMMUNE))
+  
+  res <- try(python.load('generalized_immunity_fitting_experiment.py'))
+  if(inherits(res, "try-error"))
+  {
+    return(NA)
+  } else {
+    GENERAL_IMMUNITY_PARAMS <- python.get('generalImmunityParams')
+    GENERAL_IMMUNITY_PARAMS <- paste('[',paste(GENERAL_IMMUNITY_PARAMS, collapse = ','),']',sep='')
+    N_INFECTIONS_FOR_GENERAL_IMMUNITY <- python.get('infectionTimesToImmune')
+    CLEARANCE_RATE_IMMUNE <- python.get('clearanceRateConstantImmune')
+    file.remove('generalized_immunity_fitting_experiment.py')
+    return(list(GENERAL_IMMUNITY_PARAMS,N_INFECTIONS_FOR_GENERAL_IMMUNITY,CLEARANCE_RATE_IMMUNE))
+  }
 }
 
 # This function sets the parameters for a single IRS. It is possible to run it several times, once for each IRS scheme.
@@ -181,20 +203,20 @@ set_MDA <- function(design_ID, run, experimental_design){
 get_random_seed <- function(PS, scenario, experiment='000', run_range){
   seeds <- c()
   for (run in run_range){
-    x <- readLines(paste('PS',PS,'_',scenario,'_','E',experiment,'_R',run,'.py',sep=''))
-    seeds <- c(seeds, parse_number(x[1]))
+    x <- try(readLines(paste('PS',PS,'_',scenario,'_','E',experiment,'_R',run,'.py',sep='')))
+    if (inherits(x, "try-error")){
+      print('Cannot find parameter file to extract random number. Most probably a generalized-immunity experiment/run that does not exist.')
+      seeds <- c(seeds, NA)
+    } else {
+      seeds <- c(seeds, parse_number(x[1]))  
+    }
   }
   return(seeds)
 }
 
 # Function to create the necesary files and pipeline for a single run of an experiment.
 # Each run has its own random seed across experiments.
-create_run <- function(design_ID, run, RANDOM_SEED, experimental_design){
-  
-  collapse_with_commas <- function(x){
-    paste('[',paste(x,collapse=','),']',sep='')
-  }
-  
+create_run <- function(design_ID, run, RANDOM_SEED, experimental_design, biting_rate_mathematica=NULL){
   
   # Regime
   parameter_space <- experimental_design$PS[design_ID]
@@ -218,10 +240,14 @@ create_run <- function(design_ID, run, RANDOM_SEED, experimental_design){
   }
   if(scenario=='G'){
     param_data[param_data$param=='SELECTION_MODE',] <- set_parameter(param_data, 'SELECTION_MODE', "\'GENERAL_IMMUNITY\'")
-    x <- set_generalized_immunity(parameter_space, run = run)
-    param_data[param_data$param=='GENERAL_IMMUNITY_PARAMS',] <- set_parameter(param_data, 'GENERAL_IMMUNITY_PARAMS', x[[1]])
-    param_data[param_data$param=='N_INFECTIONS_FOR_GENERAL_IMMUNITY',] <- set_parameter(param_data, 'N_INFECTIONS_FOR_GENERAL_IMMUNITY', x[[2]])
-    param_data[param_data$param=='CLEARANCE_RATE_IMMUNE',] <- set_parameter(param_data, 'CLEARANCE_RATE_IMMUNE', x[[3]])
+    try_fit <- set_generalized_immunity(parameter_space, run = run)
+    if (is.na(try_fit)[1]){
+      print(paste('ERROR (create_run): Could not fit function for generalized immunity, skipping and NOT PRODUCING FILE ',base_name,'.py',sep = ''))
+      return(NULL)
+    }
+    param_data[param_data$param=='GENERAL_IMMUNITY_PARAMS',] <- set_parameter(param_data, 'GENERAL_IMMUNITY_PARAMS', try_fit[[1]])
+    param_data[param_data$param=='N_INFECTIONS_FOR_GENERAL_IMMUNITY',] <- set_parameter(param_data, 'N_INFECTIONS_FOR_GENERAL_IMMUNITY', try_fit[[2]])
+    param_data[param_data$param=='CLEARANCE_RATE_IMMUNE',] <- set_parameter(param_data, 'CLEARANCE_RATE_IMMUNE', try_fit[[3]])
   }
   
   # Populations. This duplicates the following parameters as the number of populations.
@@ -246,8 +272,14 @@ create_run <- function(design_ID, run, RANDOM_SEED, experimental_design){
   # Biting rates
   BITING_RATE_MEAN <- experimental_design$BITING_RATE_MEAN[design_ID]
   param_data[param_data$param=='BITING_RATE_MEAN',] <- set_parameter(param_data, 'BITING_RATE_MEAN', paste('[',paste(rep(BITING_RATE_MEAN,N_POPULATIONS),collapse = ','),']',sep=''))
-  mathematica_file <- experimental_design$DAILY_BITING_RATE_DISTRIBUTION[design_ID]
-  biting_rate_mathematica <- read_csv(mathematica_file, col_names = c('day','num_mosquitos'))
+  # It is possible to provide a specific file for biting rates for each
+  # experiments, but usually that is not necessary so no need to re-read this
+  # when producing batches of files. Just provide it in the call to the
+  # function.
+  if (is.null(biting_rate_mathematica)){
+    mathematica_file <- experimental_design$DAILY_BITING_RATE_DISTRIBUTION[design_ID]
+    biting_rate_mathematica <- read_csv(mathematica_file, col_names = c('day','num_mosquitos'))
+  }
   DAILY_BITING_RATE_DISTRIBUTION <- biting_rate_mathematica$num_mosquitos
   param_data[param_data$param=='DAILY_BITING_RATE_DISTRIBUTION',] <- set_parameter(param_data, 'DAILY_BITING_RATE_DISTRIBUTION', paste('[',paste(DAILY_BITING_RATE_DISTRIBUTION, collapse=','),']',sep=''))
   
@@ -284,42 +316,80 @@ create_run <- function(design_ID, run, RANDOM_SEED, experimental_design){
   write_lines(param_data$output, output_file)
 }
 
-# This function generates parameter files and corresponding job files for
-# several experiments and runs. It keeps the random seed for each RUN the same.
-# Also possible to provide a random seed.
-# row_range is the row numbers in the design data frame
-generate_files <- function(row_range, run_range, random_seed=NULL, experimental_design){
-  # Generate a parameter file for each combination of experiment and run
-  for (RUN in run_range){
-    # Keep random seed the same across runs
-    RANDOM_SEED <- ifelse(is.null(random_seed),round(runif(n = 1, min=1, max=10^7),0),random_seed[RUN])
-    for (design_ID in row_range){
-      # Create parameter file with main parameters
-      create_run(design_ID, RUN, RANDOM_SEED, experimental_design)
-      # Set IRS
-      if (!is.na(experimental_design$IRS_START_TIMES[design_ID])){
-        IRS_scheme <- data.frame(IRS_START_TIME=str_split(experimental_design$IRS_START_TIMES[design_ID], ',')[[1]],
-                                 IRS_input=str_split(experimental_design$IRS_input[design_ID], ',')[[1]],
-                                 IRS_IMMIGRATION=str_split(experimental_design$IRS_IMMIGRATION[design_ID], ',')[[1]],
-                                 stringsAsFactors = F)
-        for (i in 1:nrow(IRS_scheme)){
-          set_IRS(design_ID, RUN, IRS_scheme$IRS_START_TIME[i], IRS_scheme$IRS_input[i], IRS_scheme$IRS_IMMIGRATION[i], experimental_design)
-        }
-      }
-      # Set MDA
-      if (!is.na(experimental_design$MDA_START[design_ID])){
-        set_MDA(design_ID, RUN, experimental_design)
+# This function generates parameter files and corresponding job files (to run on
+# Midway), for several experiments and runs. It keeps the random seed for each
+# RUN across experiments AND PARAMETER SPACES the same. Also possible to provide
+# a random seed. row_range is the row numbers in the design data frame.
+generate_files <- function(row_range, run_range, random_seed=NULL, experimental_design, biting_rate_file='mosquito_population_seasonality.csv'){
+  
+  if (!is.null(biting_rate_file)){
+    biting_rate_mathematica <- read_csv(biting_rate_file, col_names = c('day','num_mosquitos'))
+  }
+  
+  # Using this data structure makes it easier to control specific combinations
+  # of runs in experimets, for eaxmple for parameter files that cannot be
+  # produced because of ill fitting of curves in the generlized immunity.
+  cases <- expand.grid(run = run_range, design_ID=row_range, file_created=T)
+  
+  # Random seeds are equal for each run across experiments AND PARAMETER SPACES
+  # (e.g., the same seed for run 1 in experiments '000', '001', '002' in
+  # parameter spaces 01 and 02).
+  if (is.null(random_seed)){
+    cases$seed <- rep(round(runif(n = length(run_range), min=1, max=10^7),0),length(row_range))
+  } else {
+    cases$seed <- rep(random_seed,length(row_range))
+  }
+  
+  cases$param_file <- NA
+  
+  for (idx in 1:nrow(cases)){
+    RANDOM_SEED <- cases$seed[idx]
+    RUN <- cases$run[idx]
+    design_ID <- cases$design_ID[idx]
+    print(paste('Run: ',RUN,' | Row: ',design_ID,sep=''))
+    
+    # Create parameter file with main parameters. If the scenario is generalized
+    # immunity then the fit for some runs may have not convereged (functions
+    # 'create_run' and 'set_generalized_immunity'). Parameter files cannot be
+    # produced in these cases and so the function skips to the next case.
+    try_run <- create_run(design_ID, RUN, RANDOM_SEED, experimental_design, biting_rate_mathematica)
+    if (is.null(try_run)){
+      cases$file_created[idx] <- F
+      next
+    }
+    
+    # Set IRS
+    if (!is.na(experimental_design$IRS_START_TIMES[design_ID])){
+      IRS_scheme <- data.frame(IRS_START_TIME=str_split(experimental_design$IRS_START_TIMES[design_ID], ',')[[1]],
+                               IRS_input=str_split(experimental_design$IRS_input[design_ID], ',')[[1]],
+                               IRS_IMMIGRATION=str_split(experimental_design$IRS_IMMIGRATION[design_ID], ',')[[1]],
+                               stringsAsFactors = F)
+      for (i in 1:nrow(IRS_scheme)){
+        set_IRS(design_ID, RUN, IRS_scheme$IRS_START_TIME[i], IRS_scheme$IRS_input[i], IRS_scheme$IRS_IMMIGRATION[i], experimental_design)
       }
     }
+    # Set MDA
+    if (!is.na(experimental_design$MDA_START[design_ID])){
+      set_MDA(design_ID, RUN, experimental_design)
+    }
+    
+    cases$param_file[idx] <- paste('PS',experimental_design$PS[design_ID],'_',experimental_design$scenario[design_ID],'_E',experimental_design$exp[design_ID],'_R',RUN,sep='')
   }
   
   # Generate batch file for each experiment
-  SLURM_ARRAY_RANGE <- paste("\'",min(run_range),'-',max(run_range),"\'",sep='')
   for (design_ID in row_range){
     parameter_space <- experimental_design$PS[design_ID]
     scenario <- experimental_design$scenario[design_ID]
     experiment <- experimental_design$exp[design_ID] # Use 000 for checkpoints and 001 for control
     base_name <- paste('PS',parameter_space,scenario,'E',experiment,sep='')
+    
+    SLURM_ARRAY_RANGE <- cases$file_created[which(cases$design_ID==design_ID)]
+    if (any(SLURM_ARRAY_RANGE==F)){  # If some runs are missing (e.g., runs for which the fit has not converged in generalized immunity)
+      SLURM_ARRAY_RANGE <-  paste("\'",collapse_with_commas(run_range[SLURM_ARRAY_RANGE],F),"\'",sep='')
+    } else {
+      SLURM_ARRAY_RANGE <- paste("\'",min(run_range),'-',max(run_range),"\'",sep='')
+    }
+    
     # Write the job file for the exepriment
     job_lines <- readLines('~/Documents/malaria_interventions/job_file_ref.sbatch')
     wall_time <-  experimental_design$wall_time[design_ID]
@@ -343,15 +413,7 @@ generate_files <- function(row_range, run_range, random_seed=NULL, experimental_
     write_lines(job_lines, output_file)
   }
   
-  # Printout of generated file names
-  cat('Generated files:\n')
-  for (e in row_range){
-    cat(paste('PS',experimental_design$PS[e],experimental_design$scenario[e],'E',experimental_design$exp[e],'.sbatch','\n',sep=''))
-    for (r in run_range){
-      cat(paste('--- PS',experimental_design$PS[e],'_',experimental_design$scenario[e],'_E',experimental_design$exp[e],'_R',r,'\n',sep=''))
-    }
-  }
-  
+  print(cases)
   cat('Run this on Midway: \n')
   for (e in row_range){
     cat(paste('sbatch PS',experimental_design$PS[e],experimental_design$scenario[e],'E',experimental_design$exp[e],'.sbatch','\n',sep=''))
@@ -406,14 +468,15 @@ create_intervention_scheme_IRS <- function(PS_benchmark, scenario_benchmark, IRS
 setwd('~/Documents/malaria_interventions_data/')
 
 # Clear previous files if necessary
-clear_previous_files(parameter_space = '27', scenario = 'N', exclude_sqlite = F, exclude_CP = F, exclude_control = F, test = T)
+clear_previous_files(scenario = 'G', exclude_sqlite = F, exclude_CP = F, exclude_control = F, test = T)
 # Get data design 
 design <- loadExperiments_GoogleSheets() 
 # Create the reference experiments (checkpoint and control)
-generate_files(row_range = 79:104, run_range = 1:5, experimental_design = design)
+generate_files(row_range = 105:130, run_range = 1:5, experimental_design = design)
 
 # Create the reference experiments (control only)
 for (ps in sprintf('%0.2d', 28:39)){
+  print(ps)
   design_control <- subset(design, PS==ps & scenario == 'N' & exp=='001')
   clear_previous_files(parameter_space = ps, scenario = 'N', exclude_sqlite = F, exclude_CP = T, exclude_control = F, test = F)
   seeds <- get_random_seed(PS = ps, scenario = 'N', run_range = 1:5)
@@ -422,51 +485,56 @@ for (ps in sprintf('%0.2d', 28:39)){
 
 # Create the corresponding IRS experiments  
 PS <- sprintf('%0.2d', 27:39)
+scenario <- 'G'
 for (ps in PS){
-  design_irs <- create_intervention_scheme_IRS(PS_benchmark = ps, scenario_benchmark = 'N', IRS_START_TIMES = '29160', immigration_range=c(0), length_range=c(720,1800,3600), coverage_range=0.9, write_to_file = F, design_ref=design)
-  generate_files(row_range = 1:nrow(design_irs), run_range = 1:5, random_seed = get_random_seed(ps, 'N', run_range = 1:5), design_irs)
+  design_irs <- create_intervention_scheme_IRS(PS_benchmark = ps, scenario_benchmark = scenario, IRS_START_TIMES = '29160', immigration_range=c(0), length_range=c(720,1800,3600), coverage_range=0.9, write_to_file = F, design_ref=design)
+  generate_files(row_range = 1:nrow(design_irs), run_range = 1:5, random_seed = get_random_seed(ps, scenario, run_range = 1:5), design_irs)
 }
+
 # ZIP all the PY and sbatch files
-sink.reset <- function(){
-  for(i in seq_len(sink.number())){
-    sink(NULL)
-  }
+
+scenario <- 'G'
+PS <- sprintf('%0.2d', c(27:36,38,39))
+e <- sprintf('%0.3d', 0:4)
+unlink('files_to_run.txt')
+sink('files_to_run.txt', append = T)
+# Add sbatch files
+files <- list.files(path = '~/Documents/malaria_interventions_data/', pattern = 'sbatch', full.names = F) 
+files <- files[str_detect(string = files, paste(scenario,'E',sep=''))]
+files <- files[str_sub(files,3,4) %in% PS]
+files <- files[str_sub(files,7,9) %in% e]
+for (i in 1:length(files)){
+  cat(files[i]);cat('\n')
 }
-unlink('files_to_zip.txt')
-sink('files_to_zip.txt', append = T)
-for (ps in sprintf('%0.2d', c(27:36,38,39))){
-  for (e in sprintf('%0.3d', 1:4)){
-    cat(paste('PS',ps,'NE',e,'.sbatch',sep=''));cat('\n')
-  }
-}
-for (ps in sprintf('%0.2d', c(27:36,38,39))){
-  for (e in sprintf('%0.3d', 1:4)){
-    for(r in 1:5){
-      cat(paste('PS',ps,'_N_E',e,'_R',r,'.py',sep=''));cat('\n')
-    }
-  }
+# Add py files
+files <- list.files(path = '~/Documents/malaria_interventions_data/', pattern = '.py', full.names = F) 
+files <- files[str_detect(string = files, paste('_',scenario,sep=''))]
+files <- files[str_sub(files,3,4) %in% PS]
+files <- files[str_sub(files,9,11) %in% e]
+for (i in 1:length(files)){
+  cat(files[i]);cat('\n')
 }
 sink.reset()
+# Create zip
 unlink('files_to_run.zip')
 system('zip files_to_run.zip -@ < files_to_run.txt')
+
 # Copy the file to Midway and unzip it
 
 # First run the checkpoints
-cat('for i in ');cat(unique(design$PS)[27:39]);cat("; do sbatch 'PS'$i'NE000.sbatch'; done;")
+cat('for i in ');cat(PS);cat("; do sbatch 'PS'$i'GE000.sbatch'; done;")
 
 # Then run control and interventions
-exp <- sprintf('%0.3d', 1:4)
-PS <- sprintf('%0.2d', (31:39)[-7])
 # Run in Midway terminal:
-cat("rm job_ids.txt; sacct -u pilosofs --format=jobid,jobname --starttime 2018-07-13T13:40:00 --name=");cat(paste(paste(PS,'NE000',sep=''),collapse = ','));cat(" >> 'job_ids.txt'")
+cat("rm job_ids.txt; sacct -u pilosofs --format=jobid,jobname --starttime 2018-07-30T16:05:00 --name=");cat(paste(paste(PS,'GE000',sep=''),collapse = ','));cat(" >> 'job_ids.txt'")
 # Copy file from Midway and run:
 jobids <- read.table('job_ids.txt', header = F, skip=2) 
 jobids <- na.omit(unique(parse_number(jobids$V1))) # 1 job id per PS
 length(jobids)==length(PS)
 # Copy the output of the following loop and paste in Midway
 for (ps in PS){
-  for (e in exp){
-    cat(paste('sbatch -d afterok:',jobids[which(PS==ps)],' PS',ps,'NE',e,'.sbatch',sep=''));cat('\n')
+  for (e in sprintf('%0.3d', 1:4)){
+    cat(paste('sbatch -d afterok:',jobids[which(PS==ps)],' PS',ps,'GE',e,'.sbatch',sep=''));cat('\n')
   }
 }
    
@@ -494,7 +562,7 @@ files_df <- tibble(filename=files,
 files_df$PS <- sprintf('%0.2d', files_df$PS)
 files_df %<>% arrange(CP, scenario, PS, experiment, run)         
 files_df %<>% filter(is.na(CP) & as.numeric(PS)>=27) %>% group_by(PS,scenario,experiment) %>% summarise(r=length(run))
-          
+files_df %<>% filter(scenario=='N')
 
 
 

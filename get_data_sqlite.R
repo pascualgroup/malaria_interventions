@@ -3,6 +3,59 @@ library(magrittr)
 library(sqldf)
 
 # Functions ---------------------------------------------------------------
+loadExperiments_GoogleSheets <- function(workBookName='malaria_interventions_design',sheetID=4){
+  require(googlesheets)
+  GS <- gs_title(workBookName)
+  col_types <- GS %>% gs_read(ws=1, col_names=T)
+  col_t <- unname(as.list(col_types[1,]))
+  experiments <- GS %>% gs_read(ws=sheetID, col_names=T, col_types=col_t)
+  print(experiments)
+  return(experiments)
+}
+
+
+create_intervention_scheme_IRS <- function(PS_benchmark, scenario_benchmark, IRS_START_TIMES=NULL, immigration_range, length_range, coverage_range, write_to_file=T, design_ref=NULL){
+  # This fixes the 1. in the file name produced in Mathematica
+  files <- list.files(path = '~/Documents/malaria_interventions_data/', full.names = T, pattern = '1\\._')
+  if(length(files)>0){sapply(files, function(x){file.rename(from = x, to = str_replace(x, '\\.', ''))})}
+  
+  # PS_benchmark is the parameter space for which intervention is tested. it should already have the checkpoint (000) and control (001) experiments in the google sheet.
+  # IRS_START_TIMES can also be something like: '29000,35000'
+  if(is.null(design_ref)){
+    design_ref <- loadExperiments_GoogleSheets() # Get data design
+  }
+  design_ref <- subset(design_ref, PS==PS_benchmark & scenario==scenario_benchmark)
+  reference_row <- which(grepl(PS_benchmark, design_ref$PS))[2] # reference_row is the row in the design data set which is the reference for this set of IRS exepriments. Should be the line of the control experiment (not the checkpoint)
+  
+  scheme <- expand.grid(PS=design_ref$PS[reference_row],
+                        scenario=design_ref$scenario[reference_row],
+                        BITING_RATE_MEAN=design_ref$BITING_RATE_MEAN[reference_row],
+                        DAILY_BITING_RATE_DISTRIBUTION=design_ref$DAILY_BITING_RATE_DISTRIBUTION[reference_row],
+                        N_GENES_INITIAL=design_ref$N_GENES_INITIAL[reference_row],
+                        N_LOCI=design_ref$N_LOCI[reference_row],
+                        N_ALLELES_INITIAL=design_ref$N_ALLELES_INITIAL[reference_row],
+                        N_POPULATIONS=design_ref$N_POPULATIONS[reference_row],
+                        populations_dist=design_ref$populations_dist[reference_row],
+                        T_BURNIN=design_ref$T_BURNIN[reference_row],
+                        T_END=design_ref$T_END[reference_row],
+                        IRS_START_TIMES=IRS_START_TIMES,
+                        IRS_IMMIGRATION=immigration_range,
+                        IRS_length=length_range,
+                        IRS_coverage=coverage_range,
+                        MDA_START=NA, # This so to not have an MDA (for function generate_files)
+                        wall_time=design_ref$wall_time[reference_row],
+                        mem_per_cpu=design_ref$mem_per_cpu[reference_row],
+                        stringsAsFactors = F)
+  scheme$exp <- sprintf('%0.3d', 2:(nrow(scheme)+1)) # Start with 002 because 000 and 001 are checkpoint and control
+  # Important!!! The files for the IRS in the next line are generated separately in Mathematica, and should already exist.
+  scheme$IRS_input <- paste('IRS_120_300_',scheme$IRS_coverage,'_',scheme$IRS_length,'.csv',sep='')
+  if (write_to_file){
+    write_csv(scheme, paste('PS',scheme$PS[1],'_',scheme$scenario[1],'_IRS_scheme.csv',sep=''))
+  }
+  return(scheme)
+}
+
+
 mytheme <- theme_bw() + theme(
   legend.title  = element_text(colour = "black", size=17),
    # legend.position = "none",
@@ -43,11 +96,15 @@ get_biting_rate <- function(parameter_file, sampling_period=30){
   sapply(BITING_RATE, mean)
 }
 
-get_data <- function(parameter_space, scenario, experiment, run, sampling_period=30){
+get_data <- function(parameter_space, scenario, experiment, run, sampling_period=30, host_age_structure=F){
   require(sqldf)
   # Initialize
   base_name <- paste('PS',parameter_space,'_',scenario,'_E',experiment,'_R',run,sep='')
   sqlite_file <- paste(base_name,'.sqlite',sep='')
+  if (!file.exists(sqlite_file)) {
+    print (paste(sqlite_file, ' does not exist, ignoring and terminating function'))
+    return(NULL)
+  }
   # parameter_file <- paste(base_name,'.py',sep='') # This may be necessary so I leave it
   
   # Extract data from sqlite. variable names correspond to table names
@@ -79,7 +136,7 @@ get_data <- function(parameter_space, scenario, experiment, run, sampling_period
   ## Prevalence
   summary_general$prevalence <- summary_general$n_infected/10^4
   
-  ## Or get EIR from the table in the sqlite
+  ## Get EIR from the table in the sqlite
   summary_general$EIR <- summary_general$n_infected_bites/10000 # 10000 is the size of the human population
   
   # ##EIR can also be calculated manually as EIR=biting_rate * prevalence
@@ -95,94 +152,17 @@ get_data <- function(parameter_space, scenario, experiment, run, sampling_period
   meanMOI <- sampled_infections %>% group_by(time, host_id) %>% summarise(MOI=length(strain_id)) %>% group_by(time) %>% summarise(meanMOI=mean(MOI))
   summary_general <- inner_join(summary_general, meanMOI) # Add MOI to the summary
   
+  
   # Host age structure
-  hosts <- dbGetQuery(db, 'SELECT * FROM hosts')
-  names(hosts)[1] <- 'host_id'
-  hosts$lifespan <- round((hosts$death_time-hosts$birth_time))
-  hosts <- subset(hosts, host_id%in%sampled_infections$host_id)
-  sampled_infections <- left_join(sampled_infections, hosts, by='host_id')
-  sampled_infections$host_age <- round((sampled_infections$time-sampled_infections$birth_time)/30)
-  
-  return(list(summary_general=as.tibble(summary_general), sampled_infections=as.tibble(sampled_infections)))
-}
-
-
-
-get_data2 <- function(parameter_space, scenario, experiment, run, sampling_period=30){
-  require(sqldf)
-  # Initialize
-  base_name <- paste('PS',parameter_space,'_',scenario,'_E',experiment,'_R',run,sep='')
-  sqlite_file <- paste(base_name,'.sqlite',sep='')
-  # parameter_file <- paste(base_name,'.py',sep='') # This may be necessary so I leave it
-  
-  # Extract data from sqlite. variable names correspond to table names
-  db <- dbConnect(SQLite(), dbname = sqlite_file)
-  hosts <- as.tibble(dbGetQuery(db, 'SELECT * FROM hosts'))
-  names(hosts)[1] <- 'host_id'
-  sampled_alleles <- as.tibble(dbGetQuery(db, 'SELECT * FROM sampled_alleles'))
-  sampled_duration <- as.tibble(dbGetQuery(db, 'SELECT * FROM sampled_duration'))
-  sampled_infections <- as.tibble(dbGetQuery(db, 'SELECT * FROM sampled_infections'))
-  sampled_genes <- as.tibble(dbGetQuery(db, 'SELECT * FROM sampled_genes'))
-  names(sampled_genes)[1] <- 'gene_id'
-  sampled_strains <- as.tibble(dbGetQuery(db, 'SELECT * FROM sampled_strains'))
-  names(sampled_strains)[1] <- 'strain_id'
-  
-  summary_general <- left_join(sampled_infections,hosts)
-  data %>% group_by(time) %>% summarise(n_infections=length(infection_id))
-  
-  
-  
-  summary_general <- dbGetQuery(db, 'SELECT * FROM summary')
-  summary_general$PS <- parameter_space
-  summary_general$exp <- experiment
-  summary_general$scenario <- scenario
-  summary_general$run <- run
-  summary_general$year <- gl(n = max(summary_general$time)/360, length = nrow(summary_general), k = 1)
-  summary_general$month <- gl(n = 12, k = 1, length = nrow(summary_general),labels = c('Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'), ordered = F)
-  
-  summary_alleles <- dbGetQuery(db, 'SELECT * FROM summary_alleles')
-  summary_alleles %<>% group_by(time) %>% summarise(n_alleles=sum(n_circulating_alleles))
-  
-  summary_general %<>% left_join(summary_alleles)
-  
-  sampled_infections <- dbGetQuery(db, 'SELECT * FROM sampled_infections')
-  sampled_infections$PS <- parameter_space
-  sampled_infections$exp <- experiment
-  sampled_infections$scenario <- scenario
-  sampled_infections$run <- run
-  
-  # Extract statistics
-  if (nrow(summary_general)%%sampling_period==1){# The beginning of the data set in E00 has a timestap of 0 and this line is unnecesary. So remove it
-    summary_general <- summary_general[-1,]
+  if(host_age_structure) {
+    hosts <- dbGetQuery(db, 'SELECT * FROM hosts')
+    names(hosts)[1] <- 'host_id'
+    hosts$lifespan <- round((hosts$death_time-hosts$birth_time))
+    hosts <- subset(hosts, host_id%in%sampled_infections$host_id)
+    sampled_infections <- left_join(sampled_infections, hosts, by='host_id')
+    sampled_infections$host_age <- round((sampled_infections$time-sampled_infections$birth_time)/30)    
   }
-  
-  ## Prevalence
-  summary_general$prevalence <- summary_general$n_infected/10^4
-  
-  ## Or get EIR from the table in the sqlite
-  summary_general$EIR <- summary_general$n_infected_bites/10000 # 10000 is the size of the human population
-  
-  # ##EIR can also be calculated manually as EIR=biting_rate * prevalence
-  # biting_rate <- get_biting_rate(parameter_file)
-  # summary_general$b <- NA
-  # summary_general$b[] <- biting_rate # The [] is for recycling the biting_rate
-  # summary_general$EIR1 <- summary_general$prevalence*summary_general$b*sampling_period
-  
-  # # Annual EIR is given by dividing by the sampling period to get a daily EIR, then multiplying by 360
-  # summary_general %>% mutate(eir_y=EIR2/sampling_period*360) %>% group_by(year) %>% summarise(EIR_Year=mean(eir_y))
-  
-  # MOI#
-  meanMOI <- sampled_infections %>% group_by(time, host_id) %>% summarise(MOI=length(strain_id)) %>% group_by(time) %>% summarise(meanMOI=mean(MOI))
-  summary_general <- inner_join(summary_general, meanMOI) # Add MOI to the summary
-  
-  # Host age structure
-  hosts <- dbGetQuery(db, 'SELECT * FROM hosts')
-  names(hosts)[1] <- 'host_id'
-  hosts$lifespan <- round((hosts$death_time-hosts$birth_time))
-  hosts <- subset(hosts, host_id%in%sampled_infections$host_id)
-  sampled_infections <- left_join(sampled_infections, hosts, by='host_id')
-  sampled_infections$host_age <- round((sampled_infections$time-sampled_infections$birth_time)/30)
-  
+
   return(list(summary_general=as.tibble(summary_general), sampled_infections=as.tibble(sampled_infections)))
 }
 
@@ -358,24 +338,28 @@ for (i in sprintf('%0.2d', 0:5)){
   assign(paste('PS04_S_',i,sep=''), get_data(parameter_space = '04', scenario = 'S', experiment = i, run = 1))
 }
 
+PS36_S_001 <- get_data(parameter_space = '36', scenario = 'S', experiment = '001', run = 1)
+plots <- generate_plots(PS36_S_001)
 
 # Compare between PS ------------------------------------------------------
 setwd('~/Documents/malaria_interventions_data/')
 ps <- sprintf('%0.2d',27:39)[-11]
-d <- map(1:5, function(r){
+scenario <- 'S'
+ps_comparison <- map(1:5, function(r){
       map(ps, function(i){
         cat(i)
-        tmp <- get_data(parameter_space = i, scenario = 'N', experiment = '002', run = r)
+        tmp <- get_data(parameter_space = i, scenario = scenario, experiment = '002', run = r)
         return(tmp[[1]])
       }) %>% bind_rows()
     }) %>% bind_rows()
 
 
-time_range <- c(28800,40000)
+time_range <- c(28800,max(ps_comparison$time))
+design <- loadExperiments_GoogleSheets() 
 
-my_cols <- gg_color_hue(length(unique(d$PS)), hue_min = 10, hue_max = 280, l = 62, c = 200)
+my_cols <- gg_color_hue(length(unique(ps_comparison$PS)), hue_min = 10, hue_max = 280, l = 62, c = 200)
 # my_cols <- c('red','green','blue','orange','black')
-d %>%
+ps_comparison %>%
   left_join(subset(design, select=c(PS,BITING_RATE_MEAN,N_GENES_INITIAL)), by='PS') %>% 
   mutate(N_GENES_INITIAL=as.factor(N_GENES_INITIAL)) %>% 
   select(-year, -month, -n_infected) %>% 
@@ -387,10 +371,10 @@ d %>%
   # filter(variable %in% c('n_circulating_strains')) %>%
   ggplot(aes(x=time, y=value_mean, color=N_GENES_INITIAL))+
   geom_line()+
-  geom_vline(xintercept = c(29160,29160+3600), linetype='dashed')+
+  geom_vline(xintercept = c(29160,29160+720), linetype='dashed')+
   # geom_vline(xintercept = 29160, linetype='dashed')+
   scale_color_manual(values=my_cols)+
-  scale_x_continuous(breaks=pretty(x=subset(d, time>time_range[1]&time<time_range[2])$time,n=5))+
+  scale_x_continuous(breaks=pretty(x=subset(ps_comparison, time>time_range[1]&time<time_range[2])$time,n=5))+
   facet_wrap(~variable, scales='free')+
   mytheme
 
@@ -411,7 +395,7 @@ d %>%
 
 
 # Compare between experiments ---------------------------------------------
-control <- get_data(parameter_space = '39', scenario = 'S', experiment = '001', run = 1)[[1]]
+control <- get_data(parameter_space = '39', scenario = 'N', experiment = '001', run = 1)[[1]]
 control_means <- control %>% select(-year, -month, -n_infected) %>% 
   gather(variable, value, -time, -exp, -PS, -scenario, -run, -pop_id) %>% 
   group_by(PS, exp, variable) %>% summarise(mean_value=mean(value))
@@ -427,13 +411,13 @@ e <- sprintf('%0.3d', 1:4)
 d <- map(1:5, function(r){
   map(e, function(i){
     cat(i)
-    tmp <- get_data(parameter_space = '39', scenario = 'S', experiment = i, run = r)
+    tmp <- get_data(parameter_space = '39', scenario = 'N', experiment = i, run = r)
     return(tmp[[1]])
   }) %>% bind_rows()
 }) %>% bind_rows()
 
 # Add control to the design_irs data frame, which is created in build_parameter_files.R
-design_irs <- create_intervention_scheme_IRS(PS_benchmark = '12', scenario_benchmark = 'S', IRS_START_TIMES = '29160', immigration_range=c(0,0.001), length_range=c(1800,3600), coverage_range=0.9, write_to_file = T, design_ref=design)
+design_irs <- create_intervention_scheme_IRS(PS_benchmark = '39', scenario_benchmark = 'N', IRS_START_TIMES = '29160', immigration_range=c(0,0.001), length_range=c(1800,3600), coverage_range=0.9, write_to_file = T, design_ref=design)
 design_irs %<>% slice(rep(1, each = 1)) %>% bind_rows(design_irs)
 design_irs[1, 'exp'] <- '001'
 design_irs[1, grepl("IRS", names(design_irs))] <- 'control'
@@ -470,9 +454,9 @@ d %>%
   filter(variable %in% c('prevalence', 'meanMOI','n_circulating_strains', 'n_circulating_genes')) %>%
   
   left_join(design_irs) %>% 
-  filter(IRS_length=='7200' | IRS_length=='control') %>%
+  # filter(IRS_length=='720' | IRS_length=='control') %>%
   filter(IRS_coverage=='0.9' | IRS_coverage=='control') %>%
-  ggplot(aes(x=time, y=value, color=IRS_IMMIGRATION))+
+  ggplot(aes(x=time, y=value, color=IRS_length))+
   # geom_vline(xintercept = intervention_start+seq(0,7200,1800),color='gray')+
   # geom_vline(xintercept = seq(28800,39960,720),color='gray')+
   geom_line()+
@@ -498,12 +482,12 @@ d %>%
 # genes) after an intervention is lifted. The comparison is done to the control
 # experiment. 
 
-
+scenario <- 'S'
 intervention_stats <- c()
 intervention_stats_diff <- c()
 PS <- sprintf('%0.2d', (27:39)[-11])
 exp <- sprintf('%0.3d', 1:4)
-design_irs <- create_intervention_scheme_IRS(PS_benchmark = '27', scenario_benchmark = 'S', IRS_START_TIMES = '29160', immigration_range=c(0), length_range=c(720,1800,3600), coverage_range=0.9, write_to_file = F, design_ref=design)
+design_irs <- create_intervention_scheme_IRS(PS_benchmark = '27', scenario_benchmark = scenario, IRS_START_TIMES = '29160', immigration_range=c(0), length_range=c(720,1800,3600), coverage_range=0.9, write_to_file = F, design_ref=design)
 # Add control to the design_irs data frame, which is created in build_parameter_files.R
 design_irs %<>% slice(rep(1, each = 1)) %>% bind_rows(design_irs)
 design_irs[1, 'exp'] <- '001'
@@ -511,17 +495,17 @@ design_irs[1, 'IRS_length'] <- 0
 
 for (run in 1:5){
   for (ps in PS){
-    if (file.exists(paste('~/Documents/malaria_interventions_data/PS',ps,'_S_E001_R',run,'.sqlite',sep=''))){
-      control_data <- get_data(parameter_space = ps, scenario = 'S', experiment = '001', run = run)[[1]]
+    if (file.exists(paste('~/Documents/malaria_interventions_data/PS',ps,'_',scenario,'_E001_R',run,'.sqlite',sep=''))){
+      control_data <- get_data(parameter_space = ps, scenario = scenario, experiment = '001', run = run)[[1]]
     }
     for (e in exp){
       print(paste(Sys.time(),run,ps,e,sep=' | '))
-      if (file.exists(paste('~/Documents/malaria_interventions_data/PS',ps,'_S_E',e,'_R',run,'.sqlite',sep=''))){
-        x <- post_intervention_stats(PS = ps, scenario = 'S', exp=e, run = run, plot.it = F, control_data = control_data, design_irs = design_irs)
+      if (file.exists(paste('~/Documents/malaria_interventions_data/PS',ps,'_',scenario,'_E',e,'_R',run,'.sqlite',sep=''))){
+        x <- post_intervention_stats(PS = ps, scenario = scenario, exp=e, run = run, plot.it = F, control_data = control_data, design_irs = design_irs)
         intervention_stats <- rbind(intervention_stats, x$summary_stats)
         intervention_stats_diff <- rbind(intervention_stats_diff, x$diff_control)
       } else {
-        cat('missing file: ');cat(paste('PS',ps,'_S_E',e,'_R',run,'.sqlite',sep=''));cat('\n')
+        cat('missing file: ');cat(paste('PS',ps,'_',scenario,'_E',e,'_R',run,'.sqlite',sep=''));cat('\n')
       }
     }
   }
