@@ -1,3 +1,16 @@
+---
+title: "Preliminary results"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+knitr::opts_knit$set(root.dir = "~/Documents/malaria_interventions_data/")
+```
+
+
+```{r initiate and load functions, cache=TRUE, include=FALSE}
+setwd('~/Documents/malaria_interventions_data/')
 library(tidyverse)
 library(magrittr)
 library(sqldf)
@@ -12,7 +25,6 @@ loadExperiments_GoogleSheets <- function(workBookName='malaria_interventions_des
   print(experiments)
   return(experiments)
 }
-
 
 create_intervention_scheme_IRS <- function(PS_benchmark, scenario_benchmark, IRS_START_TIMES=NULL, immigration_range, length_range, coverage_range, write_to_file=T, design_ref=NULL){
   # This fixes the 1. in the file name produced in Mathematica
@@ -55,7 +67,6 @@ create_intervention_scheme_IRS <- function(PS_benchmark, scenario_benchmark, IRS
   return(scheme)
 }
 
-
 mytheme <- theme_bw() + theme(
   legend.title  = element_text(colour = "black", size=17),
    # legend.position = "none",
@@ -64,7 +75,7 @@ mytheme <- theme_bw() + theme(
   legend.text  = element_text(colour = "black", size=17),
   panel.background = element_blank(),
   panel.grid.major = element_blank(),
-  # panel.grid.minor = element_blank(),
+  panel.grid.minor = element_blank(),
   axis.text = element_text(color='black', family="Helvetica", size=10),
   strip.text.x = element_text(family = "Helvetica", size = 10),
   strip.text.y = element_text(family = "Helvetica", size = 10),
@@ -120,7 +131,7 @@ get_data <- function(parameter_space, scenario, experiment, run, sampling_period
   summary_alleles <- dbGetQuery(db, 'SELECT * FROM summary_alleles')
   summary_alleles %<>% group_by(time) %>% summarise(n_alleles=sum(n_circulating_alleles))
   
-  summary_general <- suppressMessages(left_join(summary_general, summary_alleles))
+  summary_general %<>% left_join(summary_alleles)
   
   sampled_infections <- dbGetQuery(db, 'SELECT * FROM sampled_infections')
   sampled_infections$PS <- parameter_space
@@ -150,7 +161,7 @@ get_data <- function(parameter_space, scenario, experiment, run, sampling_period
 
   # MOI#
   meanMOI <- sampled_infections %>% group_by(time, host_id) %>% summarise(MOI=length(strain_id)) %>% group_by(time) %>% summarise(meanMOI=mean(MOI))
-  summary_general <- suppressMessages(inner_join(summary_general, meanMOI)) # Add MOI to the summary
+  summary_general <- inner_join(summary_general, meanMOI) # Add MOI to the summary
   
   
   # Host age structure
@@ -159,7 +170,7 @@ get_data <- function(parameter_space, scenario, experiment, run, sampling_period
     names(hosts)[1] <- 'host_id'
     hosts$lifespan <- round((hosts$death_time-hosts$birth_time))
     hosts <- subset(hosts, host_id%in%sampled_infections$host_id)
-    sampled_infections <- suppressMessages(left_join(sampled_infections, hosts, by='host_id'))
+    sampled_infections <- left_join(sampled_infections, hosts, by='host_id')
     sampled_infections$host_age <- round((sampled_infections$time-sampled_infections$birth_time)/30)    
   }
 
@@ -248,7 +259,7 @@ post_intervention_stats <- function(PS, scenario='S', exp, run, post_interventio
   y <- experiment_data %>%
     select(-year, -month, -n_infected) %>% 
     gather(variable, value, -time, -exp, -PS, -scenario, -run, -pop_id)
-  diff_control <- suppressMessages(inner_join(x,y,by=c('pop_id','PS','scenario','run','time','variable'))) %>% 
+  diff_control <- inner_join(x,y,by=c('pop_id','PS','scenario','run','time','variable')) %>% 
     mutate(diff=value.y-value.x, ratio=value.y/value.x) %>% 
     select(variable, time, diff, ratio)
   
@@ -284,8 +295,8 @@ post_intervention_stats <- function(PS, scenario='S', exp, run, post_interventio
     gather(variable, value, -time, -exp, -PS, -scenario, -run, -pop_id,-IRS_START_TIMES,-IRS_length) %>% 
     group_by(variable) %>% summarise(time_extinct=max(time))
   
-  summary_stats <- suppressMessages(left_join(time_extinct, new_mean))
-  summary_stats <- suppressMessages(left_join(summary_stats, amplitude))
+  summary_stats <- left_join(time_extinct, new_mean)
+  summary_stats <- left_join(summary_stats, amplitude)
   summary_stats$PS <- PS
   summary_stats$scenario <- scenario
   summary_stats$exp <- exp
@@ -303,26 +314,50 @@ post_intervention_stats <- function(PS, scenario='S', exp, run, post_interventio
   }
 }
 
-
-# Initialize important variables ------------------------------------------
-setwd('~/Documents/malaria_interventions_data/')
+# Some important general definitions -----------
 design <- loadExperiments_GoogleSheets() 
-scenario <- 'S'
 monitored_variables <- c('prevalence', 'meanMOI','n_circulating_strains', 'n_circulating_genes', 'n_alleles', 'n_total_bites')
+```
 
-# Compare between experiments within a parameter space --------------------
+# Background
+
+1. Explore the effect of the size of the gene pool (i.e., genetic diversity) on response of the population to an IRS intervention.
+2. Seasonality is incorporated into the dynamics.
+3. IRS is applied yearly from the end of the dry sesaon to the end of the wet season (days 120-300) for 2, 5 or 10 years. IRS coverage is 90%. The intervention increases the mortality of adult hosts and is implemented with a deterministic model.
+
+# Example of a full time series
+Immune selection at high genetic diversity, and high transmission. Blue line is a 5-year IRS.
+
+```{r plot complete time series, echo=FALSE, fig.width=16,fig.height=9,dpi=300,out.width="1920px",out.height="1080px"}
+library(tidyverse)
+library(magrittr)
+PS39_S_001 <- get_data(parameter_space = '39', scenario = 'S', experiment = '001', run = 1, host_age_structure = F)[[1]]
+PS39_S_003 <- get_data(parameter_space = '39', scenario = 'S', experiment = '003', run = 1, host_age_structure = F)[[1]]
+d <- rbind(PS39_S_001,PS39_S_003)
+d %>% 
+  select(-year, -month, -n_infected) %>% 
+  # filter(time>time_range[1]&time<time_range[2]) %>%
+  gather(variable, value, -pop_id, -time, -exp, -PS, -scenario, -run) %>% 
+  # group_by(pop_id, time, exp, PS, scenario, variable) %>%
+  # summarise(value_mean=mean(value), value_sd=sd(value)) %>% 
+  filter(variable %in% c('prevalence', 'meanMOI','n_circulating_strains', 'n_circulating_genes', 'n_alleles', 'n_total_bites')) %>%
+  ggplot(aes(x=time, y=value, color=exp, group=exp))+
+  geom_line()+
+  geom_vline(xintercept = c(29160,29160+1800), linetype='dashed')+
+
+  # scale_x_continuous(breaks=pretty(x=subset(ps_comparison, time>time_range[1]&time<time_range[2])$time,n=5))+
+  facet_wrap(~variable, scales='free')+
+  mytheme+theme(legend.position = 'none')
+```
+
+# Compare between experiments within a parameter space
+```{r parameter space, cache=TRUE, include=FALSE}
+scenario <- 'S'
 PS <- '36'
 control <- get_data(parameter_space = PS, scenario = scenario, experiment = '001', run = 1)[[1]]
 control_means <- control %>% select(-year, -month, -n_infected) %>% 
   gather(variable, value, -time, -exp, -PS, -scenario, -run, -pop_id) %>% 
   group_by(PS, exp, variable) %>% summarise(mean_value=mean(value))
-control %>% select(-year, -month, -n_infected) %>% 
-  gather(variable, value, -time, -exp, -PS, -scenario, -run, -pop_id) %>% 
-  ggplot(aes(x=time, y=value))+
-  geom_line()+
-  facet_wrap(~variable,scales='free')+
-  geom_hline(aes(yintercept=mean_value), data=control_means, color='blue')+
-  mytheme
 
 e <- sprintf('%0.3d', 1:4)
 exp_comparison <- map(1:5, function(r){
@@ -342,6 +377,9 @@ design_irs[1, grepl("IRS", names(design_irs))] <- 'control'
 time_range <- c(28800,36000)
 
 my_cols <- c('black',gg_color_hue(length(unique(design_irs$exp))-1, hue_min = 10, hue_max = 280, l = 62, c = 200))
+```
+
+```{r plot comparison experiments, echo=FALSE, fig.width=16,fig.height=9,dpi=300,out.width="1920px",out.height="1080px"}
 exp_comparison %>%
   select(-year, -month, -n_infected) %>% 
   filter(time>time_range[1]&time<time_range[2]) %>%
@@ -360,8 +398,14 @@ exp_comparison %>%
   scale_x_continuous(breaks=pretty(x=subset(d, time>time_range[1]&time<time_range[2])$time,n=5))+
   geom_hline(aes(yintercept=mean_value), data=subset(control_means, variable %in% monitored_variables) , color='blue')+
   mytheme
+```
 
-# Compare between parameter spaces within an experiment -------------------
+# Comparison of different genetic pool sizes for a given experiment
+
+This is an example with a 5-year IRS.
+
+```{r Load_S_E002, cache=TRUE, include=FALSE}
+scenario <- 'S'
 ps <- sprintf('%0.2d',27:39)[-11]
 exp <- '002'
 ps_comparison <- map(1:5, function(r){
@@ -372,11 +416,11 @@ ps_comparison <- map(1:5, function(r){
       }) %>% bind_rows()
     }) %>% bind_rows()
 
-
 time_range <- c(28800,max(ps_comparison$time))
-
 my_cols <- gg_color_hue(length(unique(ps_comparison$PS)), hue_min = 10, hue_max = 280, l = 62, c = 200)
-# my_cols <- c('red','green','blue','orange','black')
+```
+
+```{r plot comparison selection, echo=FALSE, fig.width=16,fig.height=9,dpi=300,out.width="1920px",out.height="1080px"}
 ps_comparison %>%
   left_join(subset(design, select=c(PS,BITING_RATE_MEAN,N_GENES_INITIAL)), by='PS') %>% 
   mutate(N_GENES_INITIAL=as.factor(N_GENES_INITIAL)) %>% 
@@ -393,34 +437,18 @@ ps_comparison %>%
   scale_x_continuous(breaks=pretty(x=subset(ps_comparison, time>time_range[1]&time<time_range[2])$time,n=5))+
   facet_wrap(~variable, scales='free')+
   mytheme
+# +theme(legend.position = "none",
+#                 axis.text = element_text(color='black', family="Helvetica", size=5),
+#   strip.text.x = element_text(family = "Helvetica", size = 5),
+#   strip.text.y = element_text(family = "Helvetica", size = 5)
+#                 )
+```
 
-# Compare EIR
-ps <- sprintf('%0.2d', c(27,30,36,39))
-ps_comparison_eir <- map(1:5, function(r){
-  map(ps, function(i){
-    cat(i)
-    tmp <- get_data(parameter_space = i, scenario = scenario, experiment = '001', run = r)
-    return(tmp[[1]])
-  }) %>% bind_rows()
-}) %>% bind_rows()
+# Time to extinction as a function of the diversity
 
-ps_comparison_eir %>% 
-  left_join(design, by='PS') %>% 
-  mutate(N_GENES_INITIAL=as.factor(N_GENES_INITIAL)) %>% 
-  ggplot(aes(x=month, y=EIR, color=N_GENES_INITIAL))+
-  geom_boxplot()+
-  stat_summary(aes(group=N_GENES_INITIAL), fun.y=mean, geom="line", size=1)+
-  facet_wrap(~N_GENES_INITIAL)+
-  scale_y_continuous(breaks=seq(0,20,2))+
-  mytheme
-  
-# Calculate stats at the end of interventions -----------------------------
-
-# These are some summary statistics that would quantify the effect of
-# intervention on a particular metric (e.g., prevalence. numbner of circulating
-# genes) after an intervention is lifted. The comparison is done to the control
-# experiment. 
-
+```{r load_summary_stats_S, cache=TRUE, include=FALSE}
+setwd('~/Documents/malaria_interventions_data/')
+scenario <- 'S'
 intervention_stats <- c()
 intervention_stats_diff <- c()
 PS <- sprintf('%0.2d', (27:39)[-11])
@@ -448,8 +476,9 @@ for (run in 1:5){
     }
   }
 }
+```
 
-# Time to extinction as a function of the diversity
+```{r plot time to extinction, echo=FALSE, fig.width=16,fig.height=9,dpi=300,out.width="1920px",out.height="1080px"}
 intervention_stats %>% 
   left_join(subset(design, select=c(PS,BITING_RATE_MEAN,N_GENES_INITIAL)), by='PS') %>% 
   group_by(PS, BITING_RATE_MEAN, N_GENES_INITIAL, scenario, exp) %>% 
@@ -464,8 +493,10 @@ intervention_stats %>%
   facet_grid(~exp)+
   mytheme+
   theme(axis.text.x = element_text(angle = 90, hjust=0))
+```
 
-# Calculate probability of extinction as a proportion of runs which went extinct
+# Pobability of extinction as a proportion of runs which went extinct
+```{r prob. of extinction, echo=FALSE, fig.width=16,fig.height=9,dpi=300,out.width="1920px",out.height="1080px"}
 intervention_stats %>% 
   left_join(subset(design, select=c(PS,BITING_RATE_MEAN,N_GENES_INITIAL)), by='PS') %>% 
   left_join(subset(design_irs, select=c(exp,IRS_START_TIMES,IRS_length))) %>%
@@ -480,7 +511,12 @@ intervention_stats %>%
   facet_wrap(~exp)+
   mytheme+
   theme(axis.text.x = element_text(angle = 90, hjust=0))
+```
 
+# Ratio of pre- vs post-IRS, compared to control
+Calculate the ratio of the value of variables POST-intervention compared to control. For example, we can say that intervention has reduced the prevalence by 50% compared to control in a given parameter space and experiment. The post-intervention period starts 1 year after lifting the IRS, to avoid the transience.
+
+```{r pre vs post-IRS, echo=FALSE, fig.width=16,fig.height=9,dpi=300,out.width="1920px",out.height="1080px"}
 # This calculates the ratio of the value of variables POST-intervention compared
 # to control. For example, we can say that intervention has reduced the
 # prevalence by 50% compared to control in a given PS and experiment.
@@ -494,36 +530,29 @@ intervention_stats_diff %>%
   
   # select(variable, mean_value, PS, exp, run) %>% arrange(variable, PS, run, exp)
   group_by(PS, BITING_RATE_MEAN, N_GENES_INITIAL, scenario, exp, variable) %>% 
+  # filter(exp!='001') %>% 
   summarise(mean_diff=mean(diff), 
             mean_ratio=mean(ratio),
             sd_ratio=sd(ratio)) %>%
   mutate(error_up=mean_ratio+sd_ratio,
          error_low=mean_ratio-sd_ratio) %>% 
-  ggplot(aes(x=PS, y=mean_ratio, color=exp, group=exp))+
+  ggplot(aes(x=as.numeric(N_GENES_INITIAL), y=mean_ratio, color=exp, group=exp))+
   geom_point(size=3)+
   geom_line()+
+  scale_x_continuous("Gene pool size", breaks = seq(1200,15600,1200)) +
   # geom_errorbar(aes(ymin=error_low, ymax=error_up), width=0.1)+
   # geom_line(aes(x=PS, y=error_up, color=exp, group=exp), linetype='dashed')+
   # geom_line(aes(x=PS, y=error_low, color=exp, group=exp), linetype='dashed')+
-  facet_wrap(BITING_RATE_MEAN~variable,scales='free_y')+
-  mytheme
+  facet_wrap(~variable,scales='free_y')+
+  mytheme+
+  theme(axis.text.x = element_text(angle = 90, hjust=0))
 
-# Time series of difference from control (i.e., experiment-control)
-intervention_stats_diff %>%
-  left_join(subset(design, select=c(PS,BITING_RATE_MEAN,N_GENES_INITIAL)), by='PS') %>% 
-  filter(variable %in% c('n_circulating_strains','prevalence')) %>% 
-  # filter(exp=='004') %>% filter(PS=='27') %>% 
-  group_by(time,variable,PS,scenario,exp,BITING_RATE_MEAN,N_GENES_INITIAL) %>% 
-  summarise(diff=mean(diff)) %>% 
-  ggplot(aes(x=time, y=diff, color=as.factor(N_GENES_INITIAL)))+
-  scale_color_manual(values = gg_color_hue(length(PS),hue_min = 10, 400))+
-  geom_line()+
-  geom_hline(yintercept = 0, color='black')+
-  facet_wrap(variable~BITING_RATE_MEAN+exp, scales='free_y')+
-  mytheme
+```
 
+# Selection vs. Neutral vs. Generalized immunity
+Compare the response of each of these scenarios to increasing IRS levels.
 
-# Compare between scenarios within a parameter space and experiment -------
+```{r scenario comparison data set, cache=TRUE, include=FALSE}
 PS <- '36'
 cases <- expand.grid(scenario=c('S','G','N'), exp=sprintf('%0.3d',1:4), run=1:5)
 scenario_comparison <- c()
@@ -534,8 +563,10 @@ for (i in 1:nrow(cases)){
 }
 
 time_range <- c(28800,max(scenario_comparison$time))
-
 my_cols <- c('red','orange','blue')
+```
+
+```{plot scenarios and experiments, echo=FALSE, fig.width=16,fig.height=9,dpi=300,out.width="1920px",out.height="1080px"}
 scenario_comparison %>%
   mutate(scenario=factor(scenario, levels=c('S','N','G'))) %>% 
   select(-year, -month, -n_infected) %>% 
@@ -550,332 +581,5 @@ scenario_comparison %>%
   scale_x_continuous(breaks=pretty(x=subset(ps_comparison, time>time_range[1]&time<time_range[2])$time,n=5))+
   facet_grid(variable~exp, scales='free')+
   mytheme
+```
 
-
-# Compare the effects of intervention with summary stats
-
-# These are some summary statistics that would quantify the effect of
-# intervention on a particular metric (e.g., prevalence. numbner of circulating
-# genes) after an intervention is lifted. The comparison is done to the control
-# experiment. 
-
-design_irs <- create_intervention_scheme_IRS(PS_benchmark = '27', scenario_benchmark = scenario, IRS_START_TIMES = '29160', immigration_range=c(0), length_range=c(720,1800,3600), coverage_range=0.9, write_to_file = F, design_ref=design)
-# Add control to the design_irs data frame, which is created in build_parameter_files.R
-design_irs %<>% slice(rep(1, each = 1)) %>% bind_rows(design_irs)
-design_irs[1, 'exp'] <- '001'
-design_irs[1, 'IRS_length'] <- 0
-
-intervention_stats <- c()
-intervention_stats_diff <- c()
-for (scenario in c('S','G','N')){
-  for (run in 1:5){
-    for (ps in sprintf('%0.2d',27:39)[-11]){
-      if (file.exists(paste('~/Documents/malaria_interventions_data/PS',ps,'_',scenario,'_E001_R',run,'.sqlite',sep=''))){
-        control_data <- get_data(parameter_space = ps, scenario = scenario, experiment = '001', run = run)[[1]]
-      }
-      for (e in sprintf('%0.3d',1:4)){
-        print(paste(Sys.time(),scenario, run, ps, e,sep=' | '))
-        if (file.exists(paste('~/Documents/malaria_interventions_data/PS',ps,'_',scenario,'_E',e,'_R',run,'.sqlite',sep=''))){
-          x <- post_intervention_stats(PS = ps, scenario = scenario, exp=e, run = run, plot.it = F, control_data = control_data, design_irs = design_irs)
-          intervention_stats <- rbind(intervention_stats, x$summary_stats)
-          intervention_stats_diff <- rbind(intervention_stats_diff, x$diff_control)
-        } else {
-          cat('missing file: ');cat(paste('PS',ps,'_',scenario,'_E',e,'_R',run,'.sqlite',sep=''));cat('\n')
-        }
-      }
-    }
-  }
-}
-
-# Time to extinction as a function of the diversity
-intervention_stats %>% 
-  mutate(scenario=factor(scenario, levels=c('S','N','G'))) %>% 
-  left_join(subset(design, select=c(PS,BITING_RATE_MEAN,N_GENES_INITIAL)), by='PS') %>% 
-  group_by(PS, BITING_RATE_MEAN, N_GENES_INITIAL, scenario, exp) %>% 
-  summarise(time_ext_max=max(time_extinct), time_ext_mean=mean(time_extinct)) %>% 
-  ggplot()+
-  geom_point(aes(x=as.numeric(N_GENES_INITIAL), y=time_ext_max, shape=scenario), size=5, color='red')+
-  geom_point(aes(x=as.numeric(N_GENES_INITIAL), y=time_ext_mean, shape=scenario), size=5, color='blue')+
-  geom_line(aes(x=as.numeric(N_GENES_INITIAL), y=time_ext_max, shape=scenario), color='red')+
-  geom_line(aes(x=as.numeric(N_GENES_INITIAL), y=time_ext_mean, shape=scenario), color='blue')+
-  scale_x_continuous("Gene pool size", breaks = seq(1200,15600,1200)) +
-  labs(y='Mean and max time to extinction')+
-  facet_grid(scenario~exp)+
-  mytheme+
-  theme(axis.text.x = element_text(angle = 90, hjust=0))
-
-# Calculate probability of extinction as a proportion of runs which went extinct
-intervention_stats %>% 
-  mutate(scenario=factor(scenario, levels=c('S','N','G'))) %>% 
-  # left_join(subset(design, select=c(PS,BITING_RATE_MEAN,N_GENES_INITIAL)), by='PS') %>% 
-  left_join(subset(design_irs, select=c(exp,IRS_START_TIMES,IRS_length,BITING_RATE_MEAN,N_GENES_INITIAL))) %>%
-  distinct(scenario, PS, N_GENES_INITIAL, exp, run, time_extinct,IRS_START_TIMES,IRS_length) %>% 
-  mutate(extinct=ifelse(time_extinct<as.numeric(IRS_START_TIMES)+as.numeric(IRS_length),1,0)) %>%
-  group_by(scenario, PS, exp, N_GENES_INITIAL) %>% 
-  summarise(extinct_prob=sum(extinct)/max(intervention_stats$run)) %>% 
-  ggplot(aes(x=N_GENES_INITIAL, y=extinct_prob, group=exp, color=exp))+
-  geom_point(size=4)+
-  geom_line()+
-  scale_x_continuous("Gene pool size", breaks = seq(1200,15600,1200)) +
-  facet_grid(scenario~exp)+
-  mytheme+
-  theme(axis.text.x = element_text(angle = 90, hjust=0))
-#----------------------------------------------------------------------------
-# This part compares the fits of the duration curve of the selection and the generalized immunity.
-parameter_space <- '03'
-experiment <- '01'
-run <- 1
-
-sqlite_file <- paste('/home/shai/Documents/malaria_interventions_sqlite/','PS',parameter_space,'_S_E',experiment,'_R',run,'.sqlite',sep='')
-db <- dbConnect(SQLite(), dbname = sqlite_file)
-sampled_duration <- dbGetQuery(db, 'SELECT time, duration,infection_id FROM sampled_duration')
-
-setwd('/home/shai/Documents/malaria_interventions')
-fit <- set_generalized_immunity(parameter_space=parameter_space, run=run)[[1]]
-generalImmunityParams <- python.get('generalImmunityParams')
-a=generalImmunityParams[1]
-b=generalImmunityParams[2]
-c=generalImmunityParams[3]
-d=generalImmunityParams[4]
-
-p <- sampled_duration %>% ggplot(aes(infection_id, duration))+
-  geom_point()
-# Check fit
-x.fit <- 0:max(sampled_duration$infection_id)
-y.fit <- ((b*exp(-c*x.fit))/(d*x.fit+1)^d)+a
-fit <- data.frame(infection_id=x.fit, duration=y.fit)
-p <- p+geom_point(data=fit, color='red',size=3)
-
-
-sqlite_file <- paste('/home/shai/Documents/malaria_interventions_sqlite/','PS',parameter_space,'_G_E',experiment,'_R',run,'.sqlite',sep='')
-db <- dbConnect(SQLite(), dbname = sqlite_file)
-sampled_duration <- dbGetQuery(db, 'SELECT time, duration,infection_id FROM sampled_duration')
-generalized <- sampled_duration %>% group_by(infection_id) %>% summarise(meanDOI=mean(duration))
-fit_generalized <-  data.frame(infection_id=generalized$infection_id, duration=generalized$meanDOI)
-
-p <- p+geom_point(data=fit_generalized, color='blue',size=3)
-
-png('scenario_comparison_2.png',1800,1000)
-p+mytheme
-dev.off()
-
-# This compares the age distribution of infected hosts
-d <- rbind(PS03_S_01[[2]],PS03_G_01[[2]],PS03_N_01[[2]])
-png('scenario_comparison_3.png',1800,1000)
-d %>% ggplot(aes(x=host_age, fill=scenario))+geom_histogram() + 
-  labs(x='Infected host age (months)') + 
-  geom_vline(xintercept = 60) +
-  scale_fill_manual(values=c('blue','orange','red'))+
-  mytheme
-dev.off()
-
-
-
-
-# Structure ---------------------------------------------------------------
-# Initialize
-parameter_space <- '03'
-scenario <- 'S'
-experiment <- '01'
-run <- 1
-base_name <- paste('PS',parameter_space,'_',scenario,'_E',experiment,'_R',run,sep='')
-sqlite_file <- paste(base_name,'.sqlite',sep='')
-# parameter_file <- paste(base_name,'.py',sep='') # This may be necessary so I leave it
-
-# Extract data from sqlite. variable names correspond to table names
-db <- dbConnect(SQLite(), dbname = sqlite_file)
-sampled_strains <- as.tibble(dbGetQuery(db, 'SELECT id, gene_id FROM sampled_strains'))
-names(sampled_strains)[1] <- c('strain_id')
-sampled_alleles <- as.tibble(dbGetQuery(db, 'SELECT * FROM sampled_alleles'))
-names(sampled_alleles)[3] <- c('allele_id')
-sampled_strains <- full_join(sampled_strains, sampled_alleles)
-sampled_strains$allele_locus <- paste(sampled_strains$allele_id,sampled_strains$locus,sep='_') # each allele in a locus is unique
-
-sampled_infections <- PS03_S_01[[2]]
-sampled_infections$layer <- group_indices(sampled_infections, time) # Add layer numbers. Each time point is a layer
-sampled_infections %<>% arrange(layer,strain_id,host_id) %>% group_by(layer,strain_id) %>% mutate(strain_copy = row_number()) # add unique id for each strain copy within each layer. A strain copy is an instance of a strain in a particualr host
-sampled_infections$strain_id_unique=paste(sampled_infections$strain_id,sampled_infections$strain_copy,sep='_') # Create the unique strains
-
-# Integrate the strain composition into the infections table
-identical(unique(sampled_infections$strain_id),unique(sampled_strains$strain_id)) # This pretty important
-sampled_infections %<>% select(time, layer, host_id, strain_id, strain_copy, strain_id_unique) %>% left_join(sampled_strains)
-
-#sampled_infections <- subset(sampled_infections, layer<=10)
-
-
-overlapAlleleAdj<-function(mat){
-  newmat<-tcrossprod(mat>0)
-  newmat<-newmat/rowSums(mat>0)
-  return(newmat)  
-}
-
-# A function to build the similarity matrix for a single layer and calculate some summary stats
-build_layer <- function(l){
-  sampled_infections_layer <- subset(sampled_infections, layer==l) # This is MUCH faster than sampled_infections_layer <- sampled_infections %>% filter(layer==l)
-  sampled_infections_layer %<>% group_by(strain_id) %>% mutate(freq = n()/120) %>% arrange(strain_id_unique) # strain frequency (the number of strain copies should be equal to the frequency)
-  # Calculate the edges
-  similarity_matrix <- table(sampled_infections_layer$strain_id_unique, sampled_infections_layer$allele_locus)
-  similarity_matrix <- overlapAlleleAdj(similarity_matrix)
-  # Some summary
-  layer_summary <- with(sampled_infections_layer, 
-                        data.frame(hosts=length(unique(host_id)),
-                                   strains=length(unique(strain_id)),
-                                   total_infections=length(unique(strain_id_unique))
-                                   ))
-  return(list(similarity_matrix=similarity_matrix, infections=sampled_infections_layer, layer_summary=layer_summary))
-}
-
-Layers <- list()
-for (l in 1:max(sampled_infections$layer)){
-  cat(paste('[',Sys.time(), '] building layer ',l,'\n',sep=''))
-  Layers[[l]] <- build_layer(l)  
-}
-
-# Get just the matrices
-temporal_network <- unique(lapply(Layers, function(x) head(x, 1)$similarity_matrix))
-sapply(temporal_network, dim)
-
-# Apply a cutoff
-x <- xtabs(~strain_id+allele_locus, subset(sampled_strains, strain_id%in%sampled_infections$strain_id))
-similarityMatrix <- overlapAlleleAdj(x)
-dim(similarityMatrix)
-# # Write similarity matrix without cutoff. This used to plot the edge weight distributions.
-# write.table(similarityMatrix, paste('../',filenameBase,'_similarityMatrix_nocutoff.csv',sep=''), row.names = T, col.names = T, sep=',')
-cutoffValue <- quantile(as.vector(similarityMatrix), probs = 0.9)
-print(cutoffValue)
-# hist(as.vector(similarityMatrix));abline(v=cutoffValue,col='red')
-similarityMatrix[similarityMatrix<cutoffValue] <- 0
-# write.table(similarityMatrix, paste(filenameBase,'_similarityMatrix.csv',sep=''), row.names = T, col.names = T, sep=',')
-# write.table(similarityMatrix, paste('../',filenameBase,'_similarityMatrix.csv',sep=''), row.names = T, col.names = T, sep=',')
-
-for (i in 1:length(temporal_network)){
-  print(i)
-  x <- temporal_network[[i]]
-  x[x<cutoffValue] <- 0
-  temporal_network[[i]] <- x
-}
-
-# This function takes a list of temporal matrices and returns an intralayer and
-# interlayer edge lists in a format: [layer_source, node_source, layer_target node_target, weight].
-# It also returns the list of node names
-build_infomap_objects <- function(temporal_network, write_to_infomap_file=T, return_objects=T){
-  require(igraph)
-  
-  # Define functions
-  
-  ## A function to get the repertoire names from unique repertoire copy names
-  splitText <- function(str,after=T,splitchar='\\.'){
-    if (after){
-      return(sapply(strsplit(str, split=splitchar), tail, 1))
-    }
-    if (after==F){
-      return(sapply(strsplit(str, split=splitchar), head, 1))
-    }
-  }
-  
-  ##  A function that gets the layer as a matrix and writes it for infomap as an edge list
-  matrix_to_infomap <- function(l){
-    require(igraph)
-    current_layer <- temporal_network[[l]]
-    if(nrow(current_layer)<2){
-      print(paste('No strains in layer',l,'!!! skipping intralayer edges'))
-      next
-    }
-    g <- graph.adjacency(current_layer, mode = 'directed', weighted = T)
-    current_layer_el <- as.tibble(as_data_frame(g, what = 'edges'))
-    names(current_layer_el) <- c('node_s','node_t','w')
-    current_layer_el$layer_s <- l
-    current_layer_el$layer_t <- l
-    current_layer_el$node_s <- nodeList$nodeID[match(current_layer_el$node_s,nodeList$nodeLabel)]
-    current_layer_el$node_t <- nodeList$nodeID[match(current_layer_el$node_t,nodeList$nodeLabel)]
-    current_layer_el %<>% select(layer_s, node_s, layer_t, node_t, w)
-    print(paste('[',Sys.time(), '] Created edge list of layer ',l,' for Infomap | ', nrow(current_layer_el),' edges',sep=''))
-    return(current_layer_el)
-  }
-  
-  ## A function that calculates interlayer edges between layer t and t+1
-  build_interlayer_edges_1step <- function(t){
-    strain_copies_t <- rownames(temporal_network[[t]]) # repertoires at time t
-    strain_copies_t1 <- rownames(temporal_network[[t+1]]) # repertoires at time t+1
-    if (length(strain_copies_t)<2 | length(strain_copies_t1)<2){
-      print(paste('No interlayer edges between layers',t, 'and',t+1,'because there are < 2 repertoires.'))
-      next} # need minimum of 2 strains in t and t+1 to build a matrix
-    # Pull the similarity values between the repertoires from the general similarity matrix, then write back the repertoire copy names
-    inter_layer_edges_matrix <- similarityMatrix[splitText(strain_copies_t, after = F, '_'),splitText(strain_copies_t1, after = F, '_')] 
-    rownames(inter_layer_edges_matrix) <- strain_copies_t
-    colnames(inter_layer_edges_matrix) <- strain_copies_t1
-    if (all(inter_layer_edges_matrix==0)){
-      print(paste('All interlayer edges between layers',t, 'and',t+1,' are 0 (due to the cutoff). skipping.'))
-      next
-    }
-    # transform to an edge list
-    g <- graph.incidence(inter_layer_edges_matrix, directed = T, mode = 'out', weighted = T)
-    inter_layer_edges <- as.tibble(as_data_frame(g, what = 'edges'))
-    names(inter_layer_edges) <- c('node_s','node_t','w')
-    inter_layer_edges$layer_s <- t
-    inter_layer_edges$layer_t <- t+1
-    inter_layer_edges$node_s <- nodeList$nodeID[match(inter_layer_edges$node_s,nodeList$nodeLabel)]
-    inter_layer_edges$node_t <- nodeList$nodeID[match(inter_layer_edges$node_t,nodeList$nodeLabel)]
-    inter_layer_edges %<>% select(layer_s, node_s, layer_t, node_t, w)
-    print(paste('Built interlayer edges for layers: ',t,'-->',t+1,' | ', nrow(inter_layer_edges),' edges',sep=''))
-    return(inter_layer_edges)
-  }
-  
-  # Get the node list
-  nodeLabel <- sort(unique(unlist(lapply(temporal_network,rownames))))
-  nodeList <- data.frame(nodeID=1:length(nodeLabel), nodeLabel)
-  
-  # Create intralayer edge lists
-  layers <- 1:length(temporal_network)
-  infomap_intralayer <- map(layers, matrix_to_infomap) %>% bind_rows()
-  
-  # create interlayer edge lists
-  layers <- layers[-length(layers)]
-  infomap_interlayer <- map(layers, build_interlayer_edges_1step) %>% bind_rows()
-  
-  if (write_to_infomap_file){
-    sink.reset <- function(){
-      for(i in seq_len(sink.number())){
-        sink(NULL)
-      }
-    }
-    ## Write file for infomap
-    print('Writing Infomap files')
-    file <- paste(base_name,'_Infomap_multilayer','.txt',sep='')
-    print(paste('Infomap file:',file))
-    if (file.exists(file)){unlink(file)}
-    sink(file, append = T)
-    cat("# A network in a general multiplex format");cat('\n')
-    cat(paste("*Vertices",nrow(nodeList)));cat('\n')
-    write.table(nodeList, file, append = T,sep=' ', quote = T, row.names = F, col.names = F)
-    cat("*Multiplex");cat('\n')
-    cat("# layer node layer node [weight]");cat('\n')
-    cat("# Intralayer edges");cat('\n')
-    write.table(infomap_intralayer, file, sep = ' ', row.names = F, col.names = F, quote = F, append = T)
-    cat("# Interlayer edges");cat('\n')
-    write.table(infomap_interlayer, file, sep = ' ', row.names = F, col.names = F, quote = F, append = T)
-    sink.reset()
-  }
-  
-  if (return_objects){
-    return(list(infomap_intralayer=infomap_intralayer, infomap_interlayer=infomap_interlayer, nodeList=nodeList))
-  }
-}
-
-infomap_objects <- build_infomap_objects(temporal_network)
-
-
-
-# Calendar ----------------------------------------------------------------
-
-num_years <- 100
-months_in_year <- rep(c('Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'), each=30)
-calendar <- data.frame(running_day=seq(from = 1,to = 360*num_years,by=1),
-                       year_sim=rep(1:num_years, each=360),
-                       month_sim=rep(months_in_year,num_years),
-                       day_sim=rep(1:30,num_years))
-# calendar$layer <- ceiling((calendar$running_day-burnin)/30)
-# calendar$burnin <- 'No'
-# calendar$burnin[1:burnin] <- 'Yes'
-calendar <- as_tibble(calendar)
-calendar %>% filter(running_day==10930)
