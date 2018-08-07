@@ -56,7 +56,7 @@ loadExperiments_GoogleSheets <- function(workBookName='malaria_interventions_des
 # A function to remove sqlite and parameter files, or any other file for
 # specific combinations of parameter space, scenario and experiment. Will remove
 # across all runs.
-clear_previous_files <- function(parameter_space=NULL, scenario=NULL, experiment=NULL, exclude_sqlite=T, exclude_CP=T, exclude_control=T, test=F){
+clear_previous_files <- function(parameter_space=NULL, scenario=NULL, experiment=NULL, run = NULL, exclude_sqlite=T, exclude_CP=T, exclude_control=T, test=F){
   files <- list.files(path = '~/Documents/malaria_interventions_data/', full.names = T)
   if (!is.null(parameter_space)){
     files <- files[str_detect(files,paste('PS',parameter_space,sep=''))]
@@ -66,6 +66,9 @@ clear_previous_files <- function(parameter_space=NULL, scenario=NULL, experiment
   }
   if (!is.null(experiment)){
     files <- files[str_detect(files,paste('E',experiment,sep=''))]
+  }
+  if (!is.null(run_range)){
+    files <- files[str_detect(files,paste('_R',run,sep=''))]
   }
   if(exclude_CP){
     files <- files[!str_detect(files,'E000')]
@@ -468,49 +471,49 @@ create_intervention_scheme_IRS <- function(PS_benchmark, scenario_benchmark, IRS
 setwd('~/Documents/malaria_interventions_data/')
 
 # Clear previous files if necessary
-clear_previous_files(scenario = 'G', exclude_sqlite = F, exclude_CP = F, exclude_control = F, test = T)
+clear_previous_files(run = 6, exclude_sqlite = F, exclude_CP = F, exclude_control = F, test = T)
 # Get data design 
 design <- loadExperiments_GoogleSheets() 
 # Create the reference experiments (checkpoint and control)
-generate_files(row_range = 105:130, run_range = 1:5, experimental_design = design)
 
-# Create the reference experiments (control only)
-for (ps in sprintf('%0.2d', 28:39)){
+ps_range <- sprintf('%0.2d', (27:39)[-11])
+exp_range <- sprintf('%0.3d', 0:4)
+run_range <- 6:10
+scenario <- 'S'
+generate_files(row_range = 53:78, run_range = run_range, experimental_design = design)
+
+# If checkpoints already exist, can create the reference experiments (control only)
+for (ps in ps_range){
   print(ps)
   design_control <- subset(design, PS==ps & scenario == 'N' & exp=='001')
   clear_previous_files(parameter_space = ps, scenario = 'N', exclude_sqlite = F, exclude_CP = T, exclude_control = F, test = F)
   seeds <- get_random_seed(PS = ps, scenario = 'N', run_range = 1:5)
-  generate_files(row_range = 1, run_range = 1:5, experimental_design = design_control, random_seed = seeds)
+  generate_files(row_range = 1, run_range = run_range, experimental_design = design_control, random_seed = seeds)
 }
 
 # Create the corresponding IRS experiments  
-PS <- sprintf('%0.2d', 27:39)
-scenario <- 'G'
-for (ps in PS){
+for (ps in ps_range){
   design_irs <- create_intervention_scheme_IRS(PS_benchmark = ps, scenario_benchmark = scenario, IRS_START_TIMES = '29160', immigration_range=c(0), length_range=c(720,1800,3600), coverage_range=0.9, write_to_file = F, design_ref=design)
-  generate_files(row_range = 1:nrow(design_irs), run_range = 1:5, random_seed = get_random_seed(ps, scenario, run_range = 1:5), design_irs)
+  generate_files(row_range = 1:nrow(design_irs), run_range = run_range, random_seed = get_random_seed(ps, scenario, run_range = run_range), design_irs)
 }
 
 # ZIP all the PY and sbatch files
-
-scenario <- 'G'
-PS <- sprintf('%0.2d', c(27:36,38,39))
-e <- sprintf('%0.3d', 0:4)
 unlink('files_to_run.txt')
 sink('files_to_run.txt', append = T)
 # Add sbatch files
 files <- list.files(path = '~/Documents/malaria_interventions_data/', pattern = 'sbatch', full.names = F) 
 files <- files[str_detect(string = files, paste(scenario,'E',sep=''))]
-files <- files[str_sub(files,3,4) %in% PS]
-files <- files[str_sub(files,7,9) %in% e]
+files <- files[str_sub(files,3,4) %in% ps_range]
+files <- files[str_sub(files,7,9) %in% exp_range]
 for (i in 1:length(files)){
   cat(files[i]);cat('\n')
 }
 # Add py files
 files <- list.files(path = '~/Documents/malaria_interventions_data/', pattern = '.py', full.names = F) 
 files <- files[str_detect(string = files, paste('_',scenario,sep=''))]
-files <- files[str_sub(files,3,4) %in% PS]
-files <- files[str_sub(files,9,11) %in% e]
+files <- files[str_sub(files,3,4) %in% ps_range]
+files <- files[str_sub(files,9,11) %in% exp_range]
+files <- files[parse_number(str_sub(files,14,15)) %in% run_range]
 for (i in 1:length(files)){
   cat(files[i]);cat('\n')
 }
@@ -522,26 +525,52 @@ system('zip files_to_run.zip -@ < files_to_run.txt')
 # Copy the file to Midway and unzip it
 
 # First run the checkpoints
-cat('for i in ');cat(PS);cat("; do sbatch 'PS'$i'GE000.sbatch'; done;")
+paste("for i in ",paste(ps_range,collapse=' '),"; do sbatch 'PS'$i'",scenario,"E000.sbatch'; done;",sep='')
 
 # Then run control and interventions
 # Run in Midway terminal:
-cat("rm job_ids.txt; sacct -u pilosofs --format=jobid,jobname --starttime 2018-07-30T16:05:00 --name=");cat(paste(paste(PS,'GE000',sep=''),collapse = ','));cat(" >> 'job_ids.txt'")
+cat("rm job_ids.txt; sacct -u pilosofs --format=jobid,jobname --starttime 2018-08-06T16:15:00 --name=");cat(paste(paste(ps_range,scenario,'E000',sep=''),collapse = ','));cat(" >> 'job_ids.txt'")
 # Copy file from Midway and run:
 jobids <- read.table('job_ids.txt', header = F, skip=2) 
 jobids <- na.omit(unique(parse_number(jobids$V1))) # 1 job id per PS
-length(jobids)==length(PS)
+length(jobids)==length(ps_range)
 # Copy the output of the following loop and paste in Midway
-for (ps in PS){
-  for (e in sprintf('%0.3d', 1:4)){
-    cat(paste('sbatch -d afterok:',jobids[which(PS==ps)],' PS',ps,'GE',e,'.sbatch',sep=''));cat('\n')
+for (ps in ps_range){
+  for (e in exp_range){
+    cat(paste('sbatch -d afterok:',jobids[which(ps_range==ps)],' PS',ps,scenario,'E',e,'.sbatch',sep=''));cat('\n')
   }
 }
-   
+
 # Or, if checkpoints are already finished:
-for (ps in sprintf('%0.2d', (27:30))){
-  for (e in exp){
-    cat(paste('sbatch PS',ps,'NE',e,'.sbatch',sep=''));cat('\n')
+for (ps in ps_range){
+  for (e in exp_range){
+    cat(paste('sbatch PS',ps,scenario,'E',e,'.sbatch',sep=''));cat('\n')
+  }
+}
+
+
+# Zip files to reduce the clutter -----------------------------------------
+
+scenario_range <- c('S','G','N')
+exp_range <- sprintf('%0.3d', 0:4)
+ps_range <- sprintf('%0.2d', c(27:39))
+
+for (ps in ps_range){
+  unlink('files_tmp.txt')
+  sink('files_tmp.txt', append = T)
+  # Add py files
+  files <- list.files(path = '~/Documents/malaria_interventions_data/', pattern = '.py', full.names = F) 
+  files <- files[str_sub(files,3,4) %in% ps]
+  files <- files[str_sub(files,6,6) %in% scenario_range]
+  files <- files[str_sub(files,9,11) %in% exp_range]
+  for (i in 1:length(files)){
+    cat(files[i]);cat('\n')
+  }
+  sink.reset()
+  # Create zip
+  # unlink(paste(ps,'_sbatch_py.zip',sep=''))
+  if (file.size('files_tmp.txt')>10){
+    system(paste('zip ',ps,'_py.zip -@ < files_tmp.txt -mu',sep=''))
   }
 }
 
@@ -571,8 +600,8 @@ files_df %<>% filter(scenario=='N')
 
 # Extract the random seeds of all experiments and runs
 random_seeds <- c()
-for (ps in sprintf('%0.2d', c(27:36,38,39))){
-  for (e in sprintf('%0.3d', 0:4)){
+for (ps in ps_range){
+  for (e in exp_range){
     for(r in 1:5){
       x <- data.frame(ps,e,r,seed=get_random_seed(PS = ps, scenario = 'N', run_range = r))
       random_seeds <- rbind(random_seeds, x)

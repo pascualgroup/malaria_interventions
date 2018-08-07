@@ -304,11 +304,32 @@ post_intervention_stats <- function(PS, scenario='S', exp, run, post_interventio
 }
 
 
+# Some example to test ----------------------------------------------------
+
+# Join pre-intervention (E000) and intervention (E003) time-series
+ctrl <- get_data(parameter_space = '36', scenario = 'S', experiment = '000', run = 1)[[1]]
+x <- get_data(parameter_space = '36', scenario = 'S', experiment = '003', run = 1)[[1]]
+# Plot
+svg('/home/shai/Google Drive/LabSync/FacultyJobs/UToronto 2018/time_series_intervention.svg', 2.4, 1.7)
+x %>% bind_rows(subset(ctrl, time<min(x$time))) %>% 
+ filter(time>28000 & time<35000) %>% 
+  ggplot(aes(x=time, y=n_circulating_strains))+
+  geom_line(color='#900C3F', size=1)+
+  labs(x='Time',y='Diversity')+
+  mytheme+
+    theme(axis.text=element_blank(),
+          axis.ticks = element_blank(),
+          panel.grid = element_blank())
+dev.off()
+
+
 # Initialize important variables ------------------------------------------
 setwd('~/Documents/malaria_interventions_data/')
 design <- loadExperiments_GoogleSheets() 
 scenario <- 'S'
 monitored_variables <- c('prevalence', 'meanMOI','n_circulating_strains', 'n_circulating_genes', 'n_alleles', 'n_total_bites')
+exp_cols <- c('black','#0A97B7','#B70A97','#97B70A')
+scenario_cols <- c('red','blue','orange')
 
 # Compare between experiments within a parameter space --------------------
 PS <- '36'
@@ -341,7 +362,6 @@ design_irs[1, grepl("IRS", names(design_irs))] <- 'control'
 
 time_range <- c(28800,36000)
 
-my_cols <- c('black',gg_color_hue(length(unique(design_irs$exp))-1, hue_min = 10, hue_max = 280, l = 62, c = 200))
 exp_comparison %>%
   select(-year, -month, -n_infected) %>% 
   filter(time>time_range[1]&time<time_range[2]) %>%
@@ -349,15 +369,12 @@ exp_comparison %>%
   filter(variable %in% monitored_variables) %>%
   group_by(time, PS, exp, variable) %>% # Need to average across runs
   summarise(value_mean=mean(value)) %>% 
-  # left_join(design_irs) %>%
-  # filter(IRS_IMMIGRATION=='1' | IRS_IMMIGRATION=='control') %>%
-  # filter(IRS_coverage=='0.9' | IRS_coverage=='control') %>%
   ggplot(aes(x=time, y=value_mean, color=exp))+
   geom_line()+
   facet_wrap(~variable, scales = 'free')+
   geom_vline(xintercept = c(29160+c(0,720,2800,3600)), linetype='dashed')+
-  scale_color_manual(values=my_cols)+
-  scale_x_continuous(breaks=pretty(x=subset(d, time>time_range[1]&time<time_range[2])$time,n=5))+
+  scale_color_manual(values=exp_cols)+
+  # scale_x_continuous(breaks=pretty(x=subset(d, time>time_range[1]&time<time_range[2])$time,n=5))+
   geom_hline(aes(yintercept=mean_value), data=subset(control_means, variable %in% monitored_variables) , color='blue')+
   mytheme
 
@@ -376,7 +393,6 @@ ps_comparison <- map(1:5, function(r){
 time_range <- c(28800,max(ps_comparison$time))
 
 my_cols <- gg_color_hue(length(unique(ps_comparison$PS)), hue_min = 10, hue_max = 280, l = 62, c = 200)
-# my_cols <- c('red','green','blue','orange','black')
 ps_comparison %>%
   left_join(subset(design, select=c(PS,BITING_RATE_MEAN,N_GENES_INITIAL)), by='PS') %>% 
   mutate(N_GENES_INITIAL=as.factor(N_GENES_INITIAL)) %>% 
@@ -477,50 +493,55 @@ intervention_stats %>%
   geom_point(size=4)+
   geom_line()+
   scale_x_continuous("Gene pool size", breaks = seq(1200,15600,1200)) +
+  scale_color_manual(values=exp_cols)+
   facet_wrap(~exp)+
   mytheme+
   theme(axis.text.x = element_text(angle = 90, hjust=0))
 
-# This calculates the ratio of the value of variables POST-intervention compared
-# to control. For example, we can say that intervention has reduced the
-# prevalence by 50% compared to control in a given PS and experiment.
-intervention_stats_diff %>% 
-  left_join(subset(design, select=c(PS,BITING_RATE_MEAN,N_GENES_INITIAL)), by='PS') %>% 
-  left_join(subset(design_irs, select=c(exp,IRS_START_TIMES,IRS_length))) %>%
-  mutate(time_threshold=as.numeric(IRS_START_TIMES)+as.numeric(IRS_length)+360) %>%
-  filter(time>=time_threshold) %>% 
-  
-  filter(variable %in% c('n_alleles','n_circulating_genes','n_circulating_strains','prevalence','n_total_bites','meanMOI')) %>% 
-  
-  # select(variable, mean_value, PS, exp, run) %>% arrange(variable, PS, run, exp)
-  group_by(PS, BITING_RATE_MEAN, N_GENES_INITIAL, scenario, exp, variable) %>% 
-  summarise(mean_diff=mean(diff), 
-            mean_ratio=mean(ratio),
-            sd_ratio=sd(ratio)) %>%
-  mutate(error_up=mean_ratio+sd_ratio,
-         error_low=mean_ratio-sd_ratio) %>% 
-  ggplot(aes(x=PS, y=mean_ratio, color=exp, group=exp))+
-  geom_point(size=3)+
-  geom_line()+
-  # geom_errorbar(aes(ymin=error_low, ymax=error_up), width=0.1)+
-  # geom_line(aes(x=PS, y=error_up, color=exp, group=exp), linetype='dashed')+
-  # geom_line(aes(x=PS, y=error_low, color=exp, group=exp), linetype='dashed')+
-  facet_wrap(BITING_RATE_MEAN~variable,scales='free_y')+
-  mytheme
-
-# Time series of difference from control (i.e., experiment-control)
+# A time series of difference between control and experiment.
 intervention_stats_diff %>%
   left_join(subset(design, select=c(PS,BITING_RATE_MEAN,N_GENES_INITIAL)), by='PS') %>% 
   filter(variable %in% c('n_circulating_strains','prevalence')) %>% 
-  # filter(exp=='004') %>% filter(PS=='27') %>% 
+  filter(exp=='003') %>% filter(PS=='36') %>%
   group_by(time,variable,PS,scenario,exp,BITING_RATE_MEAN,N_GENES_INITIAL) %>% 
   summarise(diff=mean(diff)) %>% 
-  ggplot(aes(x=time, y=diff, color=as.factor(N_GENES_INITIAL)))+
-  scale_color_manual(values = gg_color_hue(length(PS),hue_min = 10, 400))+
-  geom_line()+
+  ggplot(aes(x=time, y=diff))+
+  geom_line(color='#97B70A', size=1)+
   geom_hline(yintercept = 0, color='black')+
-  facet_wrap(variable~BITING_RATE_MEAN+exp, scales='free_y')+
-  mytheme
+  facet_wrap(~variable, scales='free_y')+
+  mytheme+theme(legend.position = 'none')
+
+# This calculates the ratio of the value of variables POST-intervention compared
+# to control. For example, we can say that intervention has reduced the
+# prevalence by 50% compared to control in a given PS and experiment.
+intervention_stats_diff %>%
+  left_join(subset(design, select=c(PS,BITING_RATE_MEAN,N_GENES_INITIAL)), by='PS') %>%
+  left_join(subset(design_irs, select=c(exp,IRS_START_TIMES,IRS_length))) %>%
+  mutate(time_threshold=as.numeric(IRS_START_TIMES)+as.numeric(IRS_length)+360) %>%
+  filter(time>=time_threshold) %>%
+  
+  filter(variable %in% monitored_variables) %>%
+  
+  # select(variable, mean_value, PS, exp, run) %>% arrange(variable, PS, run, exp)
+  group_by(PS, BITING_RATE_MEAN, N_GENES_INITIAL, scenario, exp, variable) %>%
+  # filter(exp!='001') %>%
+  summarise(mean_diff=mean(diff),
+            mean_ratio=mean(ratio),
+            sd_ratio=sd(ratio)) %>%
+  mutate(error_up=mean_ratio+sd_ratio,
+         error_low=mean_ratio-sd_ratio) %>%
+  ggplot(aes(x=as.numeric(N_GENES_INITIAL), y=mean_ratio, color=exp, group=exp))+
+  geom_point(size=3)+
+  geom_line()+
+  scale_x_continuous("Gene pool size", breaks = seq(1200,15600,1200)) +
+  geom_errorbar(aes(ymin=error_low, ymax=error_up), width=0.1)+
+  geom_line(aes(x=as.numeric(N_GENES_INITIAL), y=error_up, color=exp, group=exp), linetype='dashed')+
+  geom_line(aes(x=as.numeric(N_GENES_INITIAL), y=error_low, color=exp, group=exp), linetype='dashed')+
+  scale_color_manual(values=exp_cols)+
+  facet_wrap(~variable,scales='free_y')+
+  mytheme+
+  theme(axis.text.x = element_text(angle = 90, hjust=0))
+
 
 
 # Compare between scenarios within a parameter space and experiment -------
@@ -535,7 +556,6 @@ for (i in 1:nrow(cases)){
 
 time_range <- c(28800,max(scenario_comparison$time))
 
-my_cols <- c('red','orange','blue')
 scenario_comparison %>%
   mutate(scenario=factor(scenario, levels=c('S','N','G'))) %>% 
   select(-year, -month, -n_infected) %>% 
@@ -546,8 +566,7 @@ scenario_comparison %>%
   filter(variable %in% c('prevalence','n_circulating_strains', 'n_circulating_genes', 'n_alleles')) %>%
   ggplot(aes(x=time, y=value_mean, color=scenario))+
   geom_line()+
-  scale_color_manual(values=my_cols)+
-  scale_x_continuous(breaks=pretty(x=subset(ps_comparison, time>time_range[1]&time<time_range[2])$time,n=5))+
+  scale_color_manual(values=scenario_cols)+
   facet_grid(variable~exp, scales='free')+
   mytheme
 
@@ -565,8 +584,8 @@ design_irs %<>% slice(rep(1, each = 1)) %>% bind_rows(design_irs)
 design_irs[1, 'exp'] <- '001'
 design_irs[1, 'IRS_length'] <- 0
 
-intervention_stats <- c()
-intervention_stats_diff <- c()
+intervention_stats_scenarios <- c()
+intervention_stats_diff_scenarios <- c()
 for (scenario in c('S','G','N')){
   for (run in 1:5){
     for (ps in sprintf('%0.2d',27:39)[-11]){
@@ -577,8 +596,8 @@ for (scenario in c('S','G','N')){
         print(paste(Sys.time(),scenario, run, ps, e,sep=' | '))
         if (file.exists(paste('~/Documents/malaria_interventions_data/PS',ps,'_',scenario,'_E',e,'_R',run,'.sqlite',sep=''))){
           x <- post_intervention_stats(PS = ps, scenario = scenario, exp=e, run = run, plot.it = F, control_data = control_data, design_irs = design_irs)
-          intervention_stats <- rbind(intervention_stats, x$summary_stats)
-          intervention_stats_diff <- rbind(intervention_stats_diff, x$diff_control)
+          intervention_stats_scenarios <- rbind(intervention_stats_scenarios, x$summary_stats)
+          intervention_stats_diff_scenarios <- rbind(intervention_stats_diff_scenarios, x$diff_control)
         } else {
           cat('missing file: ');cat(paste('PS',ps,'_',scenario,'_E',e,'_R',run,'.sqlite',sep=''));cat('\n')
         }
@@ -588,38 +607,67 @@ for (scenario in c('S','G','N')){
 }
 
 # Time to extinction as a function of the diversity
-intervention_stats %>% 
+intervention_stats_scenarios %>% 
   mutate(scenario=factor(scenario, levels=c('S','N','G'))) %>% 
   left_join(subset(design, select=c(PS,BITING_RATE_MEAN,N_GENES_INITIAL)), by='PS') %>% 
   group_by(PS, BITING_RATE_MEAN, N_GENES_INITIAL, scenario, exp) %>% 
-  summarise(time_ext_max=max(time_extinct), time_ext_mean=mean(time_extinct)) %>% 
-  ggplot()+
-  geom_point(aes(x=as.numeric(N_GENES_INITIAL), y=time_ext_max, shape=scenario), size=5, color='red')+
-  geom_point(aes(x=as.numeric(N_GENES_INITIAL), y=time_ext_mean, shape=scenario), size=5, color='blue')+
-  geom_line(aes(x=as.numeric(N_GENES_INITIAL), y=time_ext_max, shape=scenario), color='red')+
-  geom_line(aes(x=as.numeric(N_GENES_INITIAL), y=time_ext_mean, shape=scenario), color='blue')+
+  summarise(time_ext_max=max(time_extinct), time_ext_mean=mean(time_extinct)) %>%
+  gather(variable, value, -exp, -PS, -scenario, -run, -BITING_RATE_MEAN, -N_GENES_INITIAL) %>% 
+  ggplot(aes(x=N_GENES_INITIAL, y=value, color=scenario))+
+  geom_point()+
+  geom_line()+
   scale_x_continuous("Gene pool size", breaks = seq(1200,15600,1200)) +
   labs(y='Mean and max time to extinction')+
-  facet_grid(scenario~exp)+
+  scale_color_manual(values=scenario_cols)+
+  facet_grid(variable~exp)+
   mytheme+
   theme(axis.text.x = element_text(angle = 90, hjust=0))
 
 # Calculate probability of extinction as a proportion of runs which went extinct
-intervention_stats %>% 
+intervention_stats_scenarios %>% 
   mutate(scenario=factor(scenario, levels=c('S','N','G'))) %>% 
-  # left_join(subset(design, select=c(PS,BITING_RATE_MEAN,N_GENES_INITIAL)), by='PS') %>% 
-  left_join(subset(design_irs, select=c(exp,IRS_START_TIMES,IRS_length,BITING_RATE_MEAN,N_GENES_INITIAL))) %>%
+  left_join(subset(design, select=c(PS,BITING_RATE_MEAN,N_GENES_INITIAL)), by='PS') %>% 
+  left_join(subset(design_irs, select=c(exp,IRS_START_TIMES,IRS_length))) %>%
   distinct(scenario, PS, N_GENES_INITIAL, exp, run, time_extinct,IRS_START_TIMES,IRS_length) %>% 
   mutate(extinct=ifelse(time_extinct<as.numeric(IRS_START_TIMES)+as.numeric(IRS_length),1,0)) %>%
-  group_by(scenario, PS, exp, N_GENES_INITIAL) %>% 
+  group_by(scenario,PS, N_GENES_INITIAL, exp) %>% 
   summarise(extinct_prob=sum(extinct)/max(intervention_stats$run)) %>% 
-  ggplot(aes(x=N_GENES_INITIAL, y=extinct_prob, group=exp, color=exp))+
+  ggplot(aes(x=N_GENES_INITIAL, y=extinct_prob, color=scenario))+
   geom_point(size=4)+
   geom_line()+
   scale_x_continuous("Gene pool size", breaks = seq(1200,15600,1200)) +
-  facet_grid(scenario~exp)+
+  scale_color_manual(values=scenario_cols)+
+  labs(y='Extinction probability')+
+  facet_wrap(~exp)+
   mytheme+
   theme(axis.text.x = element_text(angle = 90, hjust=0))
+
+
+intervention_stats_diff_scenarios %>%
+  mutate(scenario=factor(scenario, levels=c('S','N','G'))) %>% 
+  left_join(subset(design, select=c(PS,BITING_RATE_MEAN,N_GENES_INITIAL)), by='PS') %>%
+  left_join(subset(design_irs, select=c(exp,IRS_START_TIMES,IRS_length))) %>%
+  mutate(time_threshold=as.numeric(IRS_START_TIMES)+as.numeric(IRS_length)+360) %>%
+  filter(time>=time_threshold) %>%
+  filter(variable %in% c('prevalence', 'meanMOI','n_circulating_strains', 'n_circulating_genes', 'n_alleles')) %>%
+  group_by(scenario, PS, BITING_RATE_MEAN, N_GENES_INITIAL, scenario, exp, variable) %>%
+  summarise(mean_diff=mean(diff),
+            mean_ratio=mean(ratio),
+            sd_ratio=sd(ratio)) %>%
+  mutate(error_up=mean_ratio+sd_ratio,
+         error_low=mean_ratio-sd_ratio) %>%
+  ggplot(aes(x=as.numeric(N_GENES_INITIAL), y=mean_ratio, color=scenario, group=scenario))+
+  geom_point(size=3)+
+  geom_line()+
+  scale_x_continuous("Gene pool size", breaks = seq(1200,15600,1200)) +
+  geom_errorbar(aes(ymin=error_low, ymax=error_up), width=0.1)+
+  # geom_line(aes(x=as.numeric(N_GENES_INITIAL), y=error_up, color=scenario, group=scenario), linetype='dashed')+
+  # geom_line(aes(x=as.numeric(N_GENES_INITIAL), y=error_low, color=scenario, group=scenario), linetype='dashed')+
+  scale_color_manual(values=scenario_cols)+
+  facet_grid(exp~variable)+
+  mytheme+
+  theme(axis.text.x = element_text(angle = 90, hjust=0))
+
 #----------------------------------------------------------------------------
 # This part compares the fits of the duration curve of the selection and the generalized immunity.
 parameter_space <- '03'

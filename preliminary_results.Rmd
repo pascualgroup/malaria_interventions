@@ -1,6 +1,8 @@
 ---
 title: "Preliminary results"
-output: html_document
+output:
+  html_document: default
+  pdf_document: default
 ---
 
 ```{r setup, include=FALSE}
@@ -8,14 +10,15 @@ knitr::opts_chunk$set(echo = TRUE)
 knitr::opts_knit$set(root.dir = "~/Documents/malaria_interventions_data/")
 ```
 
-
-```{r initiate and load functions, cache=TRUE, include=FALSE}
-setwd('~/Documents/malaria_interventions_data/')
+```{r LOAD PACKAGES, include=FALSE, echo=FALSE}
 library(tidyverse)
 library(magrittr)
 library(sqldf)
+```
 
-# Functions ---------------------------------------------------------------
+```{r INITIATE AND LOAD FUNCTIONS, cache=TRUE, include=FALSE}
+setwd('~/Documents/malaria_interventions_data/')
+
 loadExperiments_GoogleSheets <- function(workBookName='malaria_interventions_design',sheetID=4){
   require(googlesheets)
   GS <- gs_title(workBookName)
@@ -25,6 +28,7 @@ loadExperiments_GoogleSheets <- function(workBookName='malaria_interventions_des
   print(experiments)
   return(experiments)
 }
+
 
 create_intervention_scheme_IRS <- function(PS_benchmark, scenario_benchmark, IRS_START_TIMES=NULL, immigration_range, length_range, coverage_range, write_to_file=T, design_ref=NULL){
   # This fixes the 1. in the file name produced in Mathematica
@@ -67,6 +71,7 @@ create_intervention_scheme_IRS <- function(PS_benchmark, scenario_benchmark, IRS
   return(scheme)
 }
 
+
 mytheme <- theme_bw() + theme(
   legend.title  = element_text(colour = "black", size=17),
    # legend.position = "none",
@@ -75,7 +80,7 @@ mytheme <- theme_bw() + theme(
   legend.text  = element_text(colour = "black", size=17),
   panel.background = element_blank(),
   panel.grid.major = element_blank(),
-  panel.grid.minor = element_blank(),
+  # panel.grid.minor = element_blank(),
   axis.text = element_text(color='black', family="Helvetica", size=10),
   strip.text.x = element_text(family = "Helvetica", size = 10),
   strip.text.y = element_text(family = "Helvetica", size = 10),
@@ -131,7 +136,7 @@ get_data <- function(parameter_space, scenario, experiment, run, sampling_period
   summary_alleles <- dbGetQuery(db, 'SELECT * FROM summary_alleles')
   summary_alleles %<>% group_by(time) %>% summarise(n_alleles=sum(n_circulating_alleles))
   
-  summary_general %<>% left_join(summary_alleles)
+  summary_general <- suppressMessages(left_join(summary_general, summary_alleles))
   
   sampled_infections <- dbGetQuery(db, 'SELECT * FROM sampled_infections')
   sampled_infections$PS <- parameter_space
@@ -161,7 +166,7 @@ get_data <- function(parameter_space, scenario, experiment, run, sampling_period
 
   # MOI#
   meanMOI <- sampled_infections %>% group_by(time, host_id) %>% summarise(MOI=length(strain_id)) %>% group_by(time) %>% summarise(meanMOI=mean(MOI))
-  summary_general <- inner_join(summary_general, meanMOI) # Add MOI to the summary
+  summary_general <- suppressMessages(inner_join(summary_general, meanMOI)) # Add MOI to the summary
   
   
   # Host age structure
@@ -170,7 +175,7 @@ get_data <- function(parameter_space, scenario, experiment, run, sampling_period
     names(hosts)[1] <- 'host_id'
     hosts$lifespan <- round((hosts$death_time-hosts$birth_time))
     hosts <- subset(hosts, host_id%in%sampled_infections$host_id)
-    sampled_infections <- left_join(sampled_infections, hosts, by='host_id')
+    sampled_infections <- suppressMessages(left_join(sampled_infections, hosts, by='host_id'))
     sampled_infections$host_age <- round((sampled_infections$time-sampled_infections$birth_time)/30)    
   }
 
@@ -259,7 +264,7 @@ post_intervention_stats <- function(PS, scenario='S', exp, run, post_interventio
   y <- experiment_data %>%
     select(-year, -month, -n_infected) %>% 
     gather(variable, value, -time, -exp, -PS, -scenario, -run, -pop_id)
-  diff_control <- inner_join(x,y,by=c('pop_id','PS','scenario','run','time','variable')) %>% 
+  diff_control <- suppressMessages(inner_join(x,y,by=c('pop_id','PS','scenario','run','time','variable'))) %>% 
     mutate(diff=value.y-value.x, ratio=value.y/value.x) %>% 
     select(variable, time, diff, ratio)
   
@@ -295,8 +300,8 @@ post_intervention_stats <- function(PS, scenario='S', exp, run, post_interventio
     gather(variable, value, -time, -exp, -PS, -scenario, -run, -pop_id,-IRS_START_TIMES,-IRS_length) %>% 
     group_by(variable) %>% summarise(time_extinct=max(time))
   
-  summary_stats <- left_join(time_extinct, new_mean)
-  summary_stats <- left_join(summary_stats, amplitude)
+  summary_stats <- suppressMessages(left_join(time_extinct, new_mean))
+  summary_stats <- suppressMessages(left_join(summary_stats, amplitude))
   summary_stats$PS <- PS
   summary_stats$scenario <- scenario
   summary_stats$exp <- exp
@@ -317,24 +322,37 @@ post_intervention_stats <- function(PS, scenario='S', exp, run, post_interventio
 # Some important general definitions -----------
 design <- loadExperiments_GoogleSheets() 
 monitored_variables <- c('prevalence', 'meanMOI','n_circulating_strains', 'n_circulating_genes', 'n_alleles', 'n_total_bites')
+exp_cols <- c('black','#0A97B7','#B70A97','#97B70A')
+scenario_cols <- c('red','blue','orange')
 ```
 
 # Background
 
-1. Explore the effect of the size of the gene pool (i.e., genetic diversity) on response of the population to an IRS intervention.
-2. Seasonality is incorporated into the dynamics.
-3. IRS is applied yearly from the end of the dry sesaon to the end of the wet season (days 120-300) for 2, 5 or 10 years. IRS coverage is 90%. The intervention increases the mortality of adult hosts and is implemented with a deterministic model.
+**Goal:** Explore the effect of the size of the gene pool (i.e., genetic diversity) on response of the population to an IRS intervention.
+
+Seasonality is incorporated into the dynamics.
+
+**IRS:** IRS is applied yearly from the end of the dry sesaon to the end of the wet season (days 120-300), with a 90% coverage. The intervention increases the mortality of adult hosts and is implemented with a deterministic model.
+
+**Design:**
+
+* 4 experiments: IRS run for 0 (control) 2, 5 or 10 years
+* 3 scenarios
+* 13 levels of genetic diversity
+
+Each combination of factors has 10 runs.
+
+I also ran low transmission, this is not presented here.
+
 
 # Example of a full time series
-Immune selection at high genetic diversity, and high transmission. Blue line is a 5-year IRS.
+This example is for: Immune selection with gene pool size of 12000 with no IRS (control; black) and 5-year IRS (green). The time series shows that while transmission recovers to pre-intervention levels (n_total_bites), the diversity (n-alleles, n_circulating_genes, n_circulating_strains) and epidemiology (meanMOI, prevalence) do not.
 
-```{r plot complete time series, echo=FALSE, fig.width=16,fig.height=9,dpi=300,out.width="1920px",out.height="1080px"}
-library(tidyverse)
-library(magrittr)
-PS39_S_001 <- get_data(parameter_space = '39', scenario = 'S', experiment = '001', run = 1, host_age_structure = F)[[1]]
-PS39_S_003 <- get_data(parameter_space = '39', scenario = 'S', experiment = '003', run = 1, host_age_structure = F)[[1]]
-d <- rbind(PS39_S_001,PS39_S_003)
-d %>% 
+```{r EXAMPLE TIME SERIES (PLOT), echo=FALSE, fig.width=16,fig.height=9,dpi=300,out.width="1920px",out.height="1080px"}
+ctrl <- get_data(parameter_space = '36', scenario = 'S', experiment = '001', run = 1, host_age_structure = F)[[1]]
+irs <- get_data(parameter_space = '36', scenario = 'S', experiment = '003', run = 1, host_age_structure = F)[[1]]
+ctrl_vs_irs5 <- rbind(ctrl,irs)
+ctrl_vs_irs5 %>% 
   select(-year, -month, -n_infected) %>% 
   # filter(time>time_range[1]&time<time_range[2]) %>%
   gather(variable, value, -pop_id, -time, -exp, -PS, -scenario, -run) %>% 
@@ -343,15 +361,16 @@ d %>%
   filter(variable %in% c('prevalence', 'meanMOI','n_circulating_strains', 'n_circulating_genes', 'n_alleles', 'n_total_bites')) %>%
   ggplot(aes(x=time, y=value, color=exp, group=exp))+
   geom_line()+
+  scale_color_manual(values=c('black','#97B70A'))+
   geom_vline(xintercept = c(29160,29160+1800), linetype='dashed')+
-
-  # scale_x_continuous(breaks=pretty(x=subset(ps_comparison, time>time_range[1]&time<time_range[2])$time,n=5))+
   facet_wrap(~variable, scales='free')+
   mytheme+theme(legend.position = 'none')
 ```
 
-# Compare between experiments within a parameter space
-```{r parameter space, cache=TRUE, include=FALSE}
+# Compare between experiments for a given diversity
+This is a more detailed comparison for the same level of diversity for the four experiments.
+
+```{r COMPARE EXPERIMENTS (LOAD DATA), cache=TRUE, include=FALSE}
 scenario <- 'S'
 PS <- '36'
 control <- get_data(parameter_space = PS, scenario = scenario, experiment = '001', run = 1)[[1]]
@@ -375,11 +394,9 @@ design_irs[1, 'exp'] <- '001'
 design_irs[1, grepl("IRS", names(design_irs))] <- 'control'
 
 time_range <- c(28800,36000)
-
-my_cols <- c('black',gg_color_hue(length(unique(design_irs$exp))-1, hue_min = 10, hue_max = 280, l = 62, c = 200))
 ```
 
-```{r plot comparison experiments, echo=FALSE, fig.width=16,fig.height=9,dpi=300,out.width="1920px",out.height="1080px"}
+```{r COMPARE EXPERIMENTS (PLOT), echo=FALSE, fig.width=16,fig.height=9,dpi=300,out.width="1920px",out.height="1080px"}
 exp_comparison %>%
   select(-year, -month, -n_infected) %>% 
   filter(time>time_range[1]&time<time_range[2]) %>%
@@ -387,27 +404,24 @@ exp_comparison %>%
   filter(variable %in% monitored_variables) %>%
   group_by(time, PS, exp, variable) %>% # Need to average across runs
   summarise(value_mean=mean(value)) %>% 
-  # left_join(design_irs) %>%
-  # filter(IRS_IMMIGRATION=='1' | IRS_IMMIGRATION=='control') %>%
-  # filter(IRS_coverage=='0.9' | IRS_coverage=='control') %>%
   ggplot(aes(x=time, y=value_mean, color=exp))+
   geom_line()+
   facet_wrap(~variable, scales = 'free')+
   geom_vline(xintercept = c(29160+c(0,720,2800,3600)), linetype='dashed')+
-  scale_color_manual(values=my_cols)+
-  scale_x_continuous(breaks=pretty(x=subset(d, time>time_range[1]&time<time_range[2])$time,n=5))+
+  scale_color_manual(values=exp_cols)+
+  # scale_x_continuous(breaks=pretty(x=subset(d, time>time_range[1]&time<time_range[2])$time,n=5))+
   geom_hline(aes(yintercept=mean_value), data=subset(control_means, variable %in% monitored_variables) , color='blue')+
   mytheme
 ```
 
 # Comparison of different genetic pool sizes for a given experiment
 
-This is an example with a 5-year IRS.
+This is an example with a 5-year IRS. The higher the diversity, the weaker the effect of the IRS, especially on prevalence.
 
-```{r Load_S_E002, cache=TRUE, include=FALSE}
+```{r COMPARE DIVERSITY (LOAD DATA), cache=TRUE, include=FALSE}
 scenario <- 'S'
 ps <- sprintf('%0.2d',27:39)[-11]
-exp <- '002'
+exp <- '003'
 ps_comparison <- map(1:5, function(r){
       map(ps, function(i){
         cat(i)
@@ -420,7 +434,7 @@ time_range <- c(28800,max(ps_comparison$time))
 my_cols <- gg_color_hue(length(unique(ps_comparison$PS)), hue_min = 10, hue_max = 280, l = 62, c = 200)
 ```
 
-```{r plot comparison selection, echo=FALSE, fig.width=16,fig.height=9,dpi=300,out.width="1920px",out.height="1080px"}
+```{r COMPARE DIVERSITY (PLOT), echo=FALSE, fig.width=16,fig.height=9,dpi=300,out.width="1920px",out.height="1080px"}
 ps_comparison %>%
   left_join(subset(design, select=c(PS,BITING_RATE_MEAN,N_GENES_INITIAL)), by='PS') %>% 
   mutate(N_GENES_INITIAL=as.factor(N_GENES_INITIAL)) %>% 
@@ -445,8 +459,11 @@ ps_comparison %>%
 ```
 
 # Time to extinction as a function of the diversity
+Some of the time series went extinct before the intervention was lifted. This can be quantified by the time the simulations ended. Those that have not reached the end (40,000 days) went extinct. Of those which went extinct, different runs end at different times. I quantified the maximum (red) and mean (blue) time of the runs.
 
-```{r load_summary_stats_S, cache=TRUE, include=FALSE}
+In general, higher diversity promotes survival through an intervention. Although I expected a monotonic increase of time to extinction with diversity, this did not seem to be the case.
+
+```{r TIME TO EXTINCTION (LOAD DATA), cache=TRUE, include=FALSE}
 setwd('~/Documents/malaria_interventions_data/')
 scenario <- 'S'
 intervention_stats <- c()
@@ -478,7 +495,7 @@ for (run in 1:5){
 }
 ```
 
-```{r plot time to extinction, echo=FALSE, fig.width=16,fig.height=9,dpi=300,out.width="1920px",out.height="1080px"}
+```{r TIME TO EXTINCTION (PLOT), echo=FALSE, fig.width=16,fig.height=9,dpi=300,out.width="1920px",out.height="1080px"}
 intervention_stats %>% 
   left_join(subset(design, select=c(PS,BITING_RATE_MEAN,N_GENES_INITIAL)), by='PS') %>% 
   group_by(PS, BITING_RATE_MEAN, N_GENES_INITIAL, scenario, exp) %>% 
@@ -495,8 +512,10 @@ intervention_stats %>%
   theme(axis.text.x = element_text(angle = 90, hjust=0))
 ```
 
-# Pobability of extinction as a proportion of runs which went extinct
-```{r prob. of extinction, echo=FALSE, fig.width=16,fig.height=9,dpi=300,out.width="1920px",out.height="1080px"}
+# Probability of extinction as a proportion of runs which went extinct
+Because not all runs went extinct, I quantified the ability to survive IRS as the proportion of runs that went extinct (should be 0 for control). One expects a higher proportion in a stronger IRS and lower diversity. This is the general trend although again, the expected monotnic relationship between diversity and extinction probablty is absent.
+
+```{r PROBABLITY OF EXTINCTION (PLOT), echo=FALSE, fig.width=16,fig.height=9,dpi=300,out.width="1920px",out.height="1080px"}
 intervention_stats %>% 
   left_join(subset(design, select=c(PS,BITING_RATE_MEAN,N_GENES_INITIAL)), by='PS') %>% 
   left_join(subset(design_irs, select=c(exp,IRS_START_TIMES,IRS_length))) %>%
@@ -508,41 +527,61 @@ intervention_stats %>%
   geom_point(size=4)+
   geom_line()+
   scale_x_continuous("Gene pool size", breaks = seq(1200,15600,1200)) +
+  scale_color_manual(values=exp_cols)+
   facet_wrap(~exp)+
   mytheme+
   theme(axis.text.x = element_text(angle = 90, hjust=0))
 ```
 
-# Ratio of pre- vs post-IRS, compared to control
-Calculate the ratio of the value of variables POST-intervention compared to control. For example, we can say that intervention has reduced the prevalence by 50% compared to control in a given parameter space and experiment. The post-intervention period starts 1 year after lifting the IRS, to avoid the transience.
+# Quantify effect of IRS compared to control
+## Full time series
+To better quantify the effect of diversity, I calculated by what proportion IRS affected a given measure (e.g., prevalence, number of repertoires). Note that this is done on a time-point basis, and therefore compared to control. This is because the control experiment quantifies the value of a variable at a given time had IRS not been employed. The figure below shows an example for diversity of 12000, with 5-year IRS. This is essentially the difference between the time series in the first figure in this document.
 
-```{r pre vs post-IRS, echo=FALSE, fig.width=16,fig.height=9,dpi=300,out.width="1920px",out.height="1080px"}
+```{r EFFECT OF IRS: TIME SERIES (PLOT), echo=FALSE, fig.width=16,fig.height=9,dpi=300,out.width="1920px",out.height="1080px"}
+intervention_stats_diff %>%
+  left_join(subset(design, select=c(PS,BITING_RATE_MEAN,N_GENES_INITIAL)), by='PS') %>% 
+  filter(variable %in% c('n_circulating_strains','prevalence')) %>% 
+  filter(exp=='003') %>% filter(PS=='36') %>%
+  group_by(time,variable,PS,scenario,exp,BITING_RATE_MEAN,N_GENES_INITIAL) %>% 
+  summarise(diff=mean(diff)) %>% 
+  ggplot(aes(x=time, y=diff))+
+  geom_line(color='#97B70A', size=1)+
+  geom_hline(yintercept = 0, color='black')+
+  facet_wrap(~variable, scales='free_y')+
+  mytheme+theme(legend.position = 'none')
+```
+
+## Summary across diversity levels
+This previous figure can be summarized by calculating the ratio between the pre- and post-IRS for any given measure (e.g., prevalence). For example, one can say that intervention has reduced the prevalence by 50% compared to control. For this comparison, I first calculate the ratio between the control and experiment at any given time point post-IRS, and then I take the mean of that ratio to obtain a summary statistic. To account for post_IRS transience in the value of a measure, I consier post-IRS to start 1 year after the IRS has ended.
+
+```{r EFFECT OF IRS: MEAN RATIO (PLOT), echo=FALSE, fig.width=16,fig.height=9,dpi=300,out.width="1920px",out.height="1080px"}
 # This calculates the ratio of the value of variables POST-intervention compared
 # to control. For example, we can say that intervention has reduced the
 # prevalence by 50% compared to control in a given PS and experiment.
-intervention_stats_diff %>% 
-  left_join(subset(design, select=c(PS,BITING_RATE_MEAN,N_GENES_INITIAL)), by='PS') %>% 
+intervention_stats_diff %>%
+  left_join(subset(design, select=c(PS,BITING_RATE_MEAN,N_GENES_INITIAL)), by='PS') %>%
   left_join(subset(design_irs, select=c(exp,IRS_START_TIMES,IRS_length))) %>%
   mutate(time_threshold=as.numeric(IRS_START_TIMES)+as.numeric(IRS_length)+360) %>%
-  filter(time>=time_threshold) %>% 
-  
-  filter(variable %in% c('n_alleles','n_circulating_genes','n_circulating_strains','prevalence','n_total_bites','meanMOI')) %>% 
-  
+  filter(time>=time_threshold) %>%
+
+  filter(variable %in% monitored_variables) %>%
+
   # select(variable, mean_value, PS, exp, run) %>% arrange(variable, PS, run, exp)
-  group_by(PS, BITING_RATE_MEAN, N_GENES_INITIAL, scenario, exp, variable) %>% 
-  # filter(exp!='001') %>% 
-  summarise(mean_diff=mean(diff), 
+  group_by(PS, BITING_RATE_MEAN, N_GENES_INITIAL, scenario, exp, variable) %>%
+  # filter(exp!='001') %>%
+  summarise(mean_diff=mean(diff),
             mean_ratio=mean(ratio),
             sd_ratio=sd(ratio)) %>%
   mutate(error_up=mean_ratio+sd_ratio,
-         error_low=mean_ratio-sd_ratio) %>% 
+         error_low=mean_ratio-sd_ratio) %>%
   ggplot(aes(x=as.numeric(N_GENES_INITIAL), y=mean_ratio, color=exp, group=exp))+
   geom_point(size=3)+
   geom_line()+
   scale_x_continuous("Gene pool size", breaks = seq(1200,15600,1200)) +
-  # geom_errorbar(aes(ymin=error_low, ymax=error_up), width=0.1)+
-  # geom_line(aes(x=PS, y=error_up, color=exp, group=exp), linetype='dashed')+
-  # geom_line(aes(x=PS, y=error_low, color=exp, group=exp), linetype='dashed')+
+  geom_errorbar(aes(ymin=error_low, ymax=error_up), width=0.1)+
+  geom_line(aes(x=as.numeric(N_GENES_INITIAL), y=error_up, color=exp, group=exp), linetype='dashed')+
+  geom_line(aes(x=as.numeric(N_GENES_INITIAL), y=error_low, color=exp, group=exp), linetype='dashed')+
+  scale_color_manual(values=exp_cols)+
   facet_wrap(~variable,scales='free_y')+
   mytheme+
   theme(axis.text.x = element_text(angle = 90, hjust=0))
@@ -550,9 +589,12 @@ intervention_stats_diff %>%
 ```
 
 # Selection vs. Neutral vs. Generalized immunity
-Compare the response of each of these scenarios to increasing IRS levels.
+As the ulimate goal is to understand the role that population structure plays in the resiliene of the population, the next step is to compare the response of the population under different scenarios. In essence, this repeats the above analysis above for the neutral and generalized immunity cases, and then comapres the three scenarios.
 
-```{r scenario comparison data set, cache=TRUE, include=FALSE}
+## Time series of measure variables
+First, let's take a look how the time series of several measure variables in each of the 4 experiments change with scenario.
+
+```{r COMPARE SCENARIOS (LOAD DATA), cache=TRUE, include=FALSE}
 PS <- '36'
 cases <- expand.grid(scenario=c('S','G','N'), exp=sprintf('%0.3d',1:4), run=1:5)
 scenario_comparison <- c()
@@ -563,10 +605,9 @@ for (i in 1:nrow(cases)){
 }
 
 time_range <- c(28800,max(scenario_comparison$time))
-my_cols <- c('red','orange','blue')
 ```
 
-```{plot scenarios and experiments, echo=FALSE, fig.width=16,fig.height=9,dpi=300,out.width="1920px",out.height="1080px"}
+```{r COMPARE SCENARIOS (PLOT), echo=FALSE, fig.width=16,fig.height=9,dpi=300,out.width="1920px",out.height="1080px"}
 scenario_comparison %>%
   mutate(scenario=factor(scenario, levels=c('S','N','G'))) %>% 
   select(-year, -month, -n_infected) %>% 
@@ -577,9 +618,110 @@ scenario_comparison %>%
   filter(variable %in% c('prevalence','n_circulating_strains', 'n_circulating_genes', 'n_alleles')) %>%
   ggplot(aes(x=time, y=value_mean, color=scenario))+
   geom_line()+
-  scale_color_manual(values=my_cols)+
-  scale_x_continuous(breaks=pretty(x=subset(ps_comparison, time>time_range[1]&time<time_range[2])$time,n=5))+
+  scale_color_manual(values=scenario_cols)+
   facet_grid(variable~exp, scales='free')+
   mytheme
 ```
 
+## Time and probability to extinction
+Our previous findings suggested that immune selection promotes the persistence of the parasite population across interventions. In that case we expect that the time and probability of extinction would be higher in the immune selection case.
+
+```{r LOAD SCENARIOS DATA, cache=TRUE, include=FALSE}
+design_irs <- create_intervention_scheme_IRS(PS_benchmark = '27', scenario_benchmark = scenario, IRS_START_TIMES = '29160', immigration_range=c(0), length_range=c(720,1800,3600), coverage_range=0.9, write_to_file = F, design_ref=design)
+# Add control to the design_irs data frame, which is created in build_parameter_files.R
+design_irs %<>% slice(rep(1, each = 1)) %>% bind_rows(design_irs)
+design_irs[1, 'exp'] <- '001'
+design_irs[1, 'IRS_length'] <- 0
+
+intervention_stats_scenarios <- c()
+intervention_stats_diff_scenarios <- c()
+for (scenario in c('S','G','N')){
+  for (run in 1:5){
+    for (ps in sprintf('%0.2d',27:39)[-11]){
+      if (file.exists(paste('~/Documents/malaria_interventions_data/PS',ps,'_',scenario,'_E001_R',run,'.sqlite',sep=''))){
+        control_data <- get_data(parameter_space = ps, scenario = scenario, experiment = '001', run = run)[[1]]
+      }
+      for (e in sprintf('%0.3d',1:4)){
+        print(paste(Sys.time(),scenario, run, ps, e,sep=' | '))
+        if (file.exists(paste('~/Documents/malaria_interventions_data/PS',ps,'_',scenario,'_E',e,'_R',run,'.sqlite',sep=''))){
+          x <- post_intervention_stats(PS = ps, scenario = scenario, exp=e, run = run, plot.it = F, control_data = control_data, design_irs = design_irs)
+          intervention_stats_scenarios <- rbind(intervention_stats_scenarios, x$summary_stats)
+          intervention_stats_diff_scenarios <- rbind(intervention_stats_diff_scenarios, x$diff_control)
+        } else {
+          cat('missing file: ');cat(paste('PS',ps,'_',scenario,'_E',e,'_R',run,'.sqlite',sep=''));cat('\n')
+        }
+      }
+    }
+  }
+}
+```
+
+```{r TIME TO EXTINCTION ACROSS SCENARIOS (PLOT), echo=FALSE, fig.width=16,fig.height=9,dpi=300,out.width="1920px",out.height="1080px"}
+# Time to extinction as a function of the diversity
+intervention_stats_scenarios %>% 
+  mutate(scenario=factor(scenario, levels=c('S','N','G'))) %>% 
+  left_join(subset(design, select=c(PS,BITING_RATE_MEAN,N_GENES_INITIAL)), by='PS') %>% 
+  group_by(PS, BITING_RATE_MEAN, N_GENES_INITIAL, scenario, exp) %>% 
+  summarise(time_ext_max=max(time_extinct), time_ext_mean=mean(time_extinct)) %>%
+  gather(variable, value, -exp, -PS, -scenario, -run, -BITING_RATE_MEAN, -N_GENES_INITIAL) %>% 
+  ggplot(aes(x=N_GENES_INITIAL, y=value, color=scenario))+
+  geom_point(size=4)+
+  geom_line()+
+  scale_x_continuous("Gene pool size", breaks = seq(1200,15600,1200)) +
+  labs(y='Mean and max time to extinction')+
+  scale_color_manual(values=scenario_cols)+
+  facet_grid(variable~exp)+
+  mytheme+
+  theme(axis.text.x = element_text(angle = 90, hjust=0))
+```
+
+```{r PROBABILITY OF EXTINCTION (PLOT), echo=FALSE, fig.width=16,fig.height=9,dpi=300,out.width="1920px",out.height="1080px"}
+# Calculate probability of extinction as a proportion of runs which went extinct
+intervention_stats_scenarios %>% 
+  mutate(scenario=factor(scenario, levels=c('S','N','G'))) %>% 
+  left_join(subset(design, select=c(PS,BITING_RATE_MEAN,N_GENES_INITIAL)), by='PS') %>% 
+  left_join(subset(design_irs, select=c(exp,IRS_START_TIMES,IRS_length))) %>%
+  distinct(scenario, PS, N_GENES_INITIAL, exp, run, time_extinct,IRS_START_TIMES,IRS_length) %>% 
+  mutate(extinct=ifelse(time_extinct<as.numeric(IRS_START_TIMES)+as.numeric(IRS_length),1,0)) %>%
+  group_by(scenario,PS, N_GENES_INITIAL, exp) %>% 
+  summarise(extinct_prob=sum(extinct)/max(intervention_stats$run)) %>% 
+  ggplot(aes(x=N_GENES_INITIAL, y=extinct_prob, color=scenario))+
+  geom_point(size=4)+
+  geom_line()+
+  scale_x_continuous("Gene pool size", breaks = seq(1200,15600,1200)) +
+  scale_color_manual(values=scenario_cols)+
+  labs(y='Extinction probability')+
+  facet_wrap(~exp)+
+  mytheme+
+  theme(axis.text.x = element_text(angle = 90, hjust=0))
+```
+
+## Quantitative effect of IRS in different scenarios
+Again, calculate the ratio between pre- and post-IRS of a given measure variable, in the different scenarios. Only scenarios that did not go extinct appear. That is why the neutral scenario never appears because all runs always go extinct. Generally speaking we can see a stronger effect of IRS on populations with immune selection (red line is below orange line)
+
+```{r PRE- VS. POST-IRS ACROSS SCENARIOS (PLOT), echo=FALSE, fig.width=16,fig.height=9,dpi=300,out.width="1920px",out.height="1080px"}
+intervention_stats_diff_scenarios %>%
+  mutate(scenario=factor(scenario, levels=c('S','N','G'))) %>% 
+  left_join(subset(design, select=c(PS,BITING_RATE_MEAN,N_GENES_INITIAL)), by='PS') %>%
+  left_join(subset(design_irs, select=c(exp,IRS_START_TIMES,IRS_length))) %>%
+  mutate(time_threshold=as.numeric(IRS_START_TIMES)+as.numeric(IRS_length)+360) %>%
+  filter(time>=time_threshold) %>%
+  filter(variable %in% c('prevalence', 'meanMOI','n_circulating_strains', 'n_circulating_genes', 'n_alleles')) %>%
+  group_by(scenario, PS, BITING_RATE_MEAN, N_GENES_INITIAL, scenario, exp, variable) %>%
+  summarise(mean_diff=mean(diff),
+            mean_ratio=mean(ratio),
+            sd_ratio=sd(ratio)) %>%
+  mutate(error_up=mean_ratio+sd_ratio,
+         error_low=mean_ratio-sd_ratio) %>%
+  ggplot(aes(x=as.numeric(N_GENES_INITIAL), y=mean_ratio, color=scenario, group=scenario))+
+  geom_point(size=3)+
+  geom_line()+
+  scale_x_continuous("Gene pool size", breaks = seq(1200,15600,1200)) +
+  geom_errorbar(aes(ymin=error_low, ymax=error_up), width=0.1)+
+  # geom_line(aes(x=as.numeric(N_GENES_INITIAL), y=error_up, color=scenario, group=scenario), linetype='dashed')+
+  # geom_line(aes(x=as.numeric(N_GENES_INITIAL), y=error_low, color=scenario, group=scenario), linetype='dashed')+
+  scale_color_manual(values=scenario_cols)+
+  facet_grid(exp~variable)+
+  mytheme+
+  theme(axis.text.x = element_text(angle = 90, hjust=0))
+  ```
