@@ -3,6 +3,8 @@ library(magrittr)
 library(sqldf)
 
 # Functions ---------------------------------------------------------------
+
+## @knitr FUNCTIONS
 loadExperiments_GoogleSheets <- function(workBookName='malaria_interventions_design',sheetID=4){
   require(googlesheets)
   GS <- gs_title(workBookName)
@@ -303,6 +305,7 @@ post_intervention_stats <- function(PS, scenario='S', exp, run, post_interventio
   }
 }
 
+## @knitr END
 
 # Some example to test ----------------------------------------------------
 
@@ -323,13 +326,20 @@ x %>% bind_rows(subset(ctrl, time<min(x$time))) %>%
 dev.off()
 
 
+## @knitr INITIALIZE
+
 # Initialize important variables ------------------------------------------
 setwd('~/Documents/malaria_interventions_data/')
 design <- loadExperiments_GoogleSheets() 
+ps_range <- sprintf('%0.2d', 27:39)
+exp_range <- sprintf('%0.3d', 1:4)
+run_range <- 1:10
 scenario <- 'S'
 monitored_variables <- c('prevalence', 'meanMOI','n_circulating_strains', 'n_circulating_genes', 'n_alleles', 'n_total_bites')
 exp_cols <- c('black','#0A97B7','#B70A97','#97B70A')
 scenario_cols <- c('red','blue','orange')
+
+## @knitr COMPARE_EXPERIMENTS_LOAD
 
 # Compare between experiments within a parameter space --------------------
 PS <- '36'
@@ -345,11 +355,10 @@ control %>% select(-year, -month, -n_infected) %>%
   geom_hline(aes(yintercept=mean_value), data=control_means, color='blue')+
   mytheme
 
-e <- sprintf('%0.3d', 1:4)
-exp_comparison <- map(1:5, function(r){
-  map(e, function(i){
-    cat(i)
-    tmp <- get_data(parameter_space = PS, scenario = scenario, experiment = i, run = r)
+exp_comparison <- map(run_range, function(r){
+  map(exp_range, function(e){
+    print(paste(e,r,sep=' | '))
+    tmp <- get_data(parameter_space = PS, scenario = scenario, experiment = e, run = r)
     return(tmp[[1]])
   }) %>% bind_rows()
 }) %>% bind_rows()
@@ -361,6 +370,8 @@ design_irs[1, 'exp'] <- '001'
 design_irs[1, grepl("IRS", names(design_irs))] <- 'control'
 
 time_range <- c(28800,36000)
+
+## @knitr COMPARE_EXPERIMENTS_PLOT
 
 exp_comparison %>%
   select(-year, -month, -n_infected) %>% 
@@ -378,21 +389,23 @@ exp_comparison %>%
   geom_hline(aes(yintercept=mean_value), data=subset(control_means, variable %in% monitored_variables) , color='blue')+
   mytheme
 
+
+## @knitr COMPARE_DIVERSITY_LOAD
+
 # Compare between parameter spaces within an experiment -------------------
-ps <- sprintf('%0.2d',27:39)[-11]
-exp <- '002'
-ps_comparison <- map(1:5, function(r){
-      map(ps, function(i){
-        cat(i)
-        tmp <- get_data(parameter_space = i, scenario = scenario, experiment = exp, run = r)
+exp <- '003'
+ps_comparison <- map(run_range, function(r){
+      map(ps_range, function(ps){
+        print(paste(ps,r,sep=' | '))
+        tmp <- get_data(parameter_space = ps, scenario = scenario, experiment = exp, run = r)
         return(tmp[[1]])
       }) %>% bind_rows()
     }) %>% bind_rows()
 
-
 time_range <- c(28800,max(ps_comparison$time))
-
 my_cols <- gg_color_hue(length(unique(ps_comparison$PS)), hue_min = 10, hue_max = 280, l = 62, c = 200)
+
+## @knitr COMPARE_DIVERSITY_PLOT
 ps_comparison %>%
   left_join(subset(design, select=c(PS,BITING_RATE_MEAN,N_GENES_INITIAL)), by='PS') %>% 
   mutate(N_GENES_INITIAL=as.factor(N_GENES_INITIAL)) %>% 
@@ -409,13 +422,18 @@ ps_comparison %>%
   scale_x_continuous(breaks=pretty(x=subset(ps_comparison, time>time_range[1]&time<time_range[2])$time,n=5))+
   facet_wrap(~variable, scales='free')+
   mytheme
+# +theme(legend.position = "none",
+#                 axis.text = element_text(color='black', family="Helvetica", size=5),
+#   strip.text.x = element_text(family = "Helvetica", size = 5),
+#   strip.text.y = element_text(family = "Helvetica", size = 5)
+#                 )
+
+## @knitr END
 
 # Compare EIR
-ps <- sprintf('%0.2d', c(27,30,36,39))
-ps_comparison_eir <- map(1:5, function(r){
-  map(ps, function(i){
-    cat(i)
-    tmp <- get_data(parameter_space = i, scenario = scenario, experiment = '001', run = r)
+ps_comparison_eir <- map(run_range, function(r){
+  map(sprintf('%0.2d', c(27,30,36,39)), function(ps){
+    tmp <- get_data(parameter_space = ps, scenario = scenario, experiment = '001', run = r)
     return(tmp[[1]])
   }) %>% bind_rows()
 }) %>% bind_rows()
@@ -430,6 +448,9 @@ ps_comparison_eir %>%
   scale_y_continuous(breaks=seq(0,20,2))+
   mytheme
   
+
+## @knitr INTERVENTION_STATS_LOAD
+
 # Calculate stats at the end of interventions -----------------------------
 
 # These are some summary statistics that would quantify the effect of
@@ -439,20 +460,18 @@ ps_comparison_eir %>%
 
 intervention_stats <- c()
 intervention_stats_diff <- c()
-PS <- sprintf('%0.2d', (27:39)[-11])
-exp <- sprintf('%0.3d', 1:4)
 design_irs <- create_intervention_scheme_IRS(PS_benchmark = '27', scenario_benchmark = scenario, IRS_START_TIMES = '29160', immigration_range=c(0), length_range=c(720,1800,3600), coverage_range=0.9, write_to_file = F, design_ref=design)
 # Add control to the design_irs data frame, which is created in build_parameter_files.R
 design_irs %<>% slice(rep(1, each = 1)) %>% bind_rows(design_irs)
 design_irs[1, 'exp'] <- '001'
 design_irs[1, 'IRS_length'] <- 0
 
-for (run in 1:5){
-  for (ps in PS){
+for (run in run_range){
+  for (ps in ps_range){
     if (file.exists(paste('~/Documents/malaria_interventions_data/PS',ps,'_',scenario,'_E001_R',run,'.sqlite',sep=''))){
       control_data <- get_data(parameter_space = ps, scenario = scenario, experiment = '001', run = run)[[1]]
     }
-    for (e in exp){
+    for (e in exp_range){
       print(paste(Sys.time(),run,ps,e,sep=' | '))
       if (file.exists(paste('~/Documents/malaria_interventions_data/PS',ps,'_',scenario,'_E',e,'_R',run,'.sqlite',sep=''))){
         x <- post_intervention_stats(PS = ps, scenario = scenario, exp=e, run = run, plot.it = F, control_data = control_data, design_irs = design_irs)
@@ -464,6 +483,9 @@ for (run in 1:5){
     }
   }
 }
+
+
+## @knitr TIME_TO_EXTINCTION_PLOT
 
 # Time to extinction as a function of the diversity
 intervention_stats %>% 
@@ -480,6 +502,9 @@ intervention_stats %>%
   facet_grid(~exp)+
   mytheme+
   theme(axis.text.x = element_text(angle = 90, hjust=0))
+
+
+## @knitr PROB_OF_EXTINCTION_PLOT
 
 # Calculate probability of extinction as a proportion of runs which went extinct
 intervention_stats %>% 
@@ -498,6 +523,8 @@ intervention_stats %>%
   mytheme+
   theme(axis.text.x = element_text(angle = 90, hjust=0))
 
+## @knitr IRS_EFFECT_TS_PLOT
+
 # A time series of difference between control and experiment.
 intervention_stats_diff %>%
   left_join(subset(design, select=c(PS,BITING_RATE_MEAN,N_GENES_INITIAL)), by='PS') %>% 
@@ -510,6 +537,9 @@ intervention_stats_diff %>%
   geom_hline(yintercept = 0, color='black')+
   facet_wrap(~variable, scales='free_y')+
   mytheme+theme(legend.position = 'none')
+
+
+## @knitr IRS_EFFECT_RATIO_PLOT
 
 # This calculates the ratio of the value of variables POST-intervention compared
 # to control. For example, we can say that intervention has reduced the
@@ -543,10 +573,15 @@ intervention_stats_diff %>%
   theme(axis.text.x = element_text(angle = 90, hjust=0))
 
 
+## @knitr END
+
 
 # Compare between scenarios within a parameter space and experiment -------
+
+## @knitr COMPARE_SCENARIOS_TS_LOAD
+
 PS <- '36'
-cases <- expand.grid(scenario=c('S','G','N'), exp=sprintf('%0.3d',1:4), run=1:5)
+cases <- expand.grid(scenario=c('S','G','N'), exp=sprintf('%0.3d',1:4), run=run_range)
 scenario_comparison <- c()
 for (i in 1:nrow(cases)){
   print(paste('Scenario: ',cases$scenario[i],' | exp: ',cases$exp[i], ' | run: ',cases$run[i],sep=''))
@@ -555,6 +590,8 @@ for (i in 1:nrow(cases)){
 }
 
 time_range <- c(28800,max(scenario_comparison$time))
+
+## @knitr COMPARE_SCENARIOS_TS_PLOT
 
 scenario_comparison %>%
   mutate(scenario=factor(scenario, levels=c('S','N','G'))) %>% 
@@ -570,6 +607,8 @@ scenario_comparison %>%
   facet_grid(variable~exp, scales='free')+
   mytheme
 
+
+## @knitr COMPARE_IRS_EFFECT_SCENARIOS_LOAD
 
 # Compare the effects of intervention with summary stats
 
@@ -587,12 +626,12 @@ design_irs[1, 'IRS_length'] <- 0
 intervention_stats_scenarios <- c()
 intervention_stats_diff_scenarios <- c()
 for (scenario in c('S','G','N')){
-  for (run in 1:5){
-    for (ps in sprintf('%0.2d',27:39)[-11]){
+  for (run in run_range){
+    for (ps in ps_range){
       if (file.exists(paste('~/Documents/malaria_interventions_data/PS',ps,'_',scenario,'_E001_R',run,'.sqlite',sep=''))){
         control_data <- get_data(parameter_space = ps, scenario = scenario, experiment = '001', run = run)[[1]]
       }
-      for (e in sprintf('%0.3d',1:4)){
+      for (e in exp_range){
         print(paste(Sys.time(),scenario, run, ps, e,sep=' | '))
         if (file.exists(paste('~/Documents/malaria_interventions_data/PS',ps,'_',scenario,'_E',e,'_R',run,'.sqlite',sep=''))){
           x <- post_intervention_stats(PS = ps, scenario = scenario, exp=e, run = run, plot.it = F, control_data = control_data, design_irs = design_irs)
@@ -606,15 +645,18 @@ for (scenario in c('S','G','N')){
   }
 }
 
+
+## @knitr TIME_TO_EXTINCTION_SCENARIOS_PLOT
+
 # Time to extinction as a function of the diversity
-intervention_stats_scenarios %>% 
-  mutate(scenario=factor(scenario, levels=c('S','N','G'))) %>% 
-  left_join(subset(design, select=c(PS,BITING_RATE_MEAN,N_GENES_INITIAL)), by='PS') %>% 
-  group_by(PS, BITING_RATE_MEAN, N_GENES_INITIAL, scenario, exp) %>% 
+intervention_stats_scenarios %>%
+  mutate(scenario=factor(scenario, levels=c('S','N','G'))) %>%
+  left_join(subset(design, select=c(PS,BITING_RATE_MEAN,N_GENES_INITIAL)), by='PS') %>%
+  group_by(PS, BITING_RATE_MEAN, N_GENES_INITIAL, scenario, exp) %>%
   summarise(time_ext_max=max(time_extinct), time_ext_mean=mean(time_extinct)) %>%
-  gather(variable, value, -exp, -PS, -scenario, -run, -BITING_RATE_MEAN, -N_GENES_INITIAL) %>% 
+  gather(variable, value, -exp, -PS, -scenario, -run, -BITING_RATE_MEAN, -N_GENES_INITIAL) %>%
   ggplot(aes(x=N_GENES_INITIAL, y=value, color=scenario))+
-  geom_point()+
+  geom_point(size=4)+
   geom_line()+
   scale_x_continuous("Gene pool size", breaks = seq(1200,15600,1200)) +
   labs(y='Mean and max time to extinction')+
@@ -623,15 +665,17 @@ intervention_stats_scenarios %>%
   mytheme+
   theme(axis.text.x = element_text(angle = 90, hjust=0))
 
+## @knitr EXTINCTION_PROB_SCENARIOS_PLOT
+
 # Calculate probability of extinction as a proportion of runs which went extinct
-intervention_stats_scenarios %>% 
-  mutate(scenario=factor(scenario, levels=c('S','N','G'))) %>% 
-  left_join(subset(design, select=c(PS,BITING_RATE_MEAN,N_GENES_INITIAL)), by='PS') %>% 
+intervention_stats_scenarios %>%
+  mutate(scenario=factor(scenario, levels=c('S','N','G'))) %>%
+  left_join(subset(design, select=c(PS,BITING_RATE_MEAN,N_GENES_INITIAL)), by='PS') %>%
   left_join(subset(design_irs, select=c(exp,IRS_START_TIMES,IRS_length))) %>%
-  distinct(scenario, PS, N_GENES_INITIAL, exp, run, time_extinct,IRS_START_TIMES,IRS_length) %>% 
+  distinct(scenario, PS, N_GENES_INITIAL, exp, run, time_extinct,IRS_START_TIMES,IRS_length) %>%
   mutate(extinct=ifelse(time_extinct<as.numeric(IRS_START_TIMES)+as.numeric(IRS_length),1,0)) %>%
-  group_by(scenario,PS, N_GENES_INITIAL, exp) %>% 
-  summarise(extinct_prob=sum(extinct)/max(intervention_stats$run)) %>% 
+  group_by(scenario,PS, N_GENES_INITIAL, exp) %>%
+  summarise(extinct_prob=sum(extinct)/max(intervention_stats$run)) %>%
   ggplot(aes(x=N_GENES_INITIAL, y=extinct_prob, color=scenario))+
   geom_point(size=4)+
   geom_line()+
@@ -642,9 +686,10 @@ intervention_stats_scenarios %>%
   mytheme+
   theme(axis.text.x = element_text(angle = 90, hjust=0))
 
+## @knitr IRS_EFFECT_RATIO_SCENARIOS_PLOT
 
 intervention_stats_diff_scenarios %>%
-  mutate(scenario=factor(scenario, levels=c('S','N','G'))) %>% 
+  mutate(scenario=factor(scenario, levels=c('S','N','G'))) %>%
   left_join(subset(design, select=c(PS,BITING_RATE_MEAN,N_GENES_INITIAL)), by='PS') %>%
   left_join(subset(design_irs, select=c(exp,IRS_START_TIMES,IRS_length))) %>%
   mutate(time_threshold=as.numeric(IRS_START_TIMES)+as.numeric(IRS_length)+360) %>%
@@ -667,6 +712,9 @@ intervention_stats_diff_scenarios %>%
   facet_grid(exp~variable)+
   mytheme+
   theme(axis.text.x = element_text(angle = 90, hjust=0))
+
+
+
 
 #----------------------------------------------------------------------------
 # This part compares the fits of the duration curve of the selection and the generalized immunity.
