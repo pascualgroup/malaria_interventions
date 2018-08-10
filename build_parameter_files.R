@@ -594,7 +594,7 @@ files_sqlite <- tibble(file_sqlite=files,
                     size=round(file.size(files)/1024^2,2)
 )
 
-files_sqlite$run_time <- unlist(lapply(files_sqlite$file_sqlite, function (f) {
+files_sqlite$run_time <- unlist(lapply(files_sqlite$file_sqlite[is.na(files_sqlite$CP)], function (f) {
   print(f)
   db <- dbConnect(SQLite(), dbname = paste('~/Documents/malaria_interventions_data/',f,sep=''))
   x <- dbGetQuery(db, 'SELECT max(time) FROM summary')
@@ -620,7 +620,7 @@ files_py <- tibble(file_py=files$Name,
 )
 files_py$PS <- sprintf('%0.2d', files_py$PS)
 
-files_df <- full_join(files_sqlite, files_py, by = c("PS", "scenario", "experiment", "run")) %>% 
+files_df <- full_join(files_sqlite[is.na(files_sqlite$CP),], files_py, by = c("PS", "scenario", "experiment", "run")) %>% 
   filter(as.numeric(PS)>=27) %>% 
   select(scenario, PS, experiment, run, file_sqlite, file_py) %>% 
   mutate(scenario=factor(scenario, levels=c('S','N','G'))) %>% 
@@ -638,12 +638,73 @@ for(i in 1:nrow(files_df)){
 seed_check <- files_df %>% distinct(scenario, PS, run, seed) %>% group_by(scenario, PS) %>% summarise(length(run))
 
 
-files_sqlite %<>% mutate(scenario=factor(scenario, levels=c('S','N','G')))  %>% arrange(CP, scenario, PS, experiment, run, run_time)         
-files_sqlite %<>% filter(is.na(CP) & as.numeric(PS)>=27) %>% group_by(PS,scenario,experiment,run_time) %>% summarise(runs_completed=length(run))
-files_sqlite %>% filter(scenario=='S')
+files_sqlite %<>% mutate(scenario=factor(scenario, levels=c('S','N','G')))  %>% arrange(CP, scenario, PS, experiment, run)         
+files_sqlite %<>% filter(is.na(CP) & as.numeric(PS)>=27) %>% group_by(PS,scenario,experiment) %>% summarise(runs_completed=length(run))
+files_sqlite %>% filter(scenario=='G') %>% print(n = Inf)
 files_py %<>% filter(as.numeric(PS)>=27) %>% mutate(scenario=factor(scenario, levels=c('S','N','G'))) %>% arrange(scenario, PS, experiment, run)         
 files_py %<>% filter(as.numeric(PS)>=27) %>% group_by(PS,scenario,experiment) %>% summarise(runs_count=length(run))
 files_py %>% filter(scenario=='G') %>% distinct(PS,runs_count)
+
+
+# Checkpoint sqlite files
+files_CP <- read.table('CP_file_list.txt',he = F, sep = ' ')
+files_CP <- tibble(file_CP=files_CP$V8,
+                   PS = sapply(str_split(files_CP$V8,'_'),function (x) parse_number(x[1])),
+                   scenario=sapply(str_split(files_CP$V8,'_'),function (x) x[2]),
+                   experiment=sapply(str_split(files_CP$V8,'_'),function (x) str_sub(x[3],2,4)),
+                   run = sapply(str_split(files_CP$V8,'_'),function (x) parse_number(x[4])),
+                   size=round(files_CP$V5/1000000,1)
+)
+files_CP$PS <- sprintf('%0.2d', files_CP$PS)
+
+# Check which CP files are missing by using anti_join
+files_CP_missing <- full_join(files_sqlite[is.na(files_sqlite$CP),], files_py, by = c("PS", "scenario", "experiment", "run")) %>% 
+  anti_join(files_CP, by = c("PS", "scenario", "experiment", "run")) %>% 
+  filter(as.numeric(PS)>=27 & experiment=='000') %>% 
+  select(scenario, PS, experiment, run, file_sqlite, file_py) %>% 
+  mutate(scenario=factor(scenario, levels=c('S','N','G'))) %>% 
+  arrange(PS, scenario, experiment, run)
+
+# Generate sbatch files to create the missing checkpoints -----------------
+ps_scen_combinations <- as.tibble(files_CP_missing) %>% distinct(scenario,PS)
+for (i in 1:nrow(ps_scen_combinations)){
+  ps <- ps_scen_combinations$PS[i]
+  scen <- ps_scen_combinations$scenario[i]
+
+  unzip(paste(ps,'_',scen,'_py.zip',sep=''), files = subset(files_CP_missing, scenario==scen & PS==ps)$file_py)
+  experiment <- '000' # Use 000 for checkpoints and 001 for control
+  base_name <- paste('PS',ps,scen,'E',experiment,sep='')
+
+  SLURM_ARRAY_RANGE <- collapse_with_commas(subset(files_CP_missing, scenario==scen & PS==ps)$run, use_brackets = F)
+
+  experimental_design <- subset(design, PS==ps & scenario==scen & exp=='000')
+  # Write the job file for the exepriment
+  job_lines <- readLines('~/Documents/malaria_interventions/job_file_ref.sbatch')
+  wall_time <-  experimental_design$wall_time
+  mem_per_cpu <-  experimental_design$mem_per_cpu
+  job_lines[2] <- paste('#SBATCH --job-name=',paste(ps,scen,'E',experiment,sep=''),sep='')
+  job_lines[3] <- paste('#SBATCH --time=',wall_time,sep='')
+  job_lines[4] <- paste('#SBATCH --output=slurm_output/',base_name,'_%A_%a.out',sep='')
+  job_lines[5] <- paste('#SBATCH --error=slurm_output/',base_name,'_%A_%a.err',sep='')
+  job_lines[6] <- paste('#SBATCH --array=',SLURM_ARRAY_RANGE,sep='')
+  job_lines[9] <- paste('#SBATCH --mem-per-cpu=',mem_per_cpu,sep='')
+  job_lines[19] <- paste("PS='",ps,"'",sep='')
+  job_lines[20] <- paste("scenario='",scen,"'",sep='')
+  job_lines[21] <- paste("exp='",experiment,"'",sep='')
+  job_lines[26] <- "CHECKPOINT='create'"
+  output_file=paste(base_name,'.sbatch',sep = '')
+  write_lines(job_lines, output_file)
+  cat(paste('sbatch ',base_name,'.sbatch',sep=''));cat('\n')
+}
+
+
+print(cases)
+cat('Run this on Midway: \n')
+for (e in row_range){
+  cat(paste('sbatch PS',experimental_design$PS[e],experimental_design$scenario[e],'E',experimental_design$exp[e],'.sbatch','\n',sep=''))
+}
+
+
 
 # General stuff -----------------------------------------------------------
 
