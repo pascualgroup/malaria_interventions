@@ -319,6 +319,51 @@ create_run <- function(design_ID, run, RANDOM_SEED, experimental_design, biting_
   write_lines(param_data$output, output_file)
 }
 
+
+
+# A function to generate sbatch files on demand
+generate_sbatch <- function(ps, scen, experiment, runs, unzip_py_files){
+  base_name <- paste('PS',ps,scen,'E',experiment,sep='')
+  SLURM_ARRAY_RANGE <- collapse_with_commas(runs, use_brackets = F)
+  
+  # This is to get the correct walltime and memory for Midway
+  if (experiment == '000'){
+    experimental_design <- subset(design, PS==ps & scenario==scen & exp=='000')
+  }
+  if (experiment != '000'){
+    experimental_design <- subset(design, PS==ps & scenario==scen & exp=='001')
+  }  
+  
+  # Write the job file for the exepriment
+  job_lines <- readLines('~/Documents/malaria_interventions/job_file_ref.sbatch')
+  wall_time <-  experimental_design$wall_time
+  mem_per_cpu <-  experimental_design$mem_per_cpu
+  job_lines[2] <- paste('#SBATCH --job-name=',paste(ps,scen,'E',experiment,sep=''),sep='')
+  job_lines[3] <- paste('#SBATCH --time=',wall_time,sep='')
+  job_lines[4] <- paste('#SBATCH --output=slurm_output/',base_name,'_%A_%a.out',sep='')
+  job_lines[5] <- paste('#SBATCH --error=slurm_output/',base_name,'_%A_%a.err',sep='')
+  job_lines[6] <- paste('#SBATCH --array=',SLURM_ARRAY_RANGE,sep='')
+  job_lines[9] <- paste('#SBATCH --mem-per-cpu=',mem_per_cpu,sep='')
+  job_lines[19] <- paste("PS='",ps,"'",sep='')
+  job_lines[20] <- paste("scenario='",scen,"'",sep='')
+  job_lines[21] <- paste("exp='",experiment,"'",sep='')
+  if (experiment == '000'){
+    job_lines[26] <- "CHECKPOINT='create'"
+  }
+  if (experiment != '000'){
+    job_lines[26] <- "CHECKPOINT='load'"
+  }  
+  
+  output_file=paste(base_name,'.sbatch',sep = '')
+  write_lines(job_lines, output_file)
+  cat(paste('sbatch ',base_name,'.sbatch',sep=''));cat('\n')
+  
+  if (unzip_py_files){
+    unzip(paste(ps,'_',scen,'_py.zip',sep=''), files = paste('PS',ps,'_',scen,'_','E',experiment,'_R',runs,'.py',sep=''))
+  }
+}
+
+
 # This function generates parameter files and corresponding job files (to run on
 # Midway), for several experiments and runs. It keeps the random seed for each
 # RUN across experiments AND PARAMETER SPACES the same. Also possible to provide
@@ -666,6 +711,9 @@ files_CP_missing <- full_join(files_sqlite[is.na(files_sqlite$CP),], files_py, b
   arrange(PS, scenario, experiment, run)
 
 # Generate sbatch files to create the missing checkpoints -----------------
+
+
+
 ps_scen_combinations <- as.tibble(files_CP_missing) %>% distinct(scenario,PS)
 for (i in 1:nrow(ps_scen_combinations)){
   ps <- ps_scen_combinations$PS[i]
