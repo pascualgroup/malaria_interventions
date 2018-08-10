@@ -86,3 +86,4 @@ IMMIGRATION_ON = True
 IMMIGRATION_RATE = [1.0]
 P_IMMIGRATION_INCLUDES_NEW_GENES = 0.5
 N_IMMIGRATION_NEW_GENES = 0
+POOLSIZE_BOUNCE_BACK_AFTER_INTERVENTION=False # If this is False, we assume a regional intervention, whereby the gene pool size is reduced by the same proportion as the local population gene pool size after the intervention is lifted. For example, if IRS or MDA reduced the local gene diversity to 30% of its original size before the intervention (where original size it taken at the beginning point of the intervention), then when the intervention stops, the general gene pool is also reduced to 30% of its size (e.g., for N_GENES_INITIAL = 12000 the pool size will be 3600). A value of True means no change and the regional pool size remains as if no intervention were done (i.e., 12000 in our example).
