@@ -60,16 +60,17 @@ create_intervention_scheme_IRS <- function(PS_benchmark, scenario_benchmark, IRS
 
 mytheme <- theme_bw() + theme(
   legend.title  = element_text(colour = "black", size=17),
-   # legend.position = "none",
+  # legend.position = "none",
   #	legend.direction = "horizontal",
   legend.key = element_blank(),
   legend.text  = element_text(colour = "black", size=17),
   panel.background = element_blank(),
   panel.grid.major = element_blank(),
   # panel.grid.minor = element_blank(),
-  axis.text = element_text(color='black', family="Helvetica", size=10),
-  strip.text.x = element_text(family = "Helvetica", size = 10),
-  strip.text.y = element_text(family = "Helvetica", size = 10),
+  axis.text = element_text(color='black', family="Helvetica", size=14),
+  axis.title = element_text(color='black', family="Helvetica", size=14),
+  strip.text.x = element_text(family = "Helvetica", size = 14),
+  strip.text.y = element_text(family = "Helvetica", size = 14),
   panel.border = element_rect(colour = "black", size=1.3),
   axis.ticks = element_line(size = 1.3),
   strip.background = element_rect( fill = "transparent", size = 1.3, colour = "black"  ),
@@ -675,7 +676,7 @@ intervention_stats_scenarios %>%
   distinct(scenario, PS, N_GENES_INITIAL, exp, run, time_extinct,IRS_START_TIMES,IRS_length) %>%
   mutate(extinct=ifelse(time_extinct<as.numeric(IRS_START_TIMES)+as.numeric(IRS_length),1,0)) %>%
   group_by(scenario,PS, N_GENES_INITIAL, exp) %>%
-  summarise(extinct_prob=sum(extinct)/max(intervention_stats$run)) %>%
+  summarise(extinct_prob=sum(extinct)/length(extinct)) %>% 
   ggplot(aes(x=N_GENES_INITIAL, y=extinct_prob, color=scenario))+
   geom_point(size=4)+
   geom_line()+
@@ -768,35 +769,7 @@ dev.off()
 
 
 
-# Structure ---------------------------------------------------------------
-# Initialize
-parameter_space <- '03'
-scenario <- 'S'
-experiment <- '01'
-run <- 1
-base_name <- paste('PS',parameter_space,'_',scenario,'_E',experiment,'_R',run,sep='')
-sqlite_file <- paste(base_name,'.sqlite',sep='')
-# parameter_file <- paste(base_name,'.py',sep='') # This may be necessary so I leave it
-
-# Extract data from sqlite. variable names correspond to table names
-db <- dbConnect(SQLite(), dbname = sqlite_file)
-sampled_strains <- as.tibble(dbGetQuery(db, 'SELECT id, gene_id FROM sampled_strains'))
-names(sampled_strains)[1] <- c('strain_id')
-sampled_alleles <- as.tibble(dbGetQuery(db, 'SELECT * FROM sampled_alleles'))
-names(sampled_alleles)[3] <- c('allele_id')
-sampled_strains <- full_join(sampled_strains, sampled_alleles)
-sampled_strains$allele_locus <- paste(sampled_strains$allele_id,sampled_strains$locus,sep='_') # each allele in a locus is unique
-
-sampled_infections <- PS03_S_01[[2]]
-sampled_infections$layer <- group_indices(sampled_infections, time) # Add layer numbers. Each time point is a layer
-sampled_infections %<>% arrange(layer,strain_id,host_id) %>% group_by(layer,strain_id) %>% mutate(strain_copy = row_number()) # add unique id for each strain copy within each layer. A strain copy is an instance of a strain in a particualr host
-sampled_infections$strain_id_unique=paste(sampled_infections$strain_id,sampled_infections$strain_copy,sep='_') # Create the unique strains
-
-# Integrate the strain composition into the infections table
-identical(unique(sampled_infections$strain_id),unique(sampled_strains$strain_id)) # This pretty important
-sampled_infections %<>% select(time, layer, host_id, strain_id, strain_copy, strain_id_unique) %>% left_join(sampled_strains)
-
-#sampled_infections <- subset(sampled_infections, layer<=10)
+# FUNCTIONS for network Structure ---------------------------------------------------------------
 
 
 overlapAlleleAdj<-function(mat){
@@ -805,56 +778,107 @@ overlapAlleleAdj<-function(mat){
   return(newmat)  
 }
 
+
 # A function to build the similarity matrix for a single layer and calculate some summary stats
 build_layer <- function(l){
   sampled_infections_layer <- subset(sampled_infections, layer==l) # This is MUCH faster than sampled_infections_layer <- sampled_infections %>% filter(layer==l)
-  sampled_infections_layer %<>% group_by(strain_id) %>% mutate(freq = n()/120) %>% arrange(strain_id_unique) # strain frequency (the number of strain copies should be equal to the frequency)
+  sampled_infections_layer %<>% group_by(strain_id) %>%
+    mutate(freq = n()/120) %>% # strain frequency (the number of strain copies should be equal to the frequency)
+    arrange(strain_id_unique) 
   # Calculate the edges
   similarity_matrix <- table(sampled_infections_layer$strain_id_unique, sampled_infections_layer$allele_locus)
   similarity_matrix <- overlapAlleleAdj(similarity_matrix)
   # Some summary
   layer_summary <- with(sampled_infections_layer, 
                         data.frame(hosts=length(unique(host_id)),
-                                   strains=length(unique(strain_id)),
+                                   repertoires=length(unique(strain_id)),
                                    total_infections=length(unique(strain_id_unique))
-                                   ))
+                        ))
   return(list(similarity_matrix=similarity_matrix, infections=sampled_infections_layer, layer_summary=layer_summary))
 }
 
-Layers <- list()
-for (l in 1:max(sampled_infections$layer)){
-  cat(paste('[',Sys.time(), '] building layer ',l,'\n',sep=''))
-  Layers[[l]] <- build_layer(l)  
+
+createTemporalNetwork <- function(ps, scenario, exp, run, cutoff_prob=0.9, write_files=F, layers_to_include=NULL){
+  base_name <- paste('PS',ps,'_',scenario,'_E',exp,'_R',run,sep='')
+  sqlite_file <- paste(base_name,'.sqlite',sep='')
+  
+  print('Getting data from sqlite...')
+  # Extract data from sqlite. variable names correspond to table names
+  db <- dbConnect(SQLite(), dbname = sqlite_file)
+  sampled_strains <- as.tibble(dbGetQuery(db, 'SELECT id, gene_id FROM sampled_strains'))
+  names(sampled_strains)[1] <- c('strain_id')
+  sampled_alleles <- as.tibble(dbGetQuery(db, 'SELECT * FROM sampled_alleles'))
+  names(sampled_alleles)[3] <- c('allele_id')
+  sampled_strains <- full_join(sampled_strains, sampled_alleles)
+  sampled_strains$allele_locus <- paste(sampled_strains$allele_id,sampled_strains$locus,sep='_') # each allele in a locus is unique
+  dbDisconnect(db)
+  # Get infection data
+  sampled_infections <- get_data(parameter_space = ps, experiment = exp, scenario = scenario, run = run)$sampled_infections
+  
+  print('Building data set...')
+  # Add layer numbers. Each time point is a layer
+  sampled_infections$layer <- group_indices(sampled_infections, time) 
+  sampled_infections %<>% arrange(layer,strain_id,host_id) %>% 
+    group_by(layer,strain_id) %>% 
+    mutate(strain_copy = row_number()) # add unique id for each strain copy within each layer. A strain copy is an instance of a strain in a particualr host
+  sampled_infections$strain_id_unique <- paste(sampled_infections$strain_id,sampled_infections$strain_copy,sep='_') # Create the unique strains
+  # Integrate the strain composition into the infections table
+  if (all(unique(sampled_strains$strain_id)%in%unique(sampled_infections$strain_id))==F || all(unique(sampled_infections$strain_id)%in%unique(sampled_strains$strain_id))==F) {
+    stop('There may be a mismatch in repertoires between the sampled_strains and sampled_infections data sets. Revise')
+  }
+  sampled_infections %<>% select(time, layer, host_id, strain_id, strain_copy, strain_id_unique) %>% 
+    left_join(sampled_strains)
+  
+  print('Building layers...')
+  Layers <- list()
+  if (is.null(layers_to_include)){
+    layers_to_include <- sort(unique(sampled_infections$layer))
+  }
+  for (l in layers_to_include){
+    cat(paste('[',Sys.time(), '] building layer ',l,'\n',sep=''))
+    Layers[[l]] <- build_layer(l)  
+  }
+  # Get just the matrices
+  temporal_network <- unique(lapply(Layers, function(x) head(x, 1)$similarity_matrix))
+  sapply(temporal_network, nrow)
+  
+  print('Applying cutoff...')
+  # Apply a cutoff
+  ## Get the similarity matrix for all the repertoires and alleles
+  x <- xtabs(~strain_id+allele_locus, subset(sampled_strains, strain_id%in%sampled_infections$strain_id))
+  similarityMatrix <- overlapAlleleAdj(x)
+  dim(similarityMatrix)
+  
+  cutoffValue <- quantile(as.vector(similarityMatrix), probs = 0.9)
+  print(cutoffValue)
+  # hist(as.vector(similarityMatrix));abline(v=cutoffValue,col='red')
+  similarityMatrix[similarityMatrix<cutoffValue] <- 0
+  for (i in 1:length(temporal_network)){
+    print(i)
+    x <- temporal_network[[i]]
+    x[x<cutoffValue] <- 0
+    temporal_network[[i]] <- x
+  }
+  
+  if(write_files){
+    print('Writing similarit matrices to files...')
+    # Write similarity matrix without cutoff. This is used to plot the edge weight distributions.
+    write.table(similarityMatrix, paste('../',filenameBase,'_similarityMatrix_nocutoff.csv',sep=''), row.names = T, col.names = T, sep=',')
+    # write.table(similarityMatrix, paste(filenameBase,'_similarityMatrix.csv',sep=''), row.names = T, col.names = T, sep=',')
+    # write.table(similarityMatrix, paste('../',filenameBase,'_similarityMatrix.csv',sep=''), row.names = T, col.names = T, sep=',')
+  }
+  
+  print('Done!')
+  return(list(temporal_network=temporal_network, base_name = base_name, ps=ps, scenario=scenario, experiment=exp, run=run))
 }
 
-# Get just the matrices
-temporal_network <- unique(lapply(Layers, function(x) head(x, 1)$similarity_matrix))
-sapply(temporal_network, dim)
-
-# Apply a cutoff
-x <- xtabs(~strain_id+allele_locus, subset(sampled_strains, strain_id%in%sampled_infections$strain_id))
-similarityMatrix <- overlapAlleleAdj(x)
-dim(similarityMatrix)
-# # Write similarity matrix without cutoff. This used to plot the edge weight distributions.
-# write.table(similarityMatrix, paste('../',filenameBase,'_similarityMatrix_nocutoff.csv',sep=''), row.names = T, col.names = T, sep=',')
-cutoffValue <- quantile(as.vector(similarityMatrix), probs = 0.9)
-print(cutoffValue)
-# hist(as.vector(similarityMatrix));abline(v=cutoffValue,col='red')
-similarityMatrix[similarityMatrix<cutoffValue] <- 0
-# write.table(similarityMatrix, paste(filenameBase,'_similarityMatrix.csv',sep=''), row.names = T, col.names = T, sep=',')
-# write.table(similarityMatrix, paste('../',filenameBase,'_similarityMatrix.csv',sep=''), row.names = T, col.names = T, sep=',')
-
-for (i in 1:length(temporal_network)){
-  print(i)
-  x <- temporal_network[[i]]
-  x[x<cutoffValue] <- 0
-  temporal_network[[i]] <- x
-}
 
 # This function takes a list of temporal matrices and returns an intralayer and
 # interlayer edge lists in a format: [layer_source, node_source, layer_target node_target, weight].
 # It also returns the list of node names
-build_infomap_objects <- function(temporal_network, write_to_infomap_file=T, return_objects=T){
+build_infomap_objects <- function(network_object, write_to_infomap_file=T, return_objects=T){
+  temporal_network <- network_object$temporal_network
+  base_name <- network_object$base_name
   require(igraph)
   
   # Define functions
@@ -870,11 +894,12 @@ build_infomap_objects <- function(temporal_network, write_to_infomap_file=T, ret
   }
   
   ##  A function that gets the layer as a matrix and writes it for infomap as an edge list
-  matrix_to_infomap <- function(l){
+  # network_object is a list of matrices, each element in the list is a layer.
+  matrix_to_infomap <- function(l, nodeList, network_object){
     require(igraph)
-    current_layer <- temporal_network[[l]]
+    current_layer <- network_object[[l]]
     if(nrow(current_layer)<2){
-      print(paste('No strains in layer',l,'!!! skipping intralayer edges'))
+      print(paste('Less than 2 repertoires in layer',l,'!!! skipping intralayer edges'))
       next
     }
     g <- graph.adjacency(current_layer, mode = 'directed', weighted = T)
@@ -884,15 +909,15 @@ build_infomap_objects <- function(temporal_network, write_to_infomap_file=T, ret
     current_layer_el$layer_t <- l
     current_layer_el$node_s <- nodeList$nodeID[match(current_layer_el$node_s,nodeList$nodeLabel)]
     current_layer_el$node_t <- nodeList$nodeID[match(current_layer_el$node_t,nodeList$nodeLabel)]
-    current_layer_el %<>% select(layer_s, node_s, layer_t, node_t, w)
+    current_layer_el %<>% select(layer_s, node_s, layer_t, node_t, w) # Re-arrange columns for the infomap input order
     print(paste('[',Sys.time(), '] Created edge list of layer ',l,' for Infomap | ', nrow(current_layer_el),' edges',sep=''))
     return(current_layer_el)
   }
   
   ## A function that calculates interlayer edges between layer t and t+1
-  build_interlayer_edges_1step <- function(t){
-    strain_copies_t <- rownames(temporal_network[[t]]) # repertoires at time t
-    strain_copies_t1 <- rownames(temporal_network[[t+1]]) # repertoires at time t+1
+  build_interlayer_edges_1step <- function(t, nodeList, network_object){
+    strain_copies_t <- rownames(network_object[[t]]) # repertoires at time t
+    strain_copies_t1 <- rownames(network_object[[t+1]]) # repertoires at time t+1
     if (length(strain_copies_t)<2 | length(strain_copies_t1)<2){
       print(paste('No interlayer edges between layers',t, 'and',t+1,'because there are < 2 repertoires.'))
       next} # need minimum of 2 strains in t and t+1 to build a matrix
@@ -923,11 +948,13 @@ build_infomap_objects <- function(temporal_network, write_to_infomap_file=T, ret
   
   # Create intralayer edge lists
   layers <- 1:length(temporal_network)
-  infomap_intralayer <- map(layers, matrix_to_infomap) %>% bind_rows()
+  infomap_intralayer <- lapply(layers, function (x) matrix_to_infomap(x, nodeList = nodeList, network_object = temporal_network))
+  infomap_intralayer <- do.call("rbind", infomap_intralayer)
   
-  # create interlayer edge lists
+  # Create interlayer edge lists. Only connect consecutive layers (interlayer ONLY go from layer l to l+1).
   layers <- layers[-length(layers)]
-  infomap_interlayer <- map(layers, build_interlayer_edges_1step) %>% bind_rows()
+  infomap_interlayer <- lapply(layers, function (x) build_interlayer_edges_1step(x, nodeList = nodeList, network_object = temporal_network))
+  infomap_interlayer <- do.call("rbind", infomap_interlayer)
   
   if (write_to_infomap_file){
     sink.reset <- function(){
@@ -958,7 +985,44 @@ build_infomap_objects <- function(temporal_network, write_to_infomap_file=T, ret
   }
 }
 
-infomap_objects <- build_infomap_objects(temporal_network)
+
+# Example for structure ---------------------------------------------------
+
+ps <- '36'
+scenario <- 'S'
+exp <- '001'
+run <- 1
+
+# parameter_file <- paste(base_name,'.py',sep='') # This may be necessary so I leave it
+
+
+network_test <- createTemporalNetwork(ps,scenario,exp,1, layers_to_include = c(1:20,30:40))
+sapply(network_test, nrow)
+infomap_objects <- build_infomap_objects(network_test[1:20])
+
+
+# Run Infomap
+
+# Get infomap results and process them
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 
