@@ -29,6 +29,12 @@ set_parameter <- function(param_data, parameter, value){
 # Function to get reference parameter file
 get_parameter_reference <- function(parameter_file_ref='~/Documents/malaria_interventions/parameter_file_ref.py'){
   reference <- readLines(parameter_file_ref)
+  for (l in 1:length(reference)){
+      if (str_detect(reference[l],'#')){
+        reference[l] <- str_sub(reference[l],1,str_locate(reference[l],'#')[1]-1)
+      }
+  }
+  
   lines <- 1:length(reference)
   parameters <- map(lines, function(l){
     tmp <- str_sub(reference[l], 1, str_locate(reference[l], '=')[1]-1)
@@ -413,7 +419,7 @@ generate_files <- function(row_range, run_range, random_seed=NULL, experimental_
                                IRS_IMMIGRATION=str_split(experimental_design$IRS_IMMIGRATION[design_ID], ',')[[1]],
                                stringsAsFactors = F)
       for (i in 1:nrow(IRS_scheme)){
-        set_IRS(design_ID, RUN, IRS_scheme$IRS_START_TIME[i], IRS_scheme$IRS_input[i], IRS_scheme$IRS_IMMIGRATION[i], experimental_design)
+        set_IRS(design_ID = design_ID, run = RUN, IRS_START_TIME = IRS_scheme$IRS_START_TIME[i], IRS_IMMIGRATION = IRS_scheme$IRS_IMMIGRATION[i], IRS_input = IRS_scheme$IRS_input[i], experimental_design)
       }
     }
     # Set MDA
@@ -521,10 +527,10 @@ clear_previous_files(run = 6, exclude_sqlite = F, exclude_CP = F, exclude_contro
 design <- loadExperiments_GoogleSheets() 
 
 # Create the reference experiments (checkpoint and control)
-ps_range <- sprintf('%0.2d', 29)
-exp_range <- sprintf('%0.3d', 1)
-run_range <- 1:5
-work_scenario <- 'N'
+ps_range <- sprintf('%0.2d', 27:39)
+exp_range <- sprintf('%0.3d', 0:4)
+run_range <- 11:50
+work_scenario <- 'S'
 design_subset <- subset(design, PS %in% ps_range & scenario==work_scenario)
 generate_files(row_range = 1:nrow(design_subset), run_range = run_range, experimental_design = design_subset)
 
@@ -532,7 +538,7 @@ generate_files(row_range = 1:nrow(design_subset), run_range = run_range, experim
 for (ps in ps_range){
   print(ps)
   design_control <- subset(design, PS==ps & scenario == work_scenario & exp=='001')
-  clear_previous_files(parameter_space = ps, scenario = work_scenario, exclude_sqlite = F, exclude_CP = T, exclude_control = F, test = F)
+  # clear_previous_files(parameter_space = ps, scenario = work_scenario, exclude_sqlite = F, exclude_CP = T, exclude_control = F, test = F)
   seeds <- get_random_seed(PS = ps, scenario = work_scenario, run_range = run_range)
   generate_files(row_range = 1, run_range = run_range, experimental_design = design_control, random_seed = seeds)
 }
@@ -589,7 +595,7 @@ for (ps in ps_range){
 
 # Or, if checkpoints are already finished:
 for (ps in ps_range){
-  for (e in exp_range[-1]){
+  for (e in exp_range){
     cat(paste('sbatch PS',ps,work_scenario,'E',e,'.sbatch',sep=''));cat('\n')
   }
 }
@@ -599,7 +605,7 @@ for (ps in ps_range){
 
 system('rm *.sbatch')
 
-scenario_range <- c('S','G','N')
+scenario_range <- c('G')
 exp_range <- sprintf('%0.3d', 0:4)
 ps_range <- sprintf('%0.2d', 27:39)
 
@@ -627,7 +633,7 @@ for (ps in ps_range){
 
 # Verify files ------------------------------------------------------------
 
-# Sqlite files
+# --- sqlite files ---
 files <- list.files(path = '~/Documents/malaria_interventions_data/', pattern = '\\.sqlite', full.names = F)
 # Also consider adding following information: extracting random seeds; existence of corresponding parameter files
 files_sqlite <- tibble(file_sqlite=files,
@@ -638,6 +644,7 @@ files_sqlite <- tibble(file_sqlite=files,
                     CP=sapply(str_split(files,'_'),function (x) str_detect(x[5],'CP')),
                     size=round(file.size(files)/1024^2,2)
 )
+files_sqlite$PS <- sprintf('%0.2d', files_sqlite$PS)
 
 files_sqlite$run_time <- unlist(lapply(files_sqlite$file_sqlite[is.na(files_sqlite$CP)], function (f) {
   print(f)
@@ -647,10 +654,17 @@ files_sqlite$run_time <- unlist(lapply(files_sqlite$file_sqlite[is.na(files_sqli
   x
 }))
 unique(files_sqlite$run_time)
-files_sqlite$PS <- sprintf('%0.2d', files_sqlite$PS)
+files_sqlite %>% filter(is.na(run_time))
 
-# PY files
-files <- list.files(path = '~/Documents/malaria_interventions_data/', pattern = 'py.zip', full.names = F)
+
+files_sqlite %<>% mutate(scenario=factor(scenario, levels=c('S','N','G')))  %>% arrange(CP, scenario, PS, experiment, run)         
+files_sqlite %>% filter(is.na(CP) & as.numeric(PS)>=27) %>% group_by(PS,scenario,experiment) %>% 
+  summarise(runs_completed=length(run)) %>% print(n = Inf)
+files_sqlite %>% group_by(scenario, PS, experiment) %>% summarise(x=sum(runs_completed)) %>% print(n = Inf)
+files_sqlite %>% filter(scenario=='G') %>% print(n = Inf)
+
+#--- PY files ---
+files <- list.files(path = '~/Documents/malaria_interventions_data/', pattern = 'py.zip', full.names = T)
 files <- map(files, function(f){
   unzip(f, list=T)
 }) %>% bind_rows()
@@ -665,14 +679,31 @@ files_py <- tibble(file_py=files$Name,
 )
 files_py$PS <- sprintf('%0.2d', files_py$PS)
 
-files_df <- full_join(files_sqlite[is.na(files_sqlite$CP),], files_py, by = c("PS", "scenario", "experiment", "run")) %>% 
+files_py %<>% filter(as.numeric(PS)>=27) %>% mutate(scenario=factor(scenario, levels=c('S','N','G'))) %>% arrange(scenario, PS, experiment, run)
+files_py %<>% filter(as.numeric(PS)>=27) %>% group_by(PS,scenario,experiment) %>% summarise(runs_count=length(run))
+files_py %>% filter(scenario=='G') %>% filter(as.numeric(PS)>27) %>% distinct(PS,run)
+
+# --- CP sqlite files ---
+# In Midway run: ls *.sqlite >> CP_files.txt and copy the file to local computer
+files <- read.table('CP_files.txt',header = F, stringsAsFactors = F)$V1
+files_CP <- tibble(file_CP=files,
+          PS = sapply(str_split(files,'_'),function (x) parse_number(x[1])),
+          scenario=sapply(str_split(files,'_'),function (x) x[2]),
+          experiment=sapply(str_split(files,'_'),function (x) str_sub(x[3],2,4)),
+          run= sapply(str_split(files,'_'),function (x) parse_number(x[4])),
+          CP=sapply(str_split(files,'_'),function (x) str_detect(x[5],'CP'))
+)
+files_CP$PS <- sprintf('%0.2d', files_CP$PS)
+
+missing_py_files <- full_join(files_CP, files_py, by = c("PS", "scenario", "experiment", "run")) %>% 
   filter(as.numeric(PS)>=27) %>% 
-  select(scenario, PS, experiment, run, file_sqlite, file_py) %>% 
+  select(scenario, PS, experiment, run, file_CP, file_py) %>% 
   mutate(scenario=factor(scenario, levels=c('S','N','G'))) %>% 
   arrange(PS, scenario, experiment, run)
 
-missing_py_files <- files_df %>% filter(is.na(file_py))
+missing_py_files %>% filter(is.na(file_py))
 
+#--- Check seeds ---
 for(i in 1:nrow(files_df)){
   print(i)
   unzip(paste(files_df$PS[i],'_',files_df$scenario[i],'_py.zip',sep=''), files = files_df$file_py[i])
@@ -683,38 +714,10 @@ for(i in 1:nrow(files_df)){
 seed_check <- files_df %>% distinct(scenario, PS, run, seed) %>% group_by(scenario, PS) %>% summarise(length(run))
 
 
-files_sqlite %<>% mutate(scenario=factor(scenario, levels=c('S','N','G')))  %>% arrange(CP, scenario, PS, experiment, run)         
-files_sqlite %<>% filter(is.na(CP) & as.numeric(PS)>=27) %>% group_by(PS,scenario,experiment) %>% summarise(runs_completed=length(run))
-files_sqlite %>% filter(scenario=='G') %>% print(n = Inf)
-files_py %<>% filter(as.numeric(PS)>=27) %>% mutate(scenario=factor(scenario, levels=c('S','N','G'))) %>% arrange(scenario, PS, experiment, run)         
-files_py %<>% filter(as.numeric(PS)>=27) %>% group_by(PS,scenario,experiment) %>% summarise(runs_count=length(run))
-files_py %>% filter(scenario=='G') %>% distinct(PS,runs_count)
-
-
-# Checkpoint sqlite files
-files_CP <- read.table('CP_file_list.txt',he = F, sep = ' ')
-files_CP <- tibble(file_CP=files_CP$V8,
-                   PS = sapply(str_split(files_CP$V8,'_'),function (x) parse_number(x[1])),
-                   scenario=sapply(str_split(files_CP$V8,'_'),function (x) x[2]),
-                   experiment=sapply(str_split(files_CP$V8,'_'),function (x) str_sub(x[3],2,4)),
-                   run = sapply(str_split(files_CP$V8,'_'),function (x) parse_number(x[4])),
-                   size=round(files_CP$V5/1000000,1)
-)
-files_CP$PS <- sprintf('%0.2d', files_CP$PS)
-
-# Check which CP files are missing by using anti_join
-files_CP_missing <- full_join(files_sqlite[is.na(files_sqlite$CP),], files_py, by = c("PS", "scenario", "experiment", "run")) %>% 
-  anti_join(files_CP, by = c("PS", "scenario", "experiment", "run")) %>% 
-  filter(as.numeric(PS)>=27 & experiment=='000') %>% 
-  select(scenario, PS, experiment, run, file_sqlite, file_py) %>% 
-  mutate(scenario=factor(scenario, levels=c('S','N','G'))) %>% 
-  arrange(PS, scenario, experiment, run)
-
 # Generate sbatch files to create the missing checkpoints -----------------
 
-
-
 ps_scen_combinations <- as.tibble(files_CP_missing) %>% distinct(scenario,PS)
+
 for (i in 1:nrow(ps_scen_combinations)){
   ps <- ps_scen_combinations$PS[i]
   scen <- ps_scen_combinations$scenario[i]
@@ -746,13 +749,34 @@ for (i in 1:nrow(ps_scen_combinations)){
 }
 
 
-print(cases)
-cat('Run this on Midway: \n')
-for (e in row_range){
-  cat(paste('sbatch PS',experimental_design$PS[e],experimental_design$scenario[e],'E',experimental_design$exp[e],'.sbatch','\n',sep=''))
+# Add a line in the parameter files ---------------------------------------
+# This adds a line to the end of each py file
+ps_range <- sprintf('%0.2d', 28:39)
+work_scenario <- 'G'
+exp_range <- sprintf('%0.3d', 2:4)
+run_range <- 1:10
+for (ps in ps_range){
+  for (e in exp_range){
+    for (r in run_range){
+      file <- paste('PS',ps,'_',work_scenario,'_E',e,'_R',r,'.py',sep='')
+      print(file)
+      unzip(paste(ps,'_',work_scenario,'_py.zip',sep=''), file)
+      if(file.exists(file)) {write('POOLSIZE_BOUNCE_BACK_AFTER_INTERVENTION=False',file, append=TRUE)}
+    }
+  }
 }
 
+for (ps in ps_range){
+  generate_sbatch(ps, scen = 'N', experiment = '003', runs = 1:10, unzip_py_files = F)
+}
 
+# Or generate sbatch for particular runs, as in the generalized immunity
+cases <- files_py %>% filter(scenario=='G') %>% filter(as.numeric(PS)>27) %>% distinct(PS,run)
+for (ps in ps_range){
+  generate_sbatch(ps, scen = 'G', experiment = '002', runs = subset(cases, PS==ps)$run, unzip_py_files = F)
+  generate_sbatch(ps, scen = 'G', experiment = '003', runs = subset(cases, PS==ps)$run, unzip_py_files = F)
+  generate_sbatch(ps, scen = 'G', experiment = '004', runs = subset(cases, PS==ps)$run, unzip_py_files = F)
+}
 
 # General stuff -----------------------------------------------------------
 

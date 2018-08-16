@@ -364,7 +364,7 @@ exp_comparison <- map(run_range, function(r){
   }) %>% bind_rows()
 }) %>% bind_rows()
 
-# Add control to the design_irs data frame, which is created in build_parameter_files.R
+# Add control to the design_irs data frame
 design_irs <- create_intervention_scheme_IRS(PS_benchmark = PS, scenario_benchmark = scenario,IRS_START_TIMES = '29160', immigration_range=c(0), length_range=c(720,1800,3600), coverage_range=0.9, write_to_file = F, design_ref=design)
 design_irs %<>% slice(rep(1, each = 1)) %>% bind_rows(design_irs)
 design_irs[1, 'exp'] <- '001'

@@ -68,12 +68,12 @@ N_INITIAL_INFECTIONS = [20]
 BITING_RATE_MEAN = [1]
 BITING_RATE_RELATIVE_AMPLITUDE = [0.0]
 BITING_RATE_PEAK_PHASE = [0.0]
-DAILY_BITING_RATE_DISTRIBUTION = [1] # the "raw" values of mosquito numbers from mathematica. needs to be of length 360. Otherwise will run without it
+DAILY_BITING_RATE_DISTRIBUTION = [1] # the "raw" values of mosquito numbers from Mathematica. needs to be of length 360. Otherwise will run without it
 
 IRS_ON = False
-IRS_START_TIMES = []
-BITING_RATE_FACTORS = []
-IRS_IMMIGRATION_RATE_FACTORS = []
+IRS_START_TIMES = [] # A vector with start times for the IRS interventions. Each element is the starting time of an IRS
+BITING_RATE_FACTORS = [] # An array in which each element is a vector of values of mosquito numbers as the ones in DAILY_BITING_RATE_DISTRIBUTION. These are obtained from the model externally run in Mathematica
+IRS_IMMIGRATION_RATE_FACTORS = [] # A vector with length as number of IRS events. Each element is a factor to multiply the IMMIGRATION_RATE. For example, 0.3 will reduce the usual immigration rate to 30% of its original size.
 
 MDA_ON = False
 MDA_START_TIMES = []
