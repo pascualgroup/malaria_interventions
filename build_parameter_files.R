@@ -594,12 +594,14 @@ for (ps in ps_range){
 }
 
 # Or, if checkpoints are already finished:
+unlink('jobs_to_run.sh')
+sink('jobs_to_run.sh')
 for (ps in ps_range){
-  for (e in exp_range){
+  for (e in exp_range[-1]){
     cat(paste('sbatch PS',ps,work_scenario,'E',e,'.sbatch',sep=''));cat('\n')
   }
 }
-
+sink.reset()
 
 # Zip files to reduce the clutter -----------------------------------------
 

@@ -780,21 +780,20 @@ overlapAlleleAdj<-function(mat){
 
 
 # A function to build the similarity matrix for a single layer and calculate some summary stats
-build_layer <- function(l){
-  sampled_infections_layer <- subset(sampled_infections, layer==l) # This is MUCH faster than sampled_infections_layer <- sampled_infections %>% filter(layer==l)
-  sampled_infections_layer %<>% group_by(strain_id) %>%
+build_layer <- function(infection_df){
+  infection_df %<>% group_by(strain_id) %>%
     mutate(freq = n()/120) %>% # strain frequency (the number of strain copies should be equal to the frequency)
     arrange(strain_id_unique) 
   # Calculate the edges
-  similarity_matrix <- table(sampled_infections_layer$strain_id_unique, sampled_infections_layer$allele_locus)
+  similarity_matrix <- table(infection_df$strain_id_unique, infection_df$allele_locus)
   similarity_matrix <- overlapAlleleAdj(similarity_matrix)
   # Some summary
-  layer_summary <- with(sampled_infections_layer, 
+  layer_summary <- with(infection_df, 
                         data.frame(hosts=length(unique(host_id)),
                                    repertoires=length(unique(strain_id)),
                                    total_infections=length(unique(strain_id_unique))
                         ))
-  return(list(similarity_matrix=similarity_matrix, infections=sampled_infections_layer, layer_summary=layer_summary))
+  return(list(similarity_matrix=similarity_matrix, infections=infection_df, layer_summary=layer_summary))
 }
 
 
@@ -836,10 +835,12 @@ createTemporalNetwork <- function(ps, scenario, exp, run, cutoff_prob=0.9, write
   }
   for (l in layers_to_include){
     cat(paste('[',Sys.time(), '] building layer ',l,'\n',sep=''))
-    Layers[[l]] <- build_layer(l)  
+    sampled_infections_layer <- subset(sampled_infections, layer==l) # This is MUCH faster than sampled_infections_layer <- sampled_infections %>% filter(layer==l)
+    Layers[[which(layers_to_include==l)]] <- build_layer(sampled_infections_layer)
   }
   # Get just the matrices
   temporal_network <- unique(lapply(Layers, function(x) head(x, 1)$similarity_matrix))
+  layer_summary <- do.call(rbind, lapply(Layers, function(x) x$layer_summary))
   sapply(temporal_network, nrow)
   
   print('Applying cutoff...')
@@ -854,7 +855,7 @@ createTemporalNetwork <- function(ps, scenario, exp, run, cutoff_prob=0.9, write
   # hist(as.vector(similarityMatrix));abline(v=cutoffValue,col='red')
   similarityMatrix[similarityMatrix<cutoffValue] <- 0
   for (i in 1:length(temporal_network)){
-    print(i)
+    # print(i)
     x <- temporal_network[[i]]
     x[x<cutoffValue] <- 0
     temporal_network[[i]] <- x
@@ -869,7 +870,66 @@ createTemporalNetwork <- function(ps, scenario, exp, run, cutoff_prob=0.9, write
   }
   
   print('Done!')
-  return(list(temporal_network=temporal_network, base_name = base_name, ps=ps, scenario=scenario, experiment=exp, run=run))
+  return(list(temporal_network=temporal_network, similarityMatrix=similarityMatrix, layer_summary=layer_summary, base_name = base_name, ps=ps, scenario=scenario, experiment=exp, run=run))
+}
+
+## A function to get the repertoire names from unique repertoire copy names
+splitText <- function(str,after=T,splitchar='\\.'){
+  if (after){
+    return(sapply(strsplit(str, split=splitchar), tail, 1))
+  }
+  if (after==F){
+    return(sapply(strsplit(str, split=splitchar), head, 1))
+  }
+}
+
+##  A function that gets the layer as a matrix and writes it for infomap as an edge list
+# network_object is a list of matrices, each element in the list is a layer.
+matrix_to_infomap <- function(l, nodeList, network_object){
+  require(igraph)
+  current_layer <- network_object$temporal_network[[l]]
+  if(nrow(current_layer)<2){
+    print(paste('Less than 2 repertoires in layer',l,'!!! skipping intralayer edges'))
+    next
+  }
+  g <- graph.adjacency(current_layer, mode = 'directed', weighted = T)
+  current_layer_el <- as.tibble(as_data_frame(g, what = 'edges'))
+  names(current_layer_el) <- c('node_s','node_t','w')
+  current_layer_el$layer_s <- l
+  current_layer_el$layer_t <- l
+  current_layer_el$node_s <- nodeList$nodeID[match(current_layer_el$node_s,nodeList$nodeLabel)]
+  current_layer_el$node_t <- nodeList$nodeID[match(current_layer_el$node_t,nodeList$nodeLabel)]
+  current_layer_el %<>% select(layer_s, node_s, layer_t, node_t, w) # Re-arrange columns for the infomap input order
+  print(paste('[',Sys.time(), '] Created edge list of layer ',l,' for Infomap | ', nrow(current_layer_el),' edges',sep=''))
+  return(current_layer_el)
+}
+
+## A function that calculates interlayer edges between layer t and t+1
+build_interlayer_edges_1step <- function(t, nodeList, network_object){
+  strain_copies_t <- rownames(network_object$temporal_network[[t]]) # repertoires at time t
+  strain_copies_t1 <- rownames(network_object$temporal_network[[t+1]]) # repertoires at time t+1
+  if (length(strain_copies_t)<2 | length(strain_copies_t1)<2){
+    print(paste('No interlayer edges between layers',t, 'and',t+1,'because there are < 2 repertoires.'))
+    next} # need minimum of 2 strains in t and t+1 to build a matrix
+  # Pull the similarity values between the repertoires from the general similarity matrix, then write back the repertoire copy names
+  inter_layer_edges_matrix <- network_object$similarityMatrix[splitText(strain_copies_t, after = F, '_'),splitText(strain_copies_t1, after = F, '_')] 
+  rownames(inter_layer_edges_matrix) <- strain_copies_t
+  colnames(inter_layer_edges_matrix) <- strain_copies_t1
+  if (all(inter_layer_edges_matrix==0)){
+    print(paste('All interlayer edges between layers',t, 'and',t+1,' are 0 (due to the cutoff). skipping.'))
+    next
+  }
+  # transform to an edge list
+  g <- graph.incidence(inter_layer_edges_matrix, directed = T, mode = 'out', weighted = T)
+  inter_layer_edges <- as.tibble(as_data_frame(g, what = 'edges'))
+  names(inter_layer_edges) <- c('node_s','node_t','w')
+  inter_layer_edges$layer_s <- t
+  inter_layer_edges$layer_t <- t+1
+  inter_layer_edges$node_s <- nodeList$nodeID[match(inter_layer_edges$node_s,nodeList$nodeLabel)]
+  inter_layer_edges$node_t <- nodeList$nodeID[match(inter_layer_edges$node_t,nodeList$nodeLabel)]
+  inter_layer_edges %<>% select(layer_s, node_s, layer_t, node_t, w)
+  print(paste('Built interlayer edges for layers: ',t,'-->',t+1,' | ', nrow(inter_layer_edges),' edges',sep=''))
+  return(inter_layer_edges)
 }
 
 
@@ -881,79 +941,18 @@ build_infomap_objects <- function(network_object, write_to_infomap_file=T, retur
   base_name <- network_object$base_name
   require(igraph)
   
-  # Define functions
-  
-  ## A function to get the repertoire names from unique repertoire copy names
-  splitText <- function(str,after=T,splitchar='\\.'){
-    if (after){
-      return(sapply(strsplit(str, split=splitchar), tail, 1))
-    }
-    if (after==F){
-      return(sapply(strsplit(str, split=splitchar), head, 1))
-    }
-  }
-  
-  ##  A function that gets the layer as a matrix and writes it for infomap as an edge list
-  # network_object is a list of matrices, each element in the list is a layer.
-  matrix_to_infomap <- function(l, nodeList, network_object){
-    require(igraph)
-    current_layer <- network_object[[l]]
-    if(nrow(current_layer)<2){
-      print(paste('Less than 2 repertoires in layer',l,'!!! skipping intralayer edges'))
-      next
-    }
-    g <- graph.adjacency(current_layer, mode = 'directed', weighted = T)
-    current_layer_el <- as.tibble(as_data_frame(g, what = 'edges'))
-    names(current_layer_el) <- c('node_s','node_t','w')
-    current_layer_el$layer_s <- l
-    current_layer_el$layer_t <- l
-    current_layer_el$node_s <- nodeList$nodeID[match(current_layer_el$node_s,nodeList$nodeLabel)]
-    current_layer_el$node_t <- nodeList$nodeID[match(current_layer_el$node_t,nodeList$nodeLabel)]
-    current_layer_el %<>% select(layer_s, node_s, layer_t, node_t, w) # Re-arrange columns for the infomap input order
-    print(paste('[',Sys.time(), '] Created edge list of layer ',l,' for Infomap | ', nrow(current_layer_el),' edges',sep=''))
-    return(current_layer_el)
-  }
-  
-  ## A function that calculates interlayer edges between layer t and t+1
-  build_interlayer_edges_1step <- function(t, nodeList, network_object){
-    strain_copies_t <- rownames(network_object[[t]]) # repertoires at time t
-    strain_copies_t1 <- rownames(network_object[[t+1]]) # repertoires at time t+1
-    if (length(strain_copies_t)<2 | length(strain_copies_t1)<2){
-      print(paste('No interlayer edges between layers',t, 'and',t+1,'because there are < 2 repertoires.'))
-      next} # need minimum of 2 strains in t and t+1 to build a matrix
-    # Pull the similarity values between the repertoires from the general similarity matrix, then write back the repertoire copy names
-    inter_layer_edges_matrix <- similarityMatrix[splitText(strain_copies_t, after = F, '_'),splitText(strain_copies_t1, after = F, '_')] 
-    rownames(inter_layer_edges_matrix) <- strain_copies_t
-    colnames(inter_layer_edges_matrix) <- strain_copies_t1
-    if (all(inter_layer_edges_matrix==0)){
-      print(paste('All interlayer edges between layers',t, 'and',t+1,' are 0 (due to the cutoff). skipping.'))
-      next
-    }
-    # transform to an edge list
-    g <- graph.incidence(inter_layer_edges_matrix, directed = T, mode = 'out', weighted = T)
-    inter_layer_edges <- as.tibble(as_data_frame(g, what = 'edges'))
-    names(inter_layer_edges) <- c('node_s','node_t','w')
-    inter_layer_edges$layer_s <- t
-    inter_layer_edges$layer_t <- t+1
-    inter_layer_edges$node_s <- nodeList$nodeID[match(inter_layer_edges$node_s,nodeList$nodeLabel)]
-    inter_layer_edges$node_t <- nodeList$nodeID[match(inter_layer_edges$node_t,nodeList$nodeLabel)]
-    inter_layer_edges %<>% select(layer_s, node_s, layer_t, node_t, w)
-    print(paste('Built interlayer edges for layers: ',t,'-->',t+1,' | ', nrow(inter_layer_edges),' edges',sep=''))
-    return(inter_layer_edges)
-  }
-  
   # Get the node list
   nodeLabel <- sort(unique(unlist(lapply(temporal_network,rownames))))
   nodeList <- data.frame(nodeID=1:length(nodeLabel), nodeLabel)
   
   # Create intralayer edge lists
   layers <- 1:length(temporal_network)
-  infomap_intralayer <- lapply(layers, function (x) matrix_to_infomap(x, nodeList = nodeList, network_object = temporal_network))
+  infomap_intralayer <- lapply(layers, function (x) matrix_to_infomap(x, nodeList = nodeList, network_object = network_object))
   infomap_intralayer <- do.call("rbind", infomap_intralayer)
   
   # Create interlayer edge lists. Only connect consecutive layers (interlayer ONLY go from layer l to l+1).
   layers <- layers[-length(layers)]
-  infomap_interlayer <- lapply(layers, function (x) build_interlayer_edges_1step(x, nodeList = nodeList, network_object = temporal_network))
+  infomap_interlayer <- lapply(layers, function (x) build_interlayer_edges_1step(x, nodeList = nodeList, network_object = network_object))
   infomap_interlayer <- do.call("rbind", infomap_interlayer)
   
   if (write_to_infomap_file){
@@ -987,6 +986,7 @@ build_infomap_objects <- function(network_object, write_to_infomap_file=T, retur
 
 
 # Example for structure ---------------------------------------------------
+setwd('~/Documents/malaria_interventions_data/')
 
 ps <- '36'
 scenario <- 'S'
@@ -996,9 +996,9 @@ run <- 1
 # parameter_file <- paste(base_name,'.py',sep='') # This may be necessary so I leave it
 
 
-network_test <- createTemporalNetwork(ps,scenario,exp,1, layers_to_include = c(1:20,30:40))
-sapply(network_test, nrow)
-infomap_objects <- build_infomap_objects(network_test[1:20])
+network_test <- createTemporalNetwork(ps,scenario,exp,1, layers_to_include = c(1:5,10:15))
+unlist(lapply(network_test$temporal_network, nrow))
+infomap_objects <- build_infomap_objects(network_test)
 
 
 # Run Infomap
