@@ -1382,10 +1382,68 @@ comparison %>%
 
 
 unlist(lapply(network_test$temporal_network, nrow))
+
+
+
+# Infomap -----------------------------------------------------------------
+
+infomap_readTreeFile <- function(file, reorganize_modules=T, max_layers=372, remove_buggy_instances=T){
+  require(splitstackshape)
+  lines <- readLines(file)
+  #lines <- readLines('Infomap_linux/output/S11_S0_w30_300_300_0.1_expanded.tree');length(lines)
+  cat(lines[1]);cat('\n')
+  x=read.table(file, skip = 2, stringsAsFactors = F)
+  modules <- data.frame(module=rep(NA,nrow(x)),
+                        strain=rep(NA,nrow(x)),
+                        layer=rep(NA,nrow(x)),
+                        flow=rep(NA,nrow(x)), stringsAsFactors = F)
+  
+  modules$path <- x[,1]
+  x.module <- x[,1]
+  x.module <- cSplit(as.data.table(x.module),'x.module',':')
+  x.module <- as.data.frame(x.module)
+  modules$module <- x.module[,1]
+  cat(nrow(x),'state nodes','in',paste(max(modules$module),'modules, organized in',length(x.module),'levels...'));cat('\n')
+  modules$flow <- x[,2]
+  x.strain <- x[,3]
+  x.strain <- read.table(text = x.strain, sep = "|", colClasses = "character", stringsAsFactors = F, strip.white = T)
+  modules$strain <- x.strain$V1
+  modules$layer <- as.numeric(x$V4)
+  
+  # There is a bug in Infomap that assigns nodes to layers which do not exist (with higher number than the existing layers).
+  
+  if(remove_buggy_instances){
+    buggy <- modules[modules$layer>max_layers,]
+    if (nrow(buggy)>=1){
+      cat('\n')
+      print('---------------------------------')
+      print('Some buggy instances encountered!')
+      print(paste('removed ', nrow(buggy),' instances which were assigned to layers which do not exist.',sep=''))
+      print(paste('total flow of removed instance: ',sum(buggy$flow)))
+      print('Buggy instances written to file')
+      write.table(buggy, paste(str_sub(file, 1, str_locate(file, 'output/'))[2],'buggy_instances_infomap.txt',sep=''))
+      modules <- modules[modules$layer<=max_layers,]
+    }
+  }
+  
+  if(reorganize_modules){  # organize the names of modules to be consecutive
+    cat('Re-organizing modules by layer...');cat('\t')
+    modules=modules[with(modules, order(layer,module)),]
+    x=table(modules$module)[unique(modules$module)]
+    modules$module_ordered <- NA
+    for (i in 1:nrow(modules)){
+      modules[i,'module_ordered'] <- which(names(x)==modules[i,'module'])
+    }
+    modules <- modules[,-1]
+    modules <- modules[,c('module_ordered','strain','layer','flow','path')]
+    names(modules)[1] <- 'module'
+  }
+  print('Done!')
+  return(modules)
+}
+
+
 infomap_objects <- build_infomap_objects(network_test)
-
-
-# Run Infomap
 
 # Get infomap results and process them
 
