@@ -1,3 +1,7 @@
+### Need to include parameter POOLSIZE_BOUNCE_BACK_AFTER_INTERVENTION within
+### function create_intervention_scheme_IRS() instead of in the google sheet.
+
+
 library(tidyverse)
 library(magrittr)
 library(sqldf)
@@ -147,7 +151,7 @@ set_generalized_immunity <- function(parameter_space, experiment='001', run){
 }
 
 # This function sets the parameters for a single IRS. It is possible to run it several times, once for each IRS scheme.
-set_IRS <- function(design_ID, run, IRS_START_TIME, IRS_input, IRS_IMMIGRATION, experimental_design){
+set_IRS <- function(design_ID, run, IRS_START_TIME, IRS_input, IRS_IMMIGRATION, POOLSIZE_BOUNCE_BACK_AFTER_INTERVENTION, experimental_design){
   # Regime
   parameter_space <- experimental_design$PS[design_ID]
   scenario <- experimental_design$scenario[design_ID]
@@ -177,6 +181,9 @@ set_IRS <- function(design_ID, run, IRS_START_TIME, IRS_input, IRS_IMMIGRATION, 
   x <- paste(x,',',IRS_IMMIGRATION,']',sep='')
   x <- str_replace(x, '\\[,','\\[')
   param_data[param_data$param=='IRS_IMMIGRATION_RATE_FACTORS',] <- set_parameter(param_data, 'IRS_IMMIGRATION_RATE_FACTORS', x)
+  # Add POOLSIZE_BOUNCE_BACK_AFTER_INTERVENTION
+  param_data[param_data$param=='POOLSIZE_BOUNCE_BACK_AFTER_INTERVENTION',] <- set_parameter(param_data, 'POOLSIZE_BOUNCE_BACK_AFTER_INTERVENTION', POOLSIZE_BOUNCE_BACK_AFTER_INTERVENTION)
+  
   
   # Write parameter file
   param_data$output <- paste(param_data$param,param_data$value,sep='=')
@@ -417,9 +424,16 @@ generate_files <- function(row_range, run_range, random_seed=NULL, experimental_
       IRS_scheme <- data.frame(IRS_START_TIME=str_split(experimental_design$IRS_START_TIMES[design_ID], ',')[[1]],
                                IRS_input=str_split(experimental_design$IRS_input[design_ID], ',')[[1]],
                                IRS_IMMIGRATION=str_split(experimental_design$IRS_IMMIGRATION[design_ID], ',')[[1]],
+                               POOLSIZE_BOUNCE_BACK_AFTER_INTERVENTION=experimental_design$POOLSIZE_BOUNCE_BACK_AFTER_INTERVENTION[design_ID],
                                stringsAsFactors = F)
       for (i in 1:nrow(IRS_scheme)){
-        set_IRS(design_ID = design_ID, run = RUN, IRS_START_TIME = IRS_scheme$IRS_START_TIME[i], IRS_IMMIGRATION = IRS_scheme$IRS_IMMIGRATION[i], IRS_input = IRS_scheme$IRS_input[i], experimental_design)
+        set_IRS(design_ID = design_ID, 
+                run = RUN, 
+                IRS_START_TIME = IRS_scheme$IRS_START_TIME[i], 
+                IRS_IMMIGRATION = IRS_scheme$IRS_IMMIGRATION[i], 
+                IRS_input = IRS_scheme$IRS_input[i], 
+                POOLSIZE_BOUNCE_BACK_AFTER_INTERVENTION=IRS_scheme$POOLSIZE_BOUNCE_BACK_AFTER_INTERVENTION[i], 
+                experimental_design)
       }
     }
     # Set MDA
@@ -475,7 +489,7 @@ generate_files <- function(row_range, run_range, random_seed=NULL, experimental_
 }
 
 
-create_intervention_scheme_IRS <- function(PS_benchmark, scenario_benchmark, IRS_START_TIMES=NULL, immigration_range, length_range, coverage_range, write_to_file=T, design_ref=NULL){
+create_intervention_scheme_IRS <- function(PS_benchmark, scenario_benchmark, IRS_START_TIMES=NULL, immigration_range, length_range, coverage_range, poolsize_bounce='False', write_to_file=T, design_ref=NULL){
   # This fixes the 1. in the file name produced in Mathematica
   files <- list.files(path = '~/Documents/malaria_interventions_data/', full.names = T, pattern = '1\\._')
   if(length(files)>0){sapply(files, function(x){file.rename(from = x, to = str_replace(x, '\\.', ''))})}
@@ -504,6 +518,7 @@ create_intervention_scheme_IRS <- function(PS_benchmark, scenario_benchmark, IRS
                         IRS_length=length_range,
                         IRS_coverage=coverage_range,
                         MDA_START=NA, # This so to not have an MDA (for function generate_files)
+                        POOLSIZE_BOUNCE_BACK_AFTER_INTERVENTION=poolsize_bounce,
                         wall_time=design_ref$wall_time[reference_row],
                         mem_per_cpu=design_ref$mem_per_cpu[reference_row],
                         stringsAsFactors = F)
@@ -530,7 +545,7 @@ design <- loadExperiments_GoogleSheets()
 ps_range <- sprintf('%0.2d', 27:39)
 exp_range <- sprintf('%0.3d', 0:4)
 run_range <- 11:50
-work_scenario <- 'S'
+work_scenario <- 'G'
 design_subset <- subset(design, PS %in% ps_range & scenario==work_scenario)
 generate_files(row_range = 1:nrow(design_subset), run_range = run_range, experimental_design = design_subset)
 
@@ -545,8 +560,10 @@ for (ps in ps_range){
 
 # Create the corresponding IRS experiments  
 for (ps in ps_range){
-  design_irs <- create_intervention_scheme_IRS(PS_benchmark = ps, scenario_benchmark = work_scenario, IRS_START_TIMES = '29160', immigration_range=c(0), length_range=c(720,1800,3600), coverage_range=0.9, write_to_file = F, design_ref=design)
-  generate_files(row_range = 1:nrow(design_irs), run_range = run_range, random_seed = get_random_seed(ps, work_scenario, run_range = run_range), design_irs)
+  design_irs <- create_intervention_scheme_IRS(PS_benchmark = ps, scenario_benchmark = work_scenario, IRS_START_TIMES = '29160', immigration_range=c(0), length_range=c(720,1800,3600), coverage_range=0.9, poolsize_bounce = 'False', write_to_file = F, design_ref=design)
+  generate_files(row_range = 1:nrow(design_irs), run_range = run_range, 
+                 random_seed = get_random_seed(ps, work_scenario, run_range = run_range), 
+                 experimental_design=design_irs)
 }
 
 # ZIP all the PY and sbatch files
@@ -607,7 +624,7 @@ sink.reset()
 
 system('rm *.sbatch')
 
-scenario_range <- c('G')
+scenario_range <- c('S')
 exp_range <- sprintf('%0.3d', 0:4)
 ps_range <- sprintf('%0.2d', 27:39)
 
@@ -648,6 +665,8 @@ files_sqlite <- tibble(file_sqlite=files,
 )
 files_sqlite$PS <- sprintf('%0.2d', files_sqlite$PS)
 
+subset(files_sqlite, size<1)
+
 files_sqlite$run_time <- unlist(lapply(files_sqlite$file_sqlite[is.na(files_sqlite$CP)], function (f) {
   print(f)
   db <- dbConnect(SQLite(), dbname = paste('~/Documents/malaria_interventions_data/',f,sep=''))
@@ -659,9 +678,12 @@ unique(files_sqlite$run_time)
 files_sqlite %>% filter(is.na(run_time))
 
 
-files_sqlite %<>% mutate(scenario=factor(scenario, levels=c('S','N','G')))  %>% arrange(CP, scenario, PS, experiment, run)         
-files_sqlite %>% filter(is.na(CP) & as.numeric(PS)>=27) %>% group_by(PS,scenario,experiment) %>% 
-  summarise(runs_completed=length(run)) %>% print(n = Inf)
+files_sqlite %<>% mutate(scenario=factor(scenario, levels=c('S','N','G')))  %>% arrange(CP, PS, scenario, experiment, run)         
+files_sqlite %>% filter(is.na(CP) & as.numeric(PS)>=27) %>% 
+  filter(scenario=='S') %>% 
+  group_by(PS,scenario,experiment) %>% 
+  summarise(runs_completed=length(run)) %>% 
+  filter(runs_completed<50) %>% print(n = Inf)
 files_sqlite %>% group_by(scenario, PS, experiment) %>% summarise(x=sum(runs_completed)) %>% print(n = Inf)
 files_sqlite %>% filter(scenario=='G') %>% print(n = Inf)
 

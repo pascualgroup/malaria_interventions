@@ -1,10 +1,42 @@
+### USE SPARSE MATRICES FOR CUTOFF:
+# x <- xtabs(~strainId+geneId, strainComposition, sparse = T)
+# # This applies the overlapAlleleAdj function directly
+# similarityMatrix <- tcrossprod(x>0)
+# similarityMatrix <- similarityMatrix/rowSums(x>0)
+# # Some info:
+# print(object.size(similarityMatrix))
+# dim(similarityMatrix)
+# cutoffValue <- quantile(as.vector(similarityMatrix), probs = cutoffPercentile)
+# print(cutoffValue)
+# # hist(as.vector(similarityMatrix));abline(v=cutoffValue,col='red')
+# 
+# # Free up memory
+# rm(x)
+# 
+# # This removes the values lower than the cutoff
+# similarityMatrix <- as(similarityMatrix, "dgTMatrix")
+# ind <- similarityMatrix@x < cutoffValue
+# similarityMatrix@x <- similarityMatrix@x[!ind]
+# similarityMatrix@i <- similarityMatrix@i[!ind]
+# similarityMatrix@j <- similarityMatrix@j[!ind]
+# mprint(paste('Writing sparse matrix to file: ',filenameBase,'_similarityMatrix.mtx',sep=''))
+# writeMM(similarityMatrix, paste(filenameBase,'_similarityMatrix.mtx',sep=''))
+
+
 library(tidyverse)
 library(magrittr)
 library(sqldf)
+library(igraph)
 
 # Functions ---------------------------------------------------------------
 
 ## @knitr FUNCTIONS
+sink.reset <- function(){
+  for(i in seq_len(sink.number())){
+    sink(NULL)
+  }
+}
+
 loadExperiments_GoogleSheets <- function(workBookName='malaria_interventions_design',sheetID=4){
   require(googlesheets)
   GS <- gs_title(workBookName)
@@ -65,7 +97,7 @@ mytheme <- theme_bw() + theme(
   legend.key = element_blank(),
   legend.text  = element_text(colour = "black", size=17),
   panel.background = element_blank(),
-  panel.grid.major = element_blank(),
+  # panel.grid.major = element_blank(),
   # panel.grid.minor = element_blank(),
   axis.text = element_text(color='black', family="Helvetica", size=14),
   axis.title = element_text(color='black', family="Helvetica", size=14),
@@ -135,7 +167,7 @@ get_data <- function(parameter_space, scenario, experiment, run, sampling_period
   if (nrow(summary_general)%%sampling_period==1){# The beginning of the data set in E00 has a timestap of 0 and this line is unnecesary. So remove it
     summary_general <- summary_general[-1,]
   }
-
+  
   ## Prevalence
   summary_general$prevalence <- summary_general$n_infected/10^4
   
@@ -150,7 +182,7 @@ get_data <- function(parameter_space, scenario, experiment, run, sampling_period
   
   # # Annual EIR is given by dividing by the sampling period to get a daily EIR, then multiplying by 360
   # summary_general %>% mutate(eir_y=EIR2/sampling_period*360) %>% group_by(year) %>% summarise(EIR_Year=mean(eir_y))
-
+  
   # MOI#
   meanMOI <- sampled_infections %>% group_by(time, host_id) %>% summarise(MOI=length(strain_id)) %>% group_by(time) %>% summarise(meanMOI=mean(MOI))
   summary_general <- suppressMessages(inner_join(summary_general, meanMOI)) # Add MOI to the summary
@@ -165,7 +197,7 @@ get_data <- function(parameter_space, scenario, experiment, run, sampling_period
     sampled_infections <- suppressMessages(left_join(sampled_infections, hosts, by='host_id'))
     sampled_infections$host_age <- round((sampled_infections$time-sampled_infections$birth_time)/30)    
   }
-
+  
   return(list(summary_general=as.tibble(summary_general), sampled_infections=as.tibble(sampled_infections)))
 }
 
@@ -179,7 +211,7 @@ generate_plots <- function(data, time_range=NULL){
   }
   plot_variables <- data1 %>% 
     select(-n_infected, -year, -month, -PS, -exp, -run, -scenario) %>% 
-    filter(time>time_range[1]&time<time_range[2]) %>%    gather(variable, value, -time) %>% 
+    filter(time>time_range[1]&time<time_range[2]) %>% gather(variable, value, -time) %>% 
     ggplot(aes(time, value, color=variable))+
     geom_line()+
     facet_wrap(~variable, scales = 'free')+
@@ -308,6 +340,471 @@ post_intervention_stats <- function(PS, scenario='S', exp, run, post_interventio
 
 ## @knitr END
 
+
+
+# Functions for network Structure ---------------------------------------------------------------
+
+plotLayer <- function(network_object, l, edge_weight_multiply=1, remove.loops=T, ver.col=NULL, coords,...) { 
+  g <- network_object$temporal_network[[l]]
+  g <- graph.adjacency(g, weighted = T, mode = 'directed')
+  if(remove.loops){g <- simplify(g, remove.multiple = F, remove.loops = T)}
+  # g <- delete_edges(g, which(E(g)$weight<quantile(E(g)$weight, cutoff_g))) # remove all edges smaller than the cutoff
+  # layout <-layout.kamada.kawai(g)
+  # plot.new()
+  # par(mar=c(0,3,3,3))
+  if (is.null(ver.col)){ # All nodes have the same color?
+    V(g)$color <- 'deepskyblue2'
+  } else {
+    if (class(ver.col)=='character') {V(g)$color <- ver.col}
+    if (class(ver.col)=='data.frame') {
+      V(g)$color <- ver.col$color[match(V(g)$name, ver.col$node_name)]
+    }
+  }
+  if (!is.null(coords)){
+    V(g)$repertoire <- splitText(V(g)$name,splitchar = '_', after = F)
+    V(g)$x <- coords$x[match(V(g)$repertoire, coords$node_name)]
+    V(g)$y <- coords$y[match(V(g)$repertoire, coords$node_name)]
+  }
+  plot(g, 
+       vertex.color=V(g)$color,
+       # vertex.label=V(g)$module,
+       vertex.size=3,
+       vertex.label=NA,
+       # edge.arrow.mode='-', 
+       edge.arrow.width=0.2,
+       edge.arrow.size=0.2,
+       edge.curved=0.5, 
+       edge.width=E(g)$weight*edge_weight_multiply,
+       # asp=0, # This needed if changing margins
+       ...)
+}
+
+
+overlapAlleleAdj<-function(mat){
+  newmat<-tcrossprod(mat>0)
+  newmat<-newmat/rowSums(mat>0)
+  return(newmat)  
+}
+
+
+# A function to build the similarity matrix for a single layer and calculate some summary stats
+build_layer <- function(infection_df){
+  infection_df %<>% group_by(strain_id) %>%
+    mutate(freq = n()/120) %>% # strain frequency (the number of strain copies should be equal to the frequency)
+    arrange(strain_id_unique) 
+  # Calculate the edges
+  similarity_matrix <- table(infection_df$strain_id_unique, infection_df$allele_locus)
+  similarity_matrix <- overlapAlleleAdj(similarity_matrix)
+  # Some summary
+  layer_summary <- with(infection_df, 
+                        data.frame(hosts=length(unique(host_id)),
+                                   repertoires_unique=length(unique(strain_id)),
+                                   repertoires_total=length(unique(strain_id_unique))
+                        ))
+  return(list(similarity_matrix=similarity_matrix, infections=infection_df, layer_summary=layer_summary))
+}
+
+
+createTemporalNetwork <- function(ps, scenario, exp, run, cutoff_prob=0.9, cutoff_value=NULL, write_files=F, layers_to_include=NULL, sampled_infections=NULL){
+  base_name <- paste('PS',ps,'_',scenario,'_E',exp,'_R',run,sep='')
+  sqlite_file <- paste(base_name,'.sqlite',sep='')
+  
+  # Extract data from sqlite. variable names correspond to table names
+  db <- dbConnect(SQLite(), dbname = sqlite_file)
+  print('Getting genetic data from sqlite...')
+  sampled_strains <- as.tibble(dbGetQuery(db, 'SELECT id, gene_id FROM sampled_strains'))
+  names(sampled_strains)[1] <- c('strain_id')
+  sampled_alleles <- as.tibble(dbGetQuery(db, 'SELECT * FROM sampled_alleles'))
+  names(sampled_alleles)[3] <- c('allele_id')
+  sampled_strains <- full_join(sampled_strains, sampled_alleles)
+  sampled_strains$allele_locus <- paste(sampled_strains$allele_id,sampled_strains$locus,sep='_') # each allele in a locus is unique
+  dbDisconnect(db)
+  # Get infection data
+  if (is.null(sampled_infections)){
+    print('Getting infection data from sqlite...')
+    sampled_infections <- get_data(parameter_space = ps, experiment = exp, scenario = scenario, run = run)$sampled_infections
+  }
+  print('Building data set...')
+  # Add layer numbers. Each time point is a layer
+  sampled_infections$layer <- group_indices(sampled_infections, time) 
+  sampled_infections %<>% arrange(layer,strain_id,host_id) %>% 
+    group_by(layer,strain_id) %>% 
+    mutate(strain_copy = row_number()) # add unique id for each strain copy within each layer. A strain copy is an instance of a strain in a particualr host
+  sampled_infections$strain_id_unique <- paste(sampled_infections$strain_id,sampled_infections$strain_copy,sep='_') # Create the unique strains
+  # Integrate the strain composition into the infections table
+  if (all(unique(sampled_strains$strain_id)%in%unique(sampled_infections$strain_id))==F || all(unique(sampled_infections$strain_id)%in%unique(sampled_strains$strain_id))==F) {
+    stop('There may be a mismatch in repertoires between the sampled_strains and sampled_infections data sets. Revise')
+  }
+  sampled_infections %<>% select(time, layer, host_id, strain_id, strain_copy, strain_id_unique) %>% 
+    left_join(sampled_strains)
+  
+  print('Building layers...')
+  Layers <- list()
+  if (is.null(layers_to_include)){
+    layers_to_include <- sort(unique(sampled_infections$layer))
+  }
+  for (l in layers_to_include){
+    cat(paste('[',Sys.time(), '] building layer ',l,'\n',sep=''))
+    sampled_infections_layer <- subset(sampled_infections, layer==l) # This is MUCH faster than sampled_infections_layer <- sampled_infections %>% filter(layer==l)
+    Layers[[which(layers_to_include==l)]] <- build_layer(sampled_infections_layer)
+  }
+  # Get just the matrices
+  temporal_network <- lapply(Layers, function(x) x$similarity_matrix)
+  layer_summary <- do.call(rbind, lapply(Layers, function(x) x$layer_summary))
+  layer_summary$layer <- layers_to_include
+  sapply(temporal_network, nrow)
+  
+  print('Applying cutoff...')
+  # Apply a cutoff
+  ## Get the similarity matrix for all the repertoires and alleles
+  x <- xtabs(~strain_id+allele_locus, subset(sampled_strains, strain_id%in%sampled_infections$strain_id))
+  similarityMatrix <- overlapAlleleAdj(x)
+  dim(similarityMatrix)
+  
+  if (is.null(cutoff_value)){
+    cutoff_value <- quantile(as.vector(similarityMatrix), probs = 0.9)
+  }
+  print(cutoff_value)
+  # hist(as.vector(similarityMatrix));abline(v=cutoff_value,col='red')
+  similarityMatrix[similarityMatrix<cutoff_value] <- 0
+  for (i in 1:length(temporal_network)){
+    # print(i)
+    x <- temporal_network[[i]]
+    x[x<cutoff_value] <- 0
+    temporal_network[[i]] <- x
+  }
+  
+  if(write_files){
+    print('Writing similarit matrices to files...')
+    # Write similarity matrix without cutoff. This is used to plot the edge weight distributions.
+    write.table(similarityMatrix, paste('../',filenameBase,'_similarityMatrix_nocutoff.csv',sep=''), row.names = T, col.names = T, sep=',')
+    # write.table(similarityMatrix, paste(filenameBase,'_similarityMatrix.csv',sep=''), row.names = T, col.names = T, sep=',')
+    # write.table(similarityMatrix, paste('../',filenameBase,'_similarityMatrix.csv',sep=''), row.names = T, col.names = T, sep=',')
+  }
+  
+  print('Done!')
+  return(list(temporal_network=temporal_network, similarityMatrix=similarityMatrix, cutoff_value=cutoff_value, layer_summary=layer_summary, base_name = base_name, ps=ps, scenario=scenario, experiment=exp, run=run))
+}
+
+## A function to get the repertoire names from unique repertoire copy names
+splitText <- function(str,after=T,splitchar='\\.'){
+  if (after){
+    return(sapply(strsplit(str, split=splitchar), tail, 1))
+  }
+  if (after==F){
+    return(sapply(strsplit(str, split=splitchar), head, 1))
+  }
+}
+
+##  A function that gets the layer as a matrix and writes it for infomap as an edge list
+# network_object is a list of matrices, each element in the list is a layer.
+matrix_to_infomap <- function(l, nodeList, network_object){
+  require(igraph)
+  current_layer <- network_object$temporal_network[[l]]
+  if(nrow(current_layer)<2){
+    print(paste('Less than 2 repertoires in layer',l,'!!! skipping intralayer edges'))
+    next
+  }
+  g <- graph.adjacency(current_layer, mode = 'directed', weighted = T)
+  current_layer_el <- as.tibble(as_data_frame(g, what = 'edges'))
+  names(current_layer_el) <- c('node_s','node_t','w')
+  current_layer_el$layer_s <- l
+  current_layer_el$layer_t <- l
+  current_layer_el$node_s <- nodeList$nodeID[match(current_layer_el$node_s,nodeList$nodeLabel)]
+  current_layer_el$node_t <- nodeList$nodeID[match(current_layer_el$node_t,nodeList$nodeLabel)]
+  current_layer_el %<>% select(layer_s, node_s, layer_t, node_t, w) # Re-arrange columns for the infomap input order
+  print(paste('[',Sys.time(), '] Created edge list of layer ',l,' for Infomap | ', nrow(current_layer_el),' edges',sep=''))
+  return(current_layer_el)
+}
+
+## A function that calculates interlayer edges between layer t and t+1
+build_interlayer_edges_1step <- function(t, nodeList, network_object){
+  strain_copies_t <- rownames(network_object$temporal_network[[t]]) # repertoires at time t
+  strain_copies_t1 <- rownames(network_object$temporal_network[[t+1]]) # repertoires at time t+1
+  if (length(strain_copies_t)<2 | length(strain_copies_t1)<2){
+    print(paste('No interlayer edges between layers',t, 'and',t+1,'because there are < 2 repertoires.'))
+    next} # need minimum of 2 strains in t and t+1 to build a matrix
+  # Pull the similarity values between the repertoires from the general similarity matrix, then write back the repertoire copy names
+  inter_layer_edges_matrix <- network_object$similarityMatrix[splitText(strain_copies_t, after = F, '_'),splitText(strain_copies_t1, after = F, '_')] 
+  rownames(inter_layer_edges_matrix) <- strain_copies_t
+  colnames(inter_layer_edges_matrix) <- strain_copies_t1
+  if (all(inter_layer_edges_matrix==0)){
+    print(paste('All interlayer edges between layers',t, 'and',t+1,' are 0 (due to the cutoff). skipping.'))
+    next
+  }
+  # transform to an edge list
+  g <- graph.incidence(inter_layer_edges_matrix, directed = T, mode = 'out', weighted = T)
+  inter_layer_edges <- as.tibble(as_data_frame(g, what = 'edges'))
+  names(inter_layer_edges) <- c('node_s','node_t','w')
+  inter_layer_edges$layer_s <- t
+  inter_layer_edges$layer_t <- t+1
+  inter_layer_edges$node_s <- nodeList$nodeID[match(inter_layer_edges$node_s,nodeList$nodeLabel)]
+  inter_layer_edges$node_t <- nodeList$nodeID[match(inter_layer_edges$node_t,nodeList$nodeLabel)]
+  inter_layer_edges %<>% select(layer_s, node_s, layer_t, node_t, w)
+  print(paste('Built interlayer edges for layers: ',t,'-->',t+1,' | ', nrow(inter_layer_edges),' edges',sep=''))
+  return(inter_layer_edges)
+}
+
+
+# This function takes a list of temporal matrices and returns an intralayer and
+# interlayer edge lists in a format: [layer_source, node_source, layer_target node_target, weight].
+# It also returns the list of node names
+build_infomap_objects <- function(network_object, write_to_infomap_file=T, return_objects=T){
+  temporal_network <- network_object$temporal_network
+  base_name <- network_object$base_name
+  require(igraph)
+  
+  # Get the node list
+  nodeLabel <- sort(unique(unlist(lapply(temporal_network,rownames))))
+  nodeList <- data.frame(nodeID=1:length(nodeLabel), nodeLabel)
+  
+  # Create intralayer edge lists
+  layers <- 1:length(temporal_network)
+  infomap_intralayer <- lapply(layers, function (x) matrix_to_infomap(x, nodeList = nodeList, network_object = network_object))
+  infomap_intralayer <- do.call("rbind", infomap_intralayer)
+  
+  # Create interlayer edge lists. Only connect consecutive layers (interlayer ONLY go from layer l to l+1).
+  layers <- layers[-length(layers)]
+  infomap_interlayer <- lapply(layers, function (x) build_interlayer_edges_1step(x, nodeList = nodeList, network_object = network_object))
+  infomap_interlayer <- do.call("rbind", infomap_interlayer)
+  
+  if (write_to_infomap_file){
+    ## Write file for infomap
+    print('Writing Infomap files')
+    file <- paste(base_name,'_Infomap_multilayer','.txt',sep='')
+    print(paste('Infomap file:',file))
+    if (file.exists(file)){unlink(file)}
+    sink(file, append = T)
+    cat("# A network in a general multiplex format");cat('\n')
+    cat(paste("*Vertices",nrow(nodeList)));cat('\n')
+    write.table(nodeList, file, append = T,sep=' ', quote = T, row.names = F, col.names = F)
+    cat("*Multiplex");cat('\n')
+    cat("# layer node layer node [weight]");cat('\n')
+    cat("# Intralayer edges");cat('\n')
+    write.table(infomap_intralayer, file, sep = ' ', row.names = F, col.names = F, quote = F, append = T)
+    cat("# Interlayer edges");cat('\n')
+    write.table(infomap_interlayer, file, sep = ' ', row.names = F, col.names = F, quote = F, append = T)
+    sink.reset()
+  }
+  
+  if (return_objects){
+    return(list(infomap_intralayer=infomap_intralayer, infomap_interlayer=infomap_interlayer, nodeList=nodeList))
+  }
+}
+
+
+# Functions for network properties ----------------------------------------
+f_01_averageLocalClusteringCoeff <- function(g,GC=F){
+  if (GC) {
+    gc <- giant.component(g)
+    return(mean(transitivity(gc, type = 'local'), na.rm = T))
+  } else {
+    return(mean(transitivity(g, type = 'local'), na.rm = T))
+  }
+}
+
+f_02_averageLocalClusteringCoeffWeighted <- function(g,GC=F){
+  if (GC) {
+    gc <- giant.component(g)
+    return(mean(transitivity(gc, type = 'barrat'), na.rm = T))
+  } else {
+    return(mean(transitivity(g, type = 'barrat'), na.rm = T))
+  }
+}
+
+
+f_03_globalClusteringCoeff <- function(g, GC=F){
+  if (GC) {
+    gc <- giant.component(g)
+    return(transitivity(gc, type = 'global'))
+  } else {
+    return(transitivity(g, type = 'global'))
+  }
+}
+
+f_04_gdensity <- function(g){
+  return(graph.density(g))
+}
+
+f_05_proportionSingletons <- function(g){
+  sum(degree(g)==0)/length(V(g))
+}
+
+f_06_proportionEndpoints <- function(g){
+  sum(degree(g)==1)/length(V(g))
+}
+
+f_07_meanDegree <- function(g){
+  mean(degree(g))
+}
+
+f_08_meanDegreeNotSingletons <- function(g){
+  mean(degree(g)[degree(g)!=0])
+}
+
+f_09_meanStrength <- function(g){
+  mean(strength(g))
+}
+
+f_10_meanStrengthNotSingletons <- function(g){
+  mean(strength(g)[degree(g)!=0])
+}
+
+f_11_entropyDegreeDistribution <-  function(g,verbose=F){
+  y=degree(g)
+  freq=prop.table(table(y))
+  if (verbose){print(freq)}
+  -sum(freq * log(freq, base = 2))
+}
+
+f_12_ratioComponents <- function(g) { 
+  cl <- clusters(g) 
+  cl$no/length(V(g))
+}
+
+giant.component <- function(g) { 
+  cl <- clusters(g) 
+  induced.subgraph(g, which(cl$membership == which.max(cl$csize)))
+}
+
+f_13_averageComponentSize <- function(g) { 
+  cl <- clusters(g) 
+  mean(cl$csize)
+}
+
+f_14_entropyComponentSize <-  function(g,verbose=F){
+  cl <- clusters(g)
+  y=cl$csize
+  freq=prop.table(table(y))
+  if (verbose){print(freq)}
+  -sum(freq * log(freq, base = 2))
+}
+
+f_15_giantConnectedRatio <- function(g){
+  cl <- clusters(g)
+  max(cl$csize)/length(V(g))
+}
+
+f_16_meanEccentricity <- function(g){
+  mean(eccentricity(g))
+}
+
+f_17_gdiameter <- function(g){
+  return(diameter(g))
+}
+
+f_18_meanDiameterComponents <- function(g){
+  cl <- clusters(g)
+  d <- 0
+  for (m in 1:(cl$no)){
+    d <- d + diameter(induced.subgraph(g, which(cl$membership == m)))
+  }
+  return(d/cl$no)
+}
+
+f_19_globalEfficiency <- function(g){
+  d_ij <- shortest.paths(g)
+  d_ij <- d_ij[lower.tri(d_ij)]
+  d_ij <- d_ij[!is.infinite(d_ij)]
+  N=length(V(g))
+  1/(N*(N-1))*sum(1/d_ij)
+}
+
+f_20_averageClosenessCentrality <- function(g){
+  mean(closeness(g, weights = NULL))
+}
+
+graphDensityDirected <- function(m){ # density of directed graphs
+  E = sum(m!=0)-length(diag(m)) # in our networks the diagonal is 1 so this should be considered.
+  N=nrow(m)
+  return(E/(N*(N-1)))
+}
+
+
+
+
+motifsProportion <- function(g){ # Calculate the proportion of each of the 16 motifs out of the total motifs found
+  
+  # This code shows the motifs by order
+  # par(mfrow=c(4,4), mar=c(.75,.75,.75,.75))
+  # for (i in 0:15){ # note that counting starts at 0
+  #   g <- graph_from_isomorphism_class(size = 3, number = i)
+  #   V(g)$name <- c('B','A','C')
+  #   plot(g,
+  #        edge.arrow.size = 0.4,
+  #        edge.color='black',
+  #        main = i + 1)
+  #   box(col='red')
+  # }
+  
+  motifs <- graph.motifs(g, size = 3)
+  motifs.prop <- motifs/sum(motifs, na.rm = T)
+  names(motifs.prop) <- c('M01--A_B_C', #1
+                          'M02--A->B_C', #2
+                          'M03--A->B<-C', #3
+                          'M04--A<->B_C', #4
+                          'M05--A->B->C', #5
+                          'M06--A<->B<-C',#6
+                          'M07--A<-B->C', #7
+                          'M08--A->B<-C_A->C', #8
+                          'M09--A<-B->C_A<->C', #9
+                          'M10--A<->B->C', #10
+                          'M11--A<->B<->C', #11
+                          'M12--A<-B<-C_A->C', #12
+                          'M13--A->B->C_A<->C', #13
+                          'M14--A->B<-C_A<->C', #14
+                          'M15--A->B<->C_A<->C', #15
+                          'M16--A<->B<->C_A<->C') #16
+  return(motifs.prop)
+}
+
+
+calculateFeatures <- function(network_object, l, remove.loops=F){
+  g <- network_object$temporal_network[[l]]
+  g <- graph.adjacency(g, weighted = T, mode = 'directed')
+  if(remove.loops){g <- simplify(g, remove.multiple = F, remove.loops = T)}
+  
+  featureVector <- NULL
+  featureVector <- c(featureVector, vcount(g))
+  featureVector <- c(featureVector, f_03_globalClusteringCoeff(g))
+  featureVector <- c(featureVector, f_04_gdensity(g))
+  featureVector <- c(featureVector, f_07_meanDegree(g))
+  featureVector <- c(featureVector, f_12_ratioComponents(g))
+  featureVector <- c(featureVector, f_15_giantConnectedRatio(g))
+  featureVector <- c(featureVector, f_17_gdiameter(g))
+  featureVector <- c(featureVector, motifsProportion(g))
+  names(featureVector)[1:7] <- c('Num_nodes','GCC','density','mean_degree','ratio_comp','nodes_in_giant_comp','diameter')
+  
+  # featureVector <- vector(length=32)
+  # Diagnostics of transitivity
+  # featureVector[1] <- f_01_averageLocalClusteringCoeff(g,F)    # Clustering coefficient averaged across all nodes
+  # featureVector[2] <- f_02_averageLocalClusteringCoeffWeighted(g,F)    # Barrat's clustering coefficient averaged across all nodes
+  # featureVector[3] <- f_03_globalClusteringCoeff(g,F)
+  # Diagnostics of degree/sterngth
+  # featureVector[4] <- f_04_gdensity(g)                    # Graph density
+  # featureVector[5] <- f_05_proportionSingletons(g)             # Proportion of nodes with degree 0 of all the nodes
+  # featureVector[6] <- f_06_proportionEndpoints(g)              # Proportion of nodes with degree 1 of all the nodes
+  # featureVector[7] <- f_07_meanDegree(g)                       # Average degree 
+  # featureVector[8] <- f_08_meanDegreeNotSingletons(g)
+  # featureVector[9] <- f_09_meanStrength(g)                     # Average strength
+  # featureVector[10] <- f_10_meanStrengthNotSingletons(g)
+  # featureVector[11] <- f_11_entropyDegreeDistribution(g)       # Average measurement of the heterogeneity of the network. See eq. 14 in: da F. Costa, L., Rodrigues, F. A., Travieso, G. & Boas, P. R. V. Characterization of complex networks: A survey of measurements. Adv. Phys. 56, 167–242 (2007).
+  # featureVector[12] <- f_12_ratioComponents(g)                 # Number of components relative to networks size
+  # featureVector[13] <- f_13_averageComponentSize(g)
+  # featureVector[14] <- f_14_entropyComponentSize(g)
+  # featureVector[15] <- f_15_giantConnectedRatio(g)             # Proportion of nodes in the giant component
+  # #Diagnostics of shortest-paths
+  # featureVector[16] <- f_16_meanEccentricity(g)                 # Eccentricity is the maximum shortest distance from a node to all other nodes. This is averaged across all nodes
+  # featureVector[17] <- f_17_gdiameter(g)                        # length of the longest geodesic
+  # featureVector[18] <- f_18_meanDiameterComponents(g)
+  # featureVector[19] <- f_19_globalEfficiency(g)                # See eq. 14 in: da F. Costa, L., Rodrigues, F. A., Travieso, G. & Boas, P. R. V. Characterization of complex networks: A survey of measurements. Adv. Phys. 56, 167–242 (2007).
+  # featureVector[20] <- f_20_averageClosenessCentrality(g)      # 
+  # # Diagnostics of motifs
+  # featureVector[21:32] <- motifsProportion(g)
+  return(featureVector)
+}
+
+
 # Some example to test ----------------------------------------------------
 
 # Join pre-intervention (E000) and intervention (E003) time-series
@@ -316,14 +813,14 @@ x <- get_data(parameter_space = '36', scenario = 'S', experiment = '003', run = 
 # Plot
 svg('/home/shai/Google Drive/LabSync/FacultyJobs/UToronto 2018/time_series_intervention.svg', 2.4, 1.7)
 x %>% bind_rows(subset(ctrl, time<min(x$time))) %>% 
- filter(time>28000 & time<35000) %>% 
+  filter(time>28000 & time<35000) %>% 
   ggplot(aes(x=time, y=n_circulating_strains))+
   geom_line(color='#900C3F', size=1)+
   labs(x='Time',y='Diversity')+
   mytheme+
-    theme(axis.text=element_blank(),
-          axis.ticks = element_blank(),
-          panel.grid = element_blank())
+  theme(axis.text=element_blank(),
+        axis.ticks = element_blank(),
+        panel.grid = element_blank())
 dev.off()
 
 
@@ -396,12 +893,12 @@ exp_comparison %>%
 # Compare between parameter spaces within an experiment -------------------
 exp <- '003'
 ps_comparison <- map(run_range, function(r){
-      map(ps_range, function(ps){
-        print(paste(ps,r,sep=' | '))
-        tmp <- get_data(parameter_space = ps, scenario = scenario, experiment = exp, run = r)
-        return(tmp[[1]])
-      }) %>% bind_rows()
-    }) %>% bind_rows()
+  map(ps_range, function(ps){
+    print(paste(ps,r,sep=' | '))
+    tmp <- get_data(parameter_space = ps, scenario = scenario, experiment = exp, run = r)
+    return(tmp[[1]])
+  }) %>% bind_rows()
+}) %>% bind_rows()
 
 time_range <- c(28800,max(ps_comparison$time))
 my_cols <- gg_color_hue(length(unique(ps_comparison$PS)), hue_min = 10, hue_max = 280, l = 62, c = 200)
@@ -448,7 +945,7 @@ ps_comparison_eir %>%
   facet_wrap(~N_GENES_INITIAL)+
   scale_y_continuous(breaks=seq(0,20,2))+
   mytheme
-  
+
 
 ## @knitr INTERVENTION_STATS_LOAD
 
@@ -717,7 +1214,6 @@ intervention_stats_diff_scenarios %>%
 
 
 
-#----------------------------------------------------------------------------
 # This part compares the fits of the duration curve of the selection and the generalized immunity.
 parameter_space <- '03'
 experiment <- '01'
@@ -769,234 +1265,122 @@ dev.off()
 
 
 
-# FUNCTIONS for network Structure ---------------------------------------------------------------
-
-
-overlapAlleleAdj<-function(mat){
-  newmat<-tcrossprod(mat>0)
-  newmat<-newmat/rowSums(mat>0)
-  return(newmat)  
-}
-
-
-# A function to build the similarity matrix for a single layer and calculate some summary stats
-build_layer <- function(infection_df){
-  infection_df %<>% group_by(strain_id) %>%
-    mutate(freq = n()/120) %>% # strain frequency (the number of strain copies should be equal to the frequency)
-    arrange(strain_id_unique) 
-  # Calculate the edges
-  similarity_matrix <- table(infection_df$strain_id_unique, infection_df$allele_locus)
-  similarity_matrix <- overlapAlleleAdj(similarity_matrix)
-  # Some summary
-  layer_summary <- with(infection_df, 
-                        data.frame(hosts=length(unique(host_id)),
-                                   repertoires=length(unique(strain_id)),
-                                   total_infections=length(unique(strain_id_unique))
-                        ))
-  return(list(similarity_matrix=similarity_matrix, infections=infection_df, layer_summary=layer_summary))
-}
-
-
-createTemporalNetwork <- function(ps, scenario, exp, run, cutoff_prob=0.9, write_files=F, layers_to_include=NULL){
-  base_name <- paste('PS',ps,'_',scenario,'_E',exp,'_R',run,sep='')
-  sqlite_file <- paste(base_name,'.sqlite',sep='')
-  
-  print('Getting data from sqlite...')
-  # Extract data from sqlite. variable names correspond to table names
-  db <- dbConnect(SQLite(), dbname = sqlite_file)
-  sampled_strains <- as.tibble(dbGetQuery(db, 'SELECT id, gene_id FROM sampled_strains'))
-  names(sampled_strains)[1] <- c('strain_id')
-  sampled_alleles <- as.tibble(dbGetQuery(db, 'SELECT * FROM sampled_alleles'))
-  names(sampled_alleles)[3] <- c('allele_id')
-  sampled_strains <- full_join(sampled_strains, sampled_alleles)
-  sampled_strains$allele_locus <- paste(sampled_strains$allele_id,sampled_strains$locus,sep='_') # each allele in a locus is unique
-  dbDisconnect(db)
-  # Get infection data
-  sampled_infections <- get_data(parameter_space = ps, experiment = exp, scenario = scenario, run = run)$sampled_infections
-  
-  print('Building data set...')
-  # Add layer numbers. Each time point is a layer
-  sampled_infections$layer <- group_indices(sampled_infections, time) 
-  sampled_infections %<>% arrange(layer,strain_id,host_id) %>% 
-    group_by(layer,strain_id) %>% 
-    mutate(strain_copy = row_number()) # add unique id for each strain copy within each layer. A strain copy is an instance of a strain in a particualr host
-  sampled_infections$strain_id_unique <- paste(sampled_infections$strain_id,sampled_infections$strain_copy,sep='_') # Create the unique strains
-  # Integrate the strain composition into the infections table
-  if (all(unique(sampled_strains$strain_id)%in%unique(sampled_infections$strain_id))==F || all(unique(sampled_infections$strain_id)%in%unique(sampled_strains$strain_id))==F) {
-    stop('There may be a mismatch in repertoires between the sampled_strains and sampled_infections data sets. Revise')
-  }
-  sampled_infections %<>% select(time, layer, host_id, strain_id, strain_copy, strain_id_unique) %>% 
-    left_join(sampled_strains)
-  
-  print('Building layers...')
-  Layers <- list()
-  if (is.null(layers_to_include)){
-    layers_to_include <- sort(unique(sampled_infections$layer))
-  }
-  for (l in layers_to_include){
-    cat(paste('[',Sys.time(), '] building layer ',l,'\n',sep=''))
-    sampled_infections_layer <- subset(sampled_infections, layer==l) # This is MUCH faster than sampled_infections_layer <- sampled_infections %>% filter(layer==l)
-    Layers[[which(layers_to_include==l)]] <- build_layer(sampled_infections_layer)
-  }
-  # Get just the matrices
-  temporal_network <- unique(lapply(Layers, function(x) head(x, 1)$similarity_matrix))
-  layer_summary <- do.call(rbind, lapply(Layers, function(x) x$layer_summary))
-  sapply(temporal_network, nrow)
-  
-  print('Applying cutoff...')
-  # Apply a cutoff
-  ## Get the similarity matrix for all the repertoires and alleles
-  x <- xtabs(~strain_id+allele_locus, subset(sampled_strains, strain_id%in%sampled_infections$strain_id))
-  similarityMatrix <- overlapAlleleAdj(x)
-  dim(similarityMatrix)
-  
-  cutoffValue <- quantile(as.vector(similarityMatrix), probs = 0.9)
-  print(cutoffValue)
-  # hist(as.vector(similarityMatrix));abline(v=cutoffValue,col='red')
-  similarityMatrix[similarityMatrix<cutoffValue] <- 0
-  for (i in 1:length(temporal_network)){
-    # print(i)
-    x <- temporal_network[[i]]
-    x[x<cutoffValue] <- 0
-    temporal_network[[i]] <- x
-  }
-  
-  if(write_files){
-    print('Writing similarit matrices to files...')
-    # Write similarity matrix without cutoff. This is used to plot the edge weight distributions.
-    write.table(similarityMatrix, paste('../',filenameBase,'_similarityMatrix_nocutoff.csv',sep=''), row.names = T, col.names = T, sep=',')
-    # write.table(similarityMatrix, paste(filenameBase,'_similarityMatrix.csv',sep=''), row.names = T, col.names = T, sep=',')
-    # write.table(similarityMatrix, paste('../',filenameBase,'_similarityMatrix.csv',sep=''), row.names = T, col.names = T, sep=',')
-  }
-  
-  print('Done!')
-  return(list(temporal_network=temporal_network, similarityMatrix=similarityMatrix, layer_summary=layer_summary, base_name = base_name, ps=ps, scenario=scenario, experiment=exp, run=run))
-}
-
-## A function to get the repertoire names from unique repertoire copy names
-splitText <- function(str,after=T,splitchar='\\.'){
-  if (after){
-    return(sapply(strsplit(str, split=splitchar), tail, 1))
-  }
-  if (after==F){
-    return(sapply(strsplit(str, split=splitchar), head, 1))
-  }
-}
-
-##  A function that gets the layer as a matrix and writes it for infomap as an edge list
-# network_object is a list of matrices, each element in the list is a layer.
-matrix_to_infomap <- function(l, nodeList, network_object){
-  require(igraph)
-  current_layer <- network_object$temporal_network[[l]]
-  if(nrow(current_layer)<2){
-    print(paste('Less than 2 repertoires in layer',l,'!!! skipping intralayer edges'))
-    next
-  }
-  g <- graph.adjacency(current_layer, mode = 'directed', weighted = T)
-  current_layer_el <- as.tibble(as_data_frame(g, what = 'edges'))
-  names(current_layer_el) <- c('node_s','node_t','w')
-  current_layer_el$layer_s <- l
-  current_layer_el$layer_t <- l
-  current_layer_el$node_s <- nodeList$nodeID[match(current_layer_el$node_s,nodeList$nodeLabel)]
-  current_layer_el$node_t <- nodeList$nodeID[match(current_layer_el$node_t,nodeList$nodeLabel)]
-  current_layer_el %<>% select(layer_s, node_s, layer_t, node_t, w) # Re-arrange columns for the infomap input order
-  print(paste('[',Sys.time(), '] Created edge list of layer ',l,' for Infomap | ', nrow(current_layer_el),' edges',sep=''))
-  return(current_layer_el)
-}
-
-## A function that calculates interlayer edges between layer t and t+1
-build_interlayer_edges_1step <- function(t, nodeList, network_object){
-  strain_copies_t <- rownames(network_object$temporal_network[[t]]) # repertoires at time t
-  strain_copies_t1 <- rownames(network_object$temporal_network[[t+1]]) # repertoires at time t+1
-  if (length(strain_copies_t)<2 | length(strain_copies_t1)<2){
-    print(paste('No interlayer edges between layers',t, 'and',t+1,'because there are < 2 repertoires.'))
-    next} # need minimum of 2 strains in t and t+1 to build a matrix
-  # Pull the similarity values between the repertoires from the general similarity matrix, then write back the repertoire copy names
-  inter_layer_edges_matrix <- network_object$similarityMatrix[splitText(strain_copies_t, after = F, '_'),splitText(strain_copies_t1, after = F, '_')] 
-  rownames(inter_layer_edges_matrix) <- strain_copies_t
-  colnames(inter_layer_edges_matrix) <- strain_copies_t1
-  if (all(inter_layer_edges_matrix==0)){
-    print(paste('All interlayer edges between layers',t, 'and',t+1,' are 0 (due to the cutoff). skipping.'))
-    next
-  }
-  # transform to an edge list
-  g <- graph.incidence(inter_layer_edges_matrix, directed = T, mode = 'out', weighted = T)
-  inter_layer_edges <- as.tibble(as_data_frame(g, what = 'edges'))
-  names(inter_layer_edges) <- c('node_s','node_t','w')
-  inter_layer_edges$layer_s <- t
-  inter_layer_edges$layer_t <- t+1
-  inter_layer_edges$node_s <- nodeList$nodeID[match(inter_layer_edges$node_s,nodeList$nodeLabel)]
-  inter_layer_edges$node_t <- nodeList$nodeID[match(inter_layer_edges$node_t,nodeList$nodeLabel)]
-  inter_layer_edges %<>% select(layer_s, node_s, layer_t, node_t, w)
-  print(paste('Built interlayer edges for layers: ',t,'-->',t+1,' | ', nrow(inter_layer_edges),' edges',sep=''))
-  return(inter_layer_edges)
-}
-
-
-# This function takes a list of temporal matrices and returns an intralayer and
-# interlayer edge lists in a format: [layer_source, node_source, layer_target node_target, weight].
-# It also returns the list of node names
-build_infomap_objects <- function(network_object, write_to_infomap_file=T, return_objects=T){
-  temporal_network <- network_object$temporal_network
-  base_name <- network_object$base_name
-  require(igraph)
-  
-  # Get the node list
-  nodeLabel <- sort(unique(unlist(lapply(temporal_network,rownames))))
-  nodeList <- data.frame(nodeID=1:length(nodeLabel), nodeLabel)
-  
-  # Create intralayer edge lists
-  layers <- 1:length(temporal_network)
-  infomap_intralayer <- lapply(layers, function (x) matrix_to_infomap(x, nodeList = nodeList, network_object = network_object))
-  infomap_intralayer <- do.call("rbind", infomap_intralayer)
-  
-  # Create interlayer edge lists. Only connect consecutive layers (interlayer ONLY go from layer l to l+1).
-  layers <- layers[-length(layers)]
-  infomap_interlayer <- lapply(layers, function (x) build_interlayer_edges_1step(x, nodeList = nodeList, network_object = network_object))
-  infomap_interlayer <- do.call("rbind", infomap_interlayer)
-  
-  if (write_to_infomap_file){
-    sink.reset <- function(){
-      for(i in seq_len(sink.number())){
-        sink(NULL)
-      }
-    }
-    ## Write file for infomap
-    print('Writing Infomap files')
-    file <- paste(base_name,'_Infomap_multilayer','.txt',sep='')
-    print(paste('Infomap file:',file))
-    if (file.exists(file)){unlink(file)}
-    sink(file, append = T)
-    cat("# A network in a general multiplex format");cat('\n')
-    cat(paste("*Vertices",nrow(nodeList)));cat('\n')
-    write.table(nodeList, file, append = T,sep=' ', quote = T, row.names = F, col.names = F)
-    cat("*Multiplex");cat('\n')
-    cat("# layer node layer node [weight]");cat('\n')
-    cat("# Intralayer edges");cat('\n')
-    write.table(infomap_intralayer, file, sep = ' ', row.names = F, col.names = F, quote = F, append = T)
-    cat("# Interlayer edges");cat('\n')
-    write.table(infomap_interlayer, file, sep = ' ', row.names = F, col.names = F, quote = F, append = T)
-    sink.reset()
-  }
-  
-  if (return_objects){
-    return(list(infomap_intralayer=infomap_intralayer, infomap_interlayer=infomap_interlayer, nodeList=nodeList))
-  }
-}
-
 
 # Example for structure ---------------------------------------------------
+
+
+
 setwd('~/Documents/malaria_interventions_data/')
 
 ps <- '36'
 scenario <- 'S'
-exp <- '001'
+exp <- '004'
 run <- 1
+x <- get_data(parameter_space = ps, scenario, experiment = exp, run)[[1]]
+x$layer <- group_indices(x, time) 
+layers_to_include = 1:max(x$layer)
+x %>% 
+  filter(time>28000 & time<35000) %>% 
+  ggplot(aes(x=layer, y=n_circulating_strains))+
+  geom_line(color='#900C3F', size=1)+
+  labs(x='Time',y='Diversity')+
+  scale_x_continuous(breaks = seq(0,max(x$layer),5))+
+  mytheme
 
-# parameter_file <- paste(base_name,'.py',sep='') # This may be necessary so I leave it
+network_control <- createTemporalNetwork(ps, scenario, exp = '001', run, layers_to_include = layers_to_include, sampled_infections = NULL)
+x <- as.tibble(network_control$layer_summary)
+x %>% gather(variable, value, -layer) %>% 
+  ggplot(aes(layer, value, color=variable))+
+  geom_line()+
+  scale_x_continuous(breaks = seq(1,max(x$layer)+5,5))+
+  mytheme+
+  theme(panel.grid.minor = element_blank())
+
+network_test <- createTemporalNetwork(ps, scenario, exp, run, cutoff_value = network_control$cutoff_value, layers_to_include = layers_to_include, sampled_infections = NULL)
+x <- as.tibble(network_test$layer_summary)
+x %>% gather(variable, value, -layer) %>% 
+  ggplot(aes(layer, value, color=variable))+
+  geom_line()+
+  scale_x_continuous(breaks = seq(1,max(x$layer)+5,5))+
+  mytheme+
+  theme(panel.grid.minor = element_blank())
+
+# Plot ------------------------------------
+# Create a color table for all the repertoires. All copies of each unique repertoire have the same color
+node_names <- sort(unique(unlist(lapply(network_test$temporal_network, rownames))))
+color_table <- data.frame(node_name=node_names, unique_name=splitText(node_names,splitchar = '_', after = F))
+colors <- data.frame(unique_name=unique(color_table$unique_name), color=gg_color_hue(length(unique(color_table$unique_name))), stringsAsFactors = F)
+color_table <- merge(color_table,colors)
+
+# # Get fixed coordinates
+# g <- graph.adjacency(network_test$similarityMatrix, mode = 'directed', weighted = T)
+# l <- layout.fruchterman.reingold(g)
+# coords <- data.frame(node_name=V(g)$name, x=l[,1], y=l[,2])
+layers_to_plot <- c(1,7,13,21,36,50,65,70,75,78,85,91,93,100,114,116,120,191)
+# pdf('networks_ctrl.pdf', width = 8,height = 8)
+for (i in layers_to_plot){
+  print(i)
+  png(paste('png/layer_',sprintf('%0.3d', i),'.png',sep=''), width=1920, height=1080, res = 96)
+  plotLayer(network_test, i, ver.col = color_table, coords = NULL, main=i)
+  dev.off()
+}
+#system('convert -delay 0.5 *.png animation.mpg')
+#----------------------------------------------
+
+network_test$base_name
+network_control$base_name
+
+netork_properties_control <- matrix(0,ncol=23, nrow=length(layers_to_include))
+for (i in layers_to_include){
+  print(i)
+  tmp <- calculateFeatures(network_control, i)
+  netork_properties_control[i,] <- tmp
+}
+colnames(netork_properties_control) <- names(tmp)
+netork_properties_control <- as.tibble(netork_properties_control)
+netork_properties_control$layer <- layers_to_include
+netork_properties_control  %>%  gather(variable, value, -layer) %>% 
+  ggplot(aes(layer, value, color=variable))+
+  geom_line()+
+  scale_x_continuous(breaks = seq(1,max(layers_to_include),5))+
+  facet_wrap(~variable,scales='free')+
+  geom_vline(xintercept = c(13,73))+
+  mytheme+
+  theme(panel.grid.minor = element_blank(), legend.position = 'none')
+
+netork_properties <- matrix(0,ncol=23, nrow=length(layers_to_include))
+for (i in layers_to_include){
+  print(i)
+  tmp <- calculateFeatures(network_test, i)
+  netork_properties[i,] <- tmp
+}
+colnames(netork_properties) <- names(tmp)
+netork_properties <- as.tibble(netork_properties)
+netork_properties$layer <- layers_to_include
+netork_properties  %>%  gather(variable, value, -layer) %>% 
+  ggplot(aes(layer, value, color=variable))+
+  geom_line()+
+  scale_x_continuous(breaks = seq(1,max(layers_to_include),5))+
+  facet_wrap(~variable,scales='free')+
+  geom_vline(xintercept = c(13,73))+
+  mytheme+
+  theme(panel.grid.minor = element_blank(), legend.position = 'none')
+
+netork_properties_control$exp <- '001'
+netork_properties$exp <- '003'
+comparison <- rbind(netork_properties,netork_properties_control)
+comparison %>% 
+  select('exp','layer','Num_nodes','GCC','density','mean_degree','diameter','M07--A<-B->C','M06--A<->B<-C','M10--A<->B->C','M11--A<->B<->C','M16--A<->B<->C_A<->C') %>%
+  gather(variable, value, -exp, -layer) %>% 
+  ggplot(aes(layer, value, color=exp))+
+  geom_line()+
+  scale_x_continuous(breaks = seq(1,max(layers_to_include),20))+
+  facet_wrap(~variable,scales='free')+
+  geom_vline(xintercept = c(13,13+120))+
+  mytheme+
+  theme(panel.grid.minor = element_blank(), legend.position = 'none')
 
 
-network_test <- createTemporalNetwork(ps,scenario,exp,1, layers_to_include = c(1:5,10:15))
 unlist(lapply(network_test$temporal_network, nrow))
 infomap_objects <- build_infomap_objects(network_test)
 
