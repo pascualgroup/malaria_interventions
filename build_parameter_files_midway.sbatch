@@ -12,6 +12,7 @@
 ##SBATCH --mail-user=pilosofs@uchicago.edu
 
 # Load modules
+module load R
 module load python/2.7
 module load gcc/4.9
 

@@ -18,7 +18,7 @@ design <- loadExperiments_GoogleSheets()
 ps_range <- sprintf('%0.2d', 27:39)
 exp_range <- sprintf('%0.3d', 0:4)
 run_range <- 11:50
-work_scenario <- 'G'
+work_scenario <- 'N'
 design_subset <- subset(design, PS %in% ps_range & scenario==work_scenario)
 generate_files(row_range = 1:nrow(design_subset), run_range = run_range, experimental_design = design_subset)
 
@@ -97,7 +97,7 @@ sink.reset()
 
 system('rm *.sbatch')
 
-scenario_range <- c('S')
+scenario_range <- c('G')
 exp_range <- sprintf('%0.3d', 0:4)
 ps_range <- sprintf('%0.2d', 27:39)
 
@@ -178,7 +178,32 @@ files_py$PS <- sprintf('%0.2d', files_py$PS)
 
 files_py %<>% filter(as.numeric(PS)>=27) %>% mutate(scenario=factor(scenario, levels=c('S','N','G'))) %>% arrange(scenario, PS, experiment, run)
 files_py %<>% filter(as.numeric(PS)>=27) %>% group_by(PS,scenario,experiment) %>% summarise(runs_count=length(run))
-files_py %>% filter(scenario=='G') %>% filter(as.numeric(PS)>27) %>% distinct(PS,run)
+files_py %>% filter(scenario=='G') %>% filter(as.numeric(PS)>=27) %>% distinct(PS,run)
+
+# --- Generate missing GI files --- For those runs that produced an error when
+# fitting the curve, take curve-fit information from a random run where fit was
+# successful.
+
+existing_py_G <- files_py %>% filter(scenario=='G') %>% filter(as.numeric(PS)>=27 & experiment=='000') %>% distinct(PS,run)
+py_files_G <- vector(mode = 'list', length = length(ps_range))
+names(py_files_G) <- ps_range
+for (ps in ps_range){
+  existing <- subset(existing_py_G, PS==ps)$run
+  py_files_G[[which(ps_range==ps)]]$existing <- existing
+  py_files_G[[which(ps_range==ps)]]$missing <- setdiff(1:50,existing)
+}
+
+
+experiment <- '000'
+for (parameter_space in ps_range){
+  py_files_G_ps <- py_files_G[[which(ps_range==parameter_space)]]
+  for (run in py_files_G_ps$missing){
+    benchmark_file <- paste('PS',parameter_space,'_G_E',exp,'_R',sample(py_files_G_ps$existing,1),'.py',sep='')
+    x <- readLines(benchmark_file)
+  }
+}
+
+
 
 # --- CP sqlite files ---
 # In Midway run: ls *.sqlite >> CP_files.txt and copy the file to local computer

@@ -1,4 +1,25 @@
 # General functions -------------------------------------------------------
+on_Midway <- function(){
+  if (Sys.getenv('USER')=='pilosofs'){
+    return(TRUE)
+  } else {
+    return(FALSE)
+  }
+}
+  
+prep.packages <- function(package.list) {
+  loaded = package.list %in% .packages()
+  if ( all(loaded) ) return(invisible())
+  
+  package.list = package.list[!loaded]
+  installed = package.list %in% .packages(TRUE)
+  if ( !all(installed) ) install.packages(package.list[!installed], repos="http://cran.rstudio.com/")
+  for ( p in package.list )
+  {
+    print(paste("Loading package:",p))
+    library(p,character.only=TRUE)
+  }
+}
 
 collapse_with_commas <- function(x, use_brackets=T){
   if (use_brackets){
@@ -21,7 +42,7 @@ set_parameter <- function(param_data, parameter, value){
 }
 
 # Function to get reference parameter file
-get_parameter_reference <- function(parameter_file_ref='~/Documents/malaria_interventions/parameter_file_ref.py'){
+get_parameter_reference <- function(parameter_file_ref='parameter_file_ref.py'){
   reference <- readLines(parameter_file_ref)
   for (l in 1:length(reference)){
     if (str_detect(reference[l],'#')){
@@ -95,19 +116,15 @@ clear_previous_files <- function(parameter_space=NULL, scenario=NULL, experiment
 # counterpart simulations to calculate the var switching rate in the neutral
 # scenario. it makes more sense to take the duration from the control
 # experiment, otherwise interventions can affect it, so I set exepriment=001 as default.
-set_transition_rate_neutral <- function(parameter_space, experiment='001', N_GENES_PER_STRAIN = 60){
-  sqlite_files <- list.files(path = '~/Documents/malaria_interventions_data/', pattern=paste('PS',parameter_space,'_S_E',experiment,'_R',sep=''), full.names = T)
-  sqlite_files <- sqlite_files[str_detect(sqlite_files,'\\.sqlite')] # only sqlite files
-  sqlite_files <- sqlite_files[!str_detect(sqlite_files,'_CP')] # no checkpoint files
-  
-  
-  doi <- map(sqlite_files, function(f){
-    db <- dbConnect(SQLite(), dbname = f)
-    sampled_duration <- dbGetQuery(db, 'SELECT duration FROM sampled_duration')
-    return(sampled_duration)
-  }) %>% bind_rows()
-  
-  mean_doi <- mean(doi$duration)
+set_transition_rate_neutral <- function(parameter_space, run, N_GENES_PER_STRAIN = 60){
+  if (on_Midway()){
+    sqlite_file <- list.files(path = 'sqlite/', pattern=paste('PS',parameter_space,'_S_E001_R',run,'.sqlite',sep=''), full.names = T)
+  } else {
+    sqlite_file <- list.files(path = '~/Documents/malaria_interventions_data/', pattern=paste('PS',parameter_space,'_S_E001_R',run,'.sqlite',sep=''), full.names = T)
+  }
+  db <- dbConnect(SQLite(), dbname = sqlite_file)
+  sampled_duration <- dbGetQuery(db, 'SELECT duration FROM sampled_duration')
+  mean_doi <- mean(sampled_duration$duration)
   TRANSITION_RATE_NOT_IMMUNE <- 1/(mean_doi/N_GENES_PER_STRAIN)
   # setwd('~/Documents/malaria_interventions/')
   return(TRANSITION_RATE_NOT_IMMUNE)
@@ -116,27 +133,31 @@ set_transition_rate_neutral <- function(parameter_space, experiment='001', N_GEN
 
 #A function to set the parameters for generazlied immunity scenario. Unlike the
 #set_transition_rate_neutral, which returns a single value, this function
-#returns a list which describes a fit of a curve of a particualr run, so it
-#cannot be aggregated across runs. It makes most sense to fir the curve to an
+#returns a list which describes a fit of a curve of a particular run, so it
+#cannot be aggregated across runs. It makes most sense to fit the curve to an
 #experiment without interevntions and in stable state, so 001 is by default.
-set_generalized_immunity <- function(parameter_space, experiment='001', run){
+set_generalized_immunity <- function(parameter_space, run){
   require('rPython')
-  sqlite_file <- paste('/home/shai/Documents/malaria_interventions_data/','PS',parameter_space,'_S_E',experiment,'_R',run,'.sqlite',sep='')
-  pyFile <- readLines('/home/shai/Documents/malaria_interventions/generalized_immunity_fitting.py')
+  if (on_Midway()){
+    sqlite_file <- paste('sqlite/','PS',parameter_space,'_S_E001_R',run,'.sqlite',sep='')
+    pyFile <- readLines('generalized_immunity_fitting.py')
+  } else {
+    sqlite_file <- paste('/home/shai/Documents/malaria_interventions_data/','PS',parameter_space,'_S_E001_R',run,'.sqlite',sep='')
+    pyFile <- readLines('/home/shai/Documents/malaria_interventions/generalized_immunity_fitting.py')
+  }
   pyFile[11] <- paste('path=','"',sqlite_file,'"',sep='')
   writeLines(pyFile,'generalized_immunity_fitting_experiment.py')
-  
-  res <- try(python.load('generalized_immunity_fitting_experiment.py'))
+  res <- try(python.load('generalized_immunity_fitting_experiment.py'))  
   if(inherits(res, "try-error"))
   {
     return(NA)
   } else {
+    N_INFECTIONS_FOR_GENERAL_IMMUNITY <- python.get('infectionTimesToImmune')
     GENERAL_IMMUNITY_PARAMS <- python.get('generalImmunityParams')
     GENERAL_IMMUNITY_PARAMS <- paste('[',paste(GENERAL_IMMUNITY_PARAMS, collapse = ','),']',sep='')
-    N_INFECTIONS_FOR_GENERAL_IMMUNITY <- python.get('infectionTimesToImmune')
     CLEARANCE_RATE_IMMUNE <- python.get('clearanceRateConstantImmune')
     file.remove('generalized_immunity_fitting_experiment.py')
-    return(list(GENERAL_IMMUNITY_PARAMS,N_INFECTIONS_FOR_GENERAL_IMMUNITY,CLEARANCE_RATE_IMMUNE))
+    return(list(N_INFECTIONS_FOR_GENERAL_IMMUNITY,GENERAL_IMMUNITY_PARAMS,CLEARANCE_RATE_IMMUNE))
   }
 }
 
@@ -203,9 +224,6 @@ set_MDA <- function(design_ID, run, experimental_design){
   write_lines(param_data$output, output_file)
 }
 
-
-# Functions to generate files ---------------------------------------------
-
 get_random_seed <- function(PS, scenario, experiment='000', run_range){
   seeds <- c()
   for (run in run_range){
@@ -220,6 +238,36 @@ get_random_seed <- function(PS, scenario, experiment='000', run_range){
   return(seeds)
 }
 
+get_transition_rate_neutral <- function(PS, run){
+  transition_rate <- c()
+  x <- try(readLines(paste('PS',PS,'_N_','E000_R',run,'.py',sep='')))
+  if (inherits(x, "try-error")){
+    print(paste('Cannot find parameter file to extract transition rate! (','PS',PS,'_N_','E000_R',run,'.py)',sep=''))
+    transition_rate <- NA
+  } else {
+    transition_rate <- parse_number(x[10])
+  }
+  return(transition_rate)
+}
+
+get_generalized_immunity <- function(PS, run){
+  x <- try(readLines(paste('PS',PS,'_G_','E000_R',run,'.py',sep='')))
+  if (inherits(x, "try-error")){
+    print(paste('Cannot find parameter file to extract parameters! (','PS',PS,'_G_','E000_R',run,'.py)',sep=''))
+    params <- NA
+  } else {
+    params <- list(N_INFECTIONS_FOR_GENERAL_IMMUNITY=parse_number(x[7]),
+                   GENERAL_IMMUNITY_PARAMS=str_sub(x[8],25,str_length(x[8])),
+                   CLEARANCE_RATE_IMMUNE=parse_number(x[9]))
+  }
+  return(params)
+}
+
+
+# Functions to generate files ---------------------------------------------
+
+
+
 # Function to create the necesary files and pipeline for a single run of an experiment.
 # Each run has its own random seed across experiments.
 create_run <- function(design_ID, run, RANDOM_SEED, experimental_design, biting_rate_mathematica=NULL){
@@ -229,7 +277,11 @@ create_run <- function(design_ID, run, RANDOM_SEED, experimental_design, biting_
   scenario <- experimental_design$scenario[design_ID]
   experiment <- experimental_design$exp[design_ID] # Use 000 for checkpoints and 001 for control
   base_name <- paste('PS',parameter_space,'_',scenario,'_E',experiment,'_R',run,sep='')
-  param_data <- get_parameter_reference()
+  if (on_Midway()){
+    param_data <- get_parameter_reference('parameter_file_ref.py')
+  } else {
+    param_data <- get_parameter_reference('~/Documents/malaria_interventions/parameter_file_ref.py')
+  }
   
   # General parameters
   param_data[param_data$param=='RANDOM_SEED',] <- set_parameter(param_data, 'RANDOM_SEED', RANDOM_SEED)
@@ -241,19 +293,35 @@ create_run <- function(design_ID, run, RANDOM_SEED, experimental_design, biting_
   # Scenario
   if(scenario=='N'){
     param_data[param_data$param=='SELECTION_MODE',] <- set_parameter(param_data, 'SELECTION_MODE', "\'NEUTRALITY\'")
-    TRANSITION_RATE_NOT_IMMUNE <- set_transition_rate_neutral(parameter_space, experiment='001')
+    # For each run, there is a need to calculate the transition rate once, for
+    # the CP experiment. the rest of the experiments use the same value.
+    if (experiment=='000'){ 
+      print(paste('Calculating transition rate from PS',parameter_space,'_S_E001_R',run,sep = ''))
+      TRANSITION_RATE_NOT_IMMUNE <- set_transition_rate_neutral(parameter_space, run)
+    } else {
+      print(paste('Getting transition rate from PS',parameter_space,'_N_E000_R',run,sep = ''))
+      TRANSITION_RATE_NOT_IMMUNE <- get_transition_rate_neutral(parameter_space, run)
+    }
     param_data[param_data$param=='TRANSITION_RATE_NOT_IMMUNE',] <- set_parameter(param_data, 'TRANSITION_RATE_NOT_IMMUNE', TRANSITION_RATE_NOT_IMMUNE)
   }
   if(scenario=='G'){
     param_data[param_data$param=='SELECTION_MODE',] <- set_parameter(param_data, 'SELECTION_MODE', "\'GENERAL_IMMUNITY\'")
-    try_fit <- set_generalized_immunity(parameter_space, run = run)
-    if (is.na(try_fit)[1]){
+    # For each run, there is a need to calculate the general immunity parameters once, for
+    # the CP experiment. the rest of the experiments use the same values.
+    if (experiment=='000'){ 
+      print(paste('Calculating generalized immunity parameters from PS',parameter_space,'_S_E001_R',run,sep = ''))
+      params <- set_generalized_immunity(parameter_space, run)
+    } else {
+      print(paste('Getting generalized immunity parameters from PS',parameter_space,'_G_E000_R',run,sep = ''))
+      params <- get_generalized_immunity(parameter_space, run)
+    }
+    if (is.na(params)[1]){
       print(paste('ERROR (create_run): Could not fit function for generalized immunity, skipping and NOT PRODUCING FILE ',base_name,'.py',sep = ''))
       return(NULL)
     }
-    param_data[param_data$param=='GENERAL_IMMUNITY_PARAMS',] <- set_parameter(param_data, 'GENERAL_IMMUNITY_PARAMS', try_fit[[1]])
-    param_data[param_data$param=='N_INFECTIONS_FOR_GENERAL_IMMUNITY',] <- set_parameter(param_data, 'N_INFECTIONS_FOR_GENERAL_IMMUNITY', try_fit[[2]])
-    param_data[param_data$param=='CLEARANCE_RATE_IMMUNE',] <- set_parameter(param_data, 'CLEARANCE_RATE_IMMUNE', try_fit[[3]])
+    param_data[param_data$param=='GENERAL_IMMUNITY_PARAMS',] <- set_parameter(param_data, 'GENERAL_IMMUNITY_PARAMS', params[[1]])
+    param_data[param_data$param=='N_INFECTIONS_FOR_GENERAL_IMMUNITY',] <- set_parameter(param_data, 'N_INFECTIONS_FOR_GENERAL_IMMUNITY', params[[2]])
+    param_data[param_data$param=='CLEARANCE_RATE_IMMUNE',] <- set_parameter(param_data, 'CLEARANCE_RATE_IMMUNE', params[[3]])
   }
   
   # Populations. This duplicates the following parameters as the number of populations.
@@ -397,7 +465,7 @@ generate_files <- function(row_range, run_range, random_seed=NULL, experimental_
     RANDOM_SEED <- cases$seed[idx]
     RUN <- cases$run[idx]
     design_ID <- cases$design_ID[idx]
-    print(paste('Run: ',RUN,' | Row: ',design_ID,sep=''))
+    # print(paste('Run: ',RUN,' | Row: ',design_ID,sep=''))
     
     # Create parameter file with main parameters. If the scenario is generalized
     # immunity then the fit for some runs may have not convereged (functions
@@ -449,7 +517,11 @@ generate_files <- function(row_range, run_range, random_seed=NULL, experimental_
     }
     
     # Write the job file for the exepriment
-    job_lines <- readLines('~/Documents/malaria_interventions/job_file_ref.sbatch')
+    if (on_Midway()){
+      job_lines <- readLines('job_file_ref.sbatch')
+    } else {
+      job_lines <- readLines('~/Documents/malaria_interventions/job_file_ref.sbatch')
+    }
     wall_time <-  experimental_design$wall_time[design_ID]
     mem_per_cpu <-  experimental_design$mem_per_cpu[design_ID]
     job_lines[2] <- paste('#SBATCH --job-name=',paste(parameter_space,scenario,'E',experiment,sep=''),sep='')
