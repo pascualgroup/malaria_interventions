@@ -1,24 +1,31 @@
+# Initialize --------------------------------------------------------------
 library(tidyverse)
 library(magrittr)
 library(sqldf)
-setwd('~/Documents/malaria_interventions')
+
+# setwd('~/Documents/malaria_interventions_data/')
 
 source('functions.R')
 
-# Create parameter and job files -------------------------------------------
 
-setwd('~/Documents/malaria_interventions_data/')
+if (length(commandArgs(trailingOnly=TRUE))==0) {
+  args <- c('27','S','000')
+} else {
+  args <- commandArgs(trailingOnly=TRUE)
+}
+ps <- as.character(args[1])
+work_scenario <- as.character(args[2])
+exp <- as.character(args[3]) 
+run <- 
+
+
+# Create parameter and job files -------------------------------------------
 
 # Clear previous files if necessary
 clear_previous_files(run = 6, exclude_sqlite = F, exclude_CP = F, exclude_control = F, test = T)
 # Get data design 
 design <- loadExperiments_GoogleSheets() 
 
-# Create the reference experiments (checkpoint and control)
-ps_range <- sprintf('%0.2d', 27:39)
-exp_range <- sprintf('%0.3d', 0:4)
-run_range <- 11:50
-work_scenario <- 'G'
 design_subset <- subset(design, PS %in% ps_range & scenario==work_scenario)
 generate_files(row_range = 1:nrow(design_subset), run_range = run_range, experimental_design = design_subset)
 
