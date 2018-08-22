@@ -17,8 +17,10 @@ design <- loadExperiments_GoogleSheets()
 # Create the reference experiments (checkpoint and control)
 ps_range <- sprintf('%0.2d', 27:39)
 exp_range <- sprintf('%0.3d', 0:4)
-run_range <- 11:50
-work_scenario <- 'N'
+run_range <- 1:50
+work_scenario <- 'G'
+
+# Generate 000 and 001 experiments
 design_subset <- subset(design, PS %in% ps_range & scenario==work_scenario)
 generate_files(row_range = 1:nrow(design_subset), run_range = run_range, experimental_design = design_subset)
 
@@ -177,14 +179,31 @@ files_py <- tibble(file_py=files$Name,
 files_py$PS <- sprintf('%0.2d', files_py$PS)
 
 files_py %<>% filter(as.numeric(PS)>=27) %>% mutate(scenario=factor(scenario, levels=c('S','N','G'))) %>% arrange(scenario, PS, experiment, run)
-files_py %<>% filter(as.numeric(PS)>=27) %>% group_by(PS,scenario,experiment) %>% summarise(runs_count=length(run))
+files_py %>% filter(as.numeric(PS)>=27) %>% group_by(PS,scenario,experiment) %>% summarise(runs_count=length(run))
 files_py %>% filter(scenario=='G') %>% filter(as.numeric(PS)>=27) %>% distinct(PS,run)
 
-# --- Generate missing GI files --- For those runs that produced an error when
-# fitting the curve, take curve-fit information from a random run where fit was
-# successful.
 
+# Generate missing GI parameter files ------------------------------------- 
+# For those runs that produced an error when fitting the curve, take curve-fit
+# information from a random run where fit was successful.
+
+files <- list.files(path = '~/Documents/malaria_interventions_data/', pattern = 'py.zip', full.names = T)
+files <- map(files, function(f){
+  unzip(f, list=T)
+}) %>% bind_rows()
+
+files_py <- tibble(file_py=files$Name,
+                   PS = sapply(str_split(files$Name,'_'),function (x) parse_number(x[1])),
+                   scenario=sapply(str_split(files$Name,'_'),function (x) x[2]),
+                   experiment=sapply(str_split(files$Name,'_'),function (x) str_sub(x[3],2,4)),
+                   run= sapply(str_split(files$Name,'_'),function (x) parse_number(x[4])),
+                   size=round(files$Length,2),
+                   date=files$Date
+)
+files_py$PS <- sprintf('%0.2d', files_py$PS)
+files_py %<>% filter(as.numeric(PS)>=27) %>% mutate(scenario=factor(scenario, levels=c('S','N','G'))) %>% arrange(scenario, PS, experiment, run)
 existing_py_G <- files_py %>% filter(scenario=='G') %>% filter(as.numeric(PS)>=27 & experiment=='000') %>% distinct(PS,run)
+# A list of existing and missing runs
 py_files_G <- vector(mode = 'list', length = length(ps_range))
 names(py_files_G) <- ps_range
 for (ps in ps_range){
@@ -194,13 +213,46 @@ for (ps in ps_range){
 }
 
 
-experiment <- '000'
-for (parameter_space in ps_range){
-  py_files_G_ps <- py_files_G[[which(ps_range==parameter_space)]]
-  for (run in py_files_G_ps$missing){
-    benchmark_file <- paste('PS',parameter_space,'_G_E',exp,'_R',sample(py_files_G_ps$existing,1),'.py',sep='')
-    x <- readLines(benchmark_file)
+for (ps in ps_range){
+  py_files_G_ps <- py_files_G[[which(ps_range==ps)]]
+  # Create 000 files for all runs
+  for (missing_run in py_files_G_ps$missing){
+    # RANDOMLY select EXISTING GI run from which to take the fitting parameters
+    existing_run <- sample(py_files_G_ps$existing,1)
+    existing_file <- paste('PS',ps,'_G_E000_R',existing_run,'.py',sep='')
+    unzip(paste(ps,'_G_py.zip',sep=''), existing_file)
+    x <- readLines(existing_file)
+    params_GI <- get_generalized_immunity(ps, existing_run)
+    # Get the seed from the corresponding selection scenario
+    unzip(paste(ps,'_S_py.zip',sep=''), paste('PS',ps,'_S_E000_R',missing_run,'.py',sep=''))
+    seed <- get_random_seed(PS = ps, scenario = 'S', experiment = '000', run_range = missing_run)
+    unlink(paste('PS',ps,'_S_E000_R',missing_run,'.py',sep=''))
+    # Use the parameters to generate the file
+    design_subset <- subset(design, PS %in% ps & scenario=='G' & exp=='000')
+    generate_files(row_range = 1, random_seed = seed, run_range = missing_run, experimental_design = design_subset, params_GI = params_GI)
+    # Remove the existing file
+    unlink(existing_file)
   }
+  
+  # Get the seeds used for the missing runs to generate the rest of the experiments
+  seeds <- get_random_seed(PS = ps, scenario = 'G', run_range = py_files_G_ps$missing)
+  
+  # Generate control experimets
+  design_subset <- subset(design, PS %in% ps & scenario=='G' & exp=='001')
+  generate_files(row_range = 1, run_range = py_files_G_ps$missing, experimental_design = design_subset, random_seed = seeds)
+  
+  # Generate IRS experiments
+  design_irs <- create_intervention_scheme_IRS(PS_benchmark = ps, scenario_benchmark = work_scenario, IRS_START_TIMES = '29160', immigration_range=c(0), length_range=c(720,1800,3600), coverage_range=0.9, poolsize_bounce = 'False', write_to_file = F, design_ref=design)
+  generate_files(row_range = 1:nrow(design_irs), run_range = py_files_G_ps$missing,
+                 random_seed = seeds, 
+                 experimental_design=design_irs)
+  
+  # Generate sbatch files
+  generate_sbatch(ps = ps, scen = 'G', runs = py_files_G_ps$missing, experiment = '000', unzip_py_files = F)
+  generate_sbatch(ps = ps, scen = 'G', runs = py_files_G_ps$missing, experiment = '001', unzip_py_files = F)
+  generate_sbatch(ps = ps, scen = 'G', runs = py_files_G_ps$missing, experiment = '002', unzip_py_files = F)
+  generate_sbatch(ps = ps, scen = 'G', runs = py_files_G_ps$missing, experiment = '003', unzip_py_files = F)
+  generate_sbatch(ps = ps, scen = 'G', runs = py_files_G_ps$missing, experiment = '004', unzip_py_files = F)
 }
 
 
