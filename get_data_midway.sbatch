@@ -12,7 +12,8 @@
 ##SBATCH --mail-user=pilosofs@uchicago.edu
 
 # Load modules
-module load R
+module load R/3.3.2
+module load gcc/4.9
 
 # Initialize
 PS='27' # the parameter space

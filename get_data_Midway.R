@@ -1,6 +1,15 @@
 # Initialize --------------------------------------------------------------
 source('functions.R')
-prep.packages(c('dplyr','readr','stringr','tidyr','tibble','magrittr','purrr','sqldf','igraph'))
+if(!'sqldf' %in% .packages(TRUE)){
+  install.packages('sqldf', repos="http://cran.rstudio.com/")
+}
+library(sqldf)
+library(dplyr)
+library(tibble)
+library(readr)
+library(magrittr)
+library(stringr)
+library(igraph)
 
 
 if (length(commandArgs(trailingOnly=TRUE))==0) {

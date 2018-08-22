@@ -1,6 +1,9 @@
 library(tidyverse)
 library(magrittr)
 library(sqldf)
+library(rPython)
+library(googlesheets)
+
 setwd('~/Documents/malaria_interventions')
 
 source('functions.R')

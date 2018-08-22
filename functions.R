@@ -83,9 +83,8 @@ clear_previous_files <- function(parameter_space=NULL, scenario=NULL, experiment
   }
 }
 
-
+# Requires package googlesheets
 loadExperiments_GoogleSheets <- function(workBookName='malaria_interventions_design',sheetID=4){
-  require(googlesheets)
   GS <- gs_title(workBookName)
   col_types <- GS %>% gs_read(ws=1, col_names=T)
   col_t <- unname(as.list(col_types[1,]))
@@ -237,8 +236,8 @@ get_transition_rate_neutral <- function(PS, run){
 #returns a list which describes a fit of a curve of a particular run. It makes
 #most sense to fit the curve to an experiment without interevntions and in
 #stable state, so 001 is by default.
+# REQUIRES rPython
 set_generalized_immunity <- function(parameter_space, run){
-  require('rPython')
   # Prepare the python file for the curve-fittign code
   if (on_Midway()){
     sqlite_file <- paste('sqlite/','PS',parameter_space,'_S_E001_R',run,'.sqlite',sep='')
@@ -735,8 +734,8 @@ plotLayer <- function(network_object, l, edge_weight_multiply=1, remove.loops=T,
 # Data manipulation -------------------------------------------------------
 
 # This function obtains data from an sqlite file and prepares them for further analysis.
+# requires sqldf
 get_data <- function(parameter_space, scenario, experiment, run, sampling_period=30, host_age_structure=F){
-  prep.packages('sqldf')
   # Initialize
   base_name <- paste('PS',parameter_space,'_',scenario,'_E',experiment,'_R',run,sep='')
   if (on_Midway()){
@@ -1258,8 +1257,8 @@ calculateFeatures <- function(network_object, l, remove.loops=F){
 
 ##  A function that gets the layer as a matrix and writes it for infomap as an edge list
 # network_object is a list of matrices, each element in the list is a layer.
+# requires igraph
 matrix_to_infomap <- function(l, nodeList, network_object){
-  prep.packages('igraph')
   current_layer <- network_object$temporal_network[[l]]
   if(nrow(current_layer)<2){
     print(paste('Less than 2 repertoires in layer',l,'!!! skipping intralayer edges'))
@@ -1308,12 +1307,12 @@ build_interlayer_edges_1step <- function(t, nodeList, network_object){
 
 # This function takes a list of temporal matrices and returns an intralayer and
 # interlayer edge lists in a format: [layer_source, node_source, layer_target node_target, weight].
-# It also returns the list of node names
+# It also returns the list of node names.
+# requires igraph
 build_infomap_objects <- function(network_object, write_to_infomap_file=T, return_objects=T){
   temporal_network <- network_object$temporal_network
   base_name <- network_object$base_name
-  prep.packages('igraph')
-  
+
   # Get the node list
   nodeLabel <- sort(unique(unlist(lapply(temporal_network,rownames))))
   nodeList <- data.frame(nodeID=1:length(nodeLabel), nodeLabel)
