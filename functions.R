@@ -642,7 +642,7 @@ generate_sbatch <- function(ps, scen, experiment, runs, unzip_py_files){
 
 
 # Plotting ----------------------------------------------------------------
-
+library(ggplot2)
 mytheme <- theme_bw() + theme(
   legend.title  = element_text(colour = "black", size=17),
   # legend.position = "none",
@@ -736,10 +736,15 @@ plotLayer <- function(network_object, l, edge_weight_multiply=1, remove.loops=T,
 
 # This function obtains data from an sqlite file and prepares them for further analysis.
 get_data <- function(parameter_space, scenario, experiment, run, sampling_period=30, host_age_structure=F){
-  require(sqldf)
+  prep.packages('sqldf')
   # Initialize
   base_name <- paste('PS',parameter_space,'_',scenario,'_E',experiment,'_R',run,sep='')
-  sqlite_file <- paste(base_name,'.sqlite',sep='')
+  if (on_Midway()){
+    sqlite_file <- paste('sqlite/',base_name,'.sqlite',sep='')
+  } else {
+    sqlite_file <- paste('~/Documents/malaria_interventions_data/',base_name,'.sqlite',sep='')
+  }
+  
   if (!file.exists(sqlite_file)) {
     print (paste(sqlite_file, ' does not exist, ignoring and terminating function'))
     return(NULL)
@@ -947,7 +952,11 @@ build_layer <- function(infection_df){
 
 createTemporalNetwork <- function(ps, scenario, exp, run, cutoff_prob=0.9, cutoff_value=NULL, write_files=F, layers_to_include=NULL, sampled_infections=NULL){
   base_name <- paste('PS',ps,'_',scenario,'_E',exp,'_R',run,sep='')
-  sqlite_file <- paste(base_name,'.sqlite',sep='')
+  if (on_Midway()){
+    sqlite_file <- paste('sqlite/',base_name,'.sqlite',sep='')
+  } else {
+    sqlite_file <- paste('~/Documents/malaria_interventions_data/',base_name,'.sqlite',sep='')
+  }
   
   # Extract data from sqlite. variable names correspond to table names
   db <- dbConnect(SQLite(), dbname = sqlite_file)
@@ -973,7 +982,7 @@ createTemporalNetwork <- function(ps, scenario, exp, run, cutoff_prob=0.9, cutof
   sampled_infections$strain_id_unique <- paste(sampled_infections$strain_id,sampled_infections$strain_copy,sep='_') # Create the unique strains
   # Integrate the strain composition into the infections table
   if (all(unique(sampled_strains$strain_id)%in%unique(sampled_infections$strain_id))==F || all(unique(sampled_infections$strain_id)%in%unique(sampled_strains$strain_id))==F) {
-    stop('There may be a mismatch in repertoires between the sampled_strains and sampled_infections data sets. Revise')
+    stop('There may be a mismatch in repertoires between the sampled_strains and sampled_infections data sets. Revise!')
   }
   sampled_infections %<>% select(time, layer, host_id, strain_id, strain_copy, strain_id_unique) %>% 
     left_join(sampled_strains)
@@ -1002,7 +1011,7 @@ createTemporalNetwork <- function(ps, scenario, exp, run, cutoff_prob=0.9, cutof
   dim(similarityMatrix)
   
   if (is.null(cutoff_value)){
-    cutoff_value <- quantile(as.vector(similarityMatrix), probs = 0.9)
+    cutoff_value <- quantile(as.vector(similarityMatrix), probs = cutoff_prob)
   }
   print(cutoff_value)
   # hist(as.vector(similarityMatrix));abline(v=cutoff_value,col='red')
@@ -1015,7 +1024,7 @@ createTemporalNetwork <- function(ps, scenario, exp, run, cutoff_prob=0.9, cutof
   }
   
   if(write_files){
-    print('Writing similarit matrices to files...')
+    print('Writing similarity matrices to files...')
     # Write similarity matrix without cutoff. This is used to plot the edge weight distributions.
     write.table(similarityMatrix, paste('../',filenameBase,'_similarityMatrix_nocutoff.csv',sep=''), row.names = T, col.names = T, sep=',')
     # write.table(similarityMatrix, paste(filenameBase,'_similarityMatrix.csv',sep=''), row.names = T, col.names = T, sep=',')
@@ -1023,7 +1032,7 @@ createTemporalNetwork <- function(ps, scenario, exp, run, cutoff_prob=0.9, cutof
   }
   
   print('Done!')
-  return(list(temporal_network=temporal_network, similarityMatrix=similarityMatrix, cutoff_value=cutoff_value, layer_summary=layer_summary, base_name = base_name, ps=ps, scenario=scenario, experiment=exp, run=run))
+  return(list(temporal_network=temporal_network, similarityMatrix=similarityMatrix, cutoff_prob=cutoff_prob, cutoff_value=cutoff_value, layer_summary=layer_summary, base_name = base_name, ps=ps, scenario=scenario, experiment=exp, run=run))
 }
 
 
@@ -1250,7 +1259,7 @@ calculateFeatures <- function(network_object, l, remove.loops=F){
 ##  A function that gets the layer as a matrix and writes it for infomap as an edge list
 # network_object is a list of matrices, each element in the list is a layer.
 matrix_to_infomap <- function(l, nodeList, network_object){
-  require(igraph)
+  prep.packages('igraph')
   current_layer <- network_object$temporal_network[[l]]
   if(nrow(current_layer)<2){
     print(paste('Less than 2 repertoires in layer',l,'!!! skipping intralayer edges'))
@@ -1303,7 +1312,7 @@ build_interlayer_edges_1step <- function(t, nodeList, network_object){
 build_infomap_objects <- function(network_object, write_to_infomap_file=T, return_objects=T){
   temporal_network <- network_object$temporal_network
   base_name <- network_object$base_name
-  require(igraph)
+  prep.packages('igraph')
   
   # Get the node list
   nodeLabel <- sort(unique(unlist(lapply(temporal_network,rownames))))
@@ -1314,7 +1323,7 @@ build_infomap_objects <- function(network_object, write_to_infomap_file=T, retur
   infomap_intralayer <- lapply(layers, function (x) matrix_to_infomap(x, nodeList = nodeList, network_object = network_object))
   infomap_intralayer <- do.call("rbind", infomap_intralayer)
   
-  # Create interlayer edge lists. Only connect consecutive layers (interlayer ONLY go from layer l to l+1).
+  # Create interlayer edge lists. Only connect consecutive layers (interlayer edges ONLY go from layer l to l+1).
   layers <- layers[-length(layers)]
   infomap_interlayer <- lapply(layers, function (x) build_interlayer_edges_1step(x, nodeList = nodeList, network_object = network_object))
   infomap_interlayer <- do.call("rbind", infomap_interlayer)
