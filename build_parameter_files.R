@@ -21,7 +21,7 @@ design <- loadExperiments_GoogleSheets()
 ps_range <- sprintf('%0.2d', 27:39)
 exp_range <- sprintf('%0.3d', 0:4)
 run_range <- 1:50
-work_scenario <- 'G'
+work_scenario <- 'S'
 
 # Generate 000 and 001 experiments
 design_subset <- subset(design, PS %in% ps_range & scenario==work_scenario)
@@ -353,6 +353,24 @@ for (ps in ps_range){
   generate_sbatch(ps, scen = 'G', experiment = '002', runs = subset(cases, PS==ps)$run, unzip_py_files = F)
   generate_sbatch(ps, scen = 'G', experiment = '003', runs = subset(cases, PS==ps)$run, unzip_py_files = F)
   generate_sbatch(ps, scen = 'G', experiment = '004', runs = subset(cases, PS==ps)$run, unzip_py_files = F)
+}
+
+
+
+# Generate sbatch files to extract data -----------------------------------
+mem_per_cpu <- c(rep(4000,4),rep(10000,4),rep(32000,5))
+time <- c(rep('01:00:00',4),rep('03:00:00',4),rep('06:00:00',5))
+scenario <- 'S'
+for (ps in ps_range){
+  x <- readLines('get_data_midway.sbatch')
+  str_sub(x[2],23,25) <- ps
+  str_sub(x[3],16,18) <- time[which(ps_range==ps)]
+  str_sub(x[4],34,36) <- ps
+  str_sub(x[5],33,35) <- ps
+  str_sub(x[9],23,25) <- mem_per_cpu[which(ps_range==ps)]
+  str_sub(x[18],5,7) <- ps
+  str_sub(x[19],11,13) <- scenario
+  writeLines(x, paste('PS',ps,'_S_get_data_midway.sbatch',sep=''))
 }
 
 # General stuff -----------------------------------------------------------

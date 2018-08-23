@@ -1,12 +1,8 @@
 # Initialize --------------------------------------------------------------
 source('functions.R')
 library(sqldf)
-# library(dplyr)
-# library(tibble)
-# library(readr)
 library(tidyverse)
 library(magrittr)
-# library(stringr)
 library(igraph)
 
 

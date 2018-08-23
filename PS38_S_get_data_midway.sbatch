@@ -1,12 +1,12 @@
 #!/bin/bash
-#SBATCH --job-name=PS_XXX
-#SBATCH --time=XXX
-#SBATCH --output=slurm_output/PS_XXX_%A_%a.out
-#SBATCH --error=slurm_output/PS_XXX_%A_%a.err
+#SBATCH --job-name=PS_38
+#SBATCH --time=06:00:00
+#SBATCH --output=slurm_output/PS_38_%A_%a.out
+#SBATCH --error=slurm_output/PS_38_%A_%a.err
 #SBATCH --array=1-50
 #SBATCH --tasks=1
 #SBATCH --cpus-per-task=1 
-#SBATCH --mem-per-cpu=XXX
+#SBATCH --mem-per-cpu=32000
 #SBATCH --partition=broadwl
 ##SBATCH --mail-type=END
 ##SBATCH --mail-user=pilosofs@uchicago.edu
@@ -15,8 +15,8 @@
 module load R
 
 # Initialize
-PS='XXX' # the parameter space
-scenario='XXX' # Can be: 'S', 'G' or 'N'
+PS='38' # the parameter space
+scenario='S' # Can be: 'S', 'G' or 'N'
 #exp='001' # The experiment ID
 base_folder='/scratch/midway2/pilosofs/malaria_interventions/' # Where all the source files are and where the experiment folders will be created
 

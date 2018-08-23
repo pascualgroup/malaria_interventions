@@ -1262,7 +1262,7 @@ matrix_to_infomap <- function(l, nodeList, network_object){
   current_layer <- network_object$temporal_network[[l]]
   if(nrow(current_layer)<2){
     print(paste('Less than 2 repertoires in layer',l,'!!! skipping intralayer edges'))
-    next
+    return(NULL)
   }
   g <- graph.adjacency(current_layer, mode = 'directed', weighted = T)
   current_layer_el <- as.tibble(as_data_frame(g, what = 'edges'))
@@ -1280,16 +1280,18 @@ matrix_to_infomap <- function(l, nodeList, network_object){
 build_interlayer_edges_1step <- function(t, nodeList, network_object){
   strain_copies_t <- rownames(network_object$temporal_network[[t]]) # repertoires at time t
   strain_copies_t1 <- rownames(network_object$temporal_network[[t+1]]) # repertoires at time t+1
+  # need minimum of 2 strains in t and t+1 to build a matrix
   if (length(strain_copies_t)<2 | length(strain_copies_t1)<2){
     print(paste('No interlayer edges between layers',t, 'and',t+1,'because there are < 2 repertoires.'))
-    next} # need minimum of 2 strains in t and t+1 to build a matrix
+    return(NULL)
+  } 
   # Pull the similarity values between the repertoires from the general similarity matrix, then write back the repertoire copy names
   inter_layer_edges_matrix <- network_object$similarityMatrix[splitText(strain_copies_t, after = F, '_'),splitText(strain_copies_t1, after = F, '_')] 
   rownames(inter_layer_edges_matrix) <- strain_copies_t
   colnames(inter_layer_edges_matrix) <- strain_copies_t1
   if (all(inter_layer_edges_matrix==0)){
     print(paste('All interlayer edges between layers',t, 'and',t+1,' are 0 (due to the cutoff). skipping.'))
-    next
+    return(NULL)
   }
   # transform to an edge list
   g <- graph.incidence(inter_layer_edges_matrix, directed = T, mode = 'out', weighted = T)
