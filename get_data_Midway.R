@@ -1,14 +1,12 @@
 # Initialize --------------------------------------------------------------
 source('functions.R')
-if(!'sqldf' %in% .packages(TRUE)){
-  install.packages('sqldf', repos="http://cran.rstudio.com/")
-}
 library(sqldf)
-library(dplyr)
-library(tibble)
-library(readr)
+# library(dplyr)
+# library(tibble)
+# library(readr)
+library(tidyverse)
 library(magrittr)
-library(stringr)
+# library(stringr)
 library(igraph)
 
 

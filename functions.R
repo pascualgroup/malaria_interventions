@@ -1330,10 +1330,14 @@ build_infomap_objects <- function(network_object, write_to_infomap_file=T, retur
   if (write_to_infomap_file){
     ## Write file for infomap
     print('Writing Infomap files')
-    file <- paste(base_name,'_Infomap_multilayer','.txt',sep='')
+    if (on_Midway()){
+      file <- paste('Results/',job_ps,'_',job_scenario,'/',base_name,'_Infomap_multilayer','.txt',sep='')
+    } else {
+      file <- paste(base_name,'_Infomap_multilayer','.txt',sep='')
+    }
     print(paste('Infomap file:',file))
     if (file.exists(file)){unlink(file)}
-    sink(file, append = T)
+    sink(file, append = F)
     cat("# A network in a general multiplex format");cat('\n')
     cat(paste("*Vertices",nrow(nodeList)));cat('\n')
     write.table(nodeList, file, append = T,sep=' ', quote = T, row.names = F, col.names = F)

@@ -16,8 +16,8 @@ module load python/2.7
 module load gcc/4.9
 
 # Initialize
-PS = 'XXX' # the parameter space
-scenario = 'XXX' # Can be: 'S', 'G' or 'N'
+PS='XXX' # the parameter space
+scenario='XXX' # Can be: 'S', 'G' or 'N'
 exp='XXX' # The experiment ID
 run=$SLURM_ARRAY_TASK_ID # The run in the parameter space
 base_folder='/scratch/midway2/pilosofs/malaria_interventions/' # Where all the source files are and where the experiment folders will be created
