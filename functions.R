@@ -748,7 +748,7 @@ get_data <- function(parameter_space, scenario, experiment, run, sampling_period
     }
     
     if (!file.exists(sqlite_file)) {
-      print (paste(sqlite_file, ' does not exist, ignoring and terminating function'))
+      print (paste(sqlite_file, ' does not exist, ignoring and returning NULL'))
       return(NULL)
     }
     # parameter_file <- paste(base_name,'.py',sep='') # This may be necessary so I leave it
@@ -820,7 +820,7 @@ get_data <- function(parameter_space, scenario, experiment, run, sampling_period
   if (!use_sqlite){
     file <- paste(parameter_space,'_',scenario,'/PS',parameter_space,'_',scenario,'_E',experiment,'_R',run,'_summary_general.csv',sep='')
     if (!file.exists(file)){
-      print(paste(file, 'does not exist, ignoring and terminating function'))
+      print(paste(file, 'does not exist, ignoring and returning NULL'))
       return(NULL)
     }
     summary_general <- fread(file)
@@ -833,7 +833,7 @@ get_data <- function(parameter_space, scenario, experiment, run, sampling_period
     if ('sampled_infections'%in%tables_to_get){
       file <- paste(parameter_space,'_',scenario,'/PS',parameter_space,'_',scenario,'_E',experiment,'_R',run,'_sampled_infections.csv',sep='')
       if (!file.exists(file)){
-        print(paste(file, 'does not exist, ignoring and terminating function'))
+        print(paste(file, 'does not exist, ignoring and returning NULL'))
         return(NULL)
       }
       sampled_infections <- fread(file)
@@ -883,7 +883,9 @@ post_intervention_stats <- function(PS, scenario='S', exp, run, post_interventio
   
   # Load experiment data
   experiment_data <- get_data(parameter_space = PS, scenario = scenario, experiment = exp, run = run, use_sqlite = use_sqlite, tables_to_get = 'summary_general')[[1]]
-  
+  if (is.null(experiment_data)){
+    return(NULL)
+  }
   # Plot control vs experiment
   if (plot.it){
     plots_out$control_experiment <- bind_rows(control_data, experiment_data) %>%
