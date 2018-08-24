@@ -949,7 +949,8 @@ build_layer <- function(infection_df){
 }
 
 
-createTemporalNetwork <- function(ps, scenario, exp, run, cutoff_prob=0.9, cutoff_value=NULL, write_files=F, layers_to_include=NULL, sampled_infections=NULL){
+createTemporalNetwork <- function(ps, scenario, exp, run, cutoff_prob=0.9, cutoff_value=NULL, sparse=T, write_files=F, layers_to_include=NULL, sampled_infections=NULL){
+  # Define the sqlite file to use
   base_name <- paste('PS',ps,'_',scenario,'_E',exp,'_R',run,sep='')
   if (on_Midway()){
     sqlite_file <- paste('sqlite/',base_name,'.sqlite',sep='')
@@ -967,25 +968,29 @@ createTemporalNetwork <- function(ps, scenario, exp, run, cutoff_prob=0.9, cutof
   sampled_strains <- full_join(sampled_strains, sampled_alleles)
   sampled_strains$allele_locus <- paste(sampled_strains$allele_id,sampled_strains$locus,sep='_') # each allele in a locus is unique
   dbDisconnect(db)
-  # Get infection data
+  ## Get infection data
   if (is.null(sampled_infections)){
     print('Getting infection data from sqlite...')
     sampled_infections <- get_data(parameter_space = ps, experiment = exp, scenario = scenario, run = run)$sampled_infections
   }
+  
+  
+  # Build the data set
   print('Building data set...')
-  # Add layer numbers. Each time point is a layer
+  ## Add layer numbers. Each time point is a layer
   sampled_infections$layer <- group_indices(sampled_infections, time) 
   sampled_infections %<>% arrange(layer,strain_id,host_id) %>% 
     group_by(layer,strain_id) %>% 
     mutate(strain_copy = row_number()) # add unique id for each strain copy within each layer. A strain copy is an instance of a strain in a particualr host
   sampled_infections$strain_id_unique <- paste(sampled_infections$strain_id,sampled_infections$strain_copy,sep='_') # Create the unique strains
-  # Integrate the strain composition into the infections table
+  ## Integrate the strain composition into the infections table
   if (all(unique(sampled_strains$strain_id)%in%unique(sampled_infections$strain_id))==F || all(unique(sampled_infections$strain_id)%in%unique(sampled_strains$strain_id))==F) {
     stop('There may be a mismatch in repertoires between the sampled_strains and sampled_infections data sets. Revise!')
   }
   sampled_infections %<>% select(time, layer, host_id, strain_id, strain_copy, strain_id_unique) %>% 
     left_join(sampled_strains)
   
+  # Build layers
   print('Building layers...')
   Layers <- list()
   if (is.null(layers_to_include)){
@@ -996,25 +1001,38 @@ createTemporalNetwork <- function(ps, scenario, exp, run, cutoff_prob=0.9, cutof
     sampled_infections_layer <- subset(sampled_infections, layer==l) # This is MUCH faster than sampled_infections_layer <- sampled_infections %>% filter(layer==l)
     Layers[[which(layers_to_include==l)]] <- build_layer(sampled_infections_layer)
   }
-  # Get just the matrices
-  temporal_network <- lapply(Layers, function(x) x$similarity_matrix)
-  layer_summary <- do.call(rbind, lapply(Layers, function(x) x$layer_summary))
+  temporal_network <- lapply(Layers, function(x) x$similarity_matrix)   # Get just the matrices
+  layer_summary <- do.call(rbind, lapply(Layers, function(x) x$layer_summary)) # Get the layer summary
   layer_summary$layer <- layers_to_include
-  sapply(temporal_network, nrow)
   
-  print('Applying cutoff...')
   # Apply a cutoff
-  ## Get the similarity matrix for all the repertoires and alleles
-  x <- xtabs(~strain_id+allele_locus, subset(sampled_strains, strain_id%in%sampled_infections$strain_id))
-  similarityMatrix <- overlapAlleleAdj(x)
-  dim(similarityMatrix)
-  
+  print('Applying cutoff...')
+  if (sparse){
+    require('Matrix')
+    x <- xtabs(~strainId+allele_locus, subset(sampled_strains, strain_id%in%sampled_infections$strain_id), sparse = T)
+    # This applies the overlapAlleleAdj function on a sparse matrix
+    similarityMatrix <- tcrossprod(x>0)
+    similarityMatrix <- similarityMatrix/rowSums(x>0)
+  } else {
+    x <- xtabs(~strain_id+allele_locus, subset(sampled_strains, strain_id%in%sampled_infections$strain_id))
+    similarityMatrix <- overlapAlleleAdj(x)
+  }
   if (is.null(cutoff_value)){
     cutoff_value <- quantile(as.vector(similarityMatrix), probs = cutoff_prob)
   }
   print(cutoff_value)
-  # hist(as.vector(similarityMatrix));abline(v=cutoff_value,col='red')
-  similarityMatrix[similarityMatrix<cutoff_value] <- 0
+
+  # Remove edges from the similarity matrix
+  if (sparse){
+    similarityMatrix <- as(similarityMatrix, "dgTMatrix")
+    ind <- similarityMatrix@x < cutoffValue
+    similarityMatrix@x <- similarityMatrix@x[!ind]
+    similarityMatrix@i <- similarityMatrix@i[!ind]
+    similarityMatrix@j <- similarityMatrix@j[!ind]
+  } else {
+    similarityMatrix[similarityMatrix<cutoff_value] <- 0
+  }
+  
   for (i in 1:length(temporal_network)){
     # print(i)
     x <- temporal_network[[i]]
@@ -1031,7 +1049,12 @@ createTemporalNetwork <- function(ps, scenario, exp, run, cutoff_prob=0.9, cutof
   }
   
   print('Done!')
-  return(list(temporal_network=temporal_network, similarityMatrix=similarityMatrix, cutoff_prob=cutoff_prob, cutoff_value=cutoff_value, layer_summary=layer_summary, base_name = base_name, ps=ps, scenario=scenario, experiment=exp, run=run))
+  return(list(temporal_network=temporal_network, 
+              similarityMatrix=similarityMatrix, 
+              cutoff_prob=cutoff_prob, 
+              cutoff_value=cutoff_value, 
+              layer_summary=layer_summary, 
+              base_name = base_name, ps=ps, scenario=scenario, experiment=exp, run=run))
 }
 
 
