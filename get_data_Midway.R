@@ -7,7 +7,7 @@ library(igraph)
 
 
 if (length(commandArgs(trailingOnly=TRUE))==0) {
-  args <- c('27','S','002')
+  args <- c('36','S','001')
 } else {
   args <- commandArgs(trailingOnly=TRUE)
 }
@@ -37,10 +37,11 @@ if (job_exp=='001'){
 
 network <- createTemporalNetwork(ps = job_ps,
                                  scenario = job_scenario,
-                                 exp = job_exp, run = job_run,
+                                 exp = job_exp, 
+                                 run = job_run,
                                  cutoff_prob = 0.9, 
                                  cutoff_value = cutoff_value,
-                                 write_files = F,
+                                 sparse = F,
                                  layers_to_include = NULL,
                                  sampled_infections = data$sampled_infections)
 sink(paste('Results/',job_ps,'_',job_scenario,'/',base_name,'_network_info.csv',sep=''), append = F)

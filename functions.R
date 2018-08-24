@@ -93,7 +93,8 @@ loadExperiments_GoogleSheets <- function(workBookName='malaria_interventions_des
   return(experiments)
 }
 
-# Functions to set parameters ---------------------------------------------
+
+# Manage parameters in parameter files ------------------------------------
 
 # Function to get reference parameter file and output a data frame of parameters
 get_parameter_reference <- function(parameter_file_ref='parameter_file_ref.py'){
@@ -196,7 +197,8 @@ create_intervention_scheme_IRS <- function(PS_benchmark, scenario_benchmark, IRS
   }
   return(scheme)
 }
-# Functions for neutral models parameters ---------------------------------
+
+# Manage parameters in neutral models -------------------------------------
 
 # This function obtains the duration of infection from the selection mode
 # counterpart simulations to calculate the var switching rate in the neutral
@@ -351,7 +353,7 @@ set_MDA <- function(design_ID, run, experimental_design){
 
 
 
-# Functions to generate files ---------------------------------------------
+# File generation ---------------------------------------------------------
 
 # Function to create the necesary files and pipeline for a single run of an experiment.
 # Each run has its own random seed across experiments and scenarios.
@@ -921,7 +923,7 @@ post_intervention_stats <- function(PS, scenario='S', exp, run, post_interventio
 
 
 
-# Functions for generating networks ---------------------------------------
+# Generate networks -------------------------------------------------------
 
 # Calculate edge values in networks of repertories
 overlapAlleleAdj<-function(mat){
@@ -949,7 +951,7 @@ build_layer <- function(infection_df){
 }
 
 
-createTemporalNetwork <- function(ps, scenario, exp, run, cutoff_prob=0.9, cutoff_value=NULL, sparse=T, write_files=F, layers_to_include=NULL, sampled_infections=NULL){
+createTemporalNetwork <- function(ps, scenario, exp, run, cutoff_prob=0.9, cutoff_value=NULL, sparse=F, layers_to_include=NULL, sampled_infections=NULL){
   # Define the sqlite file to use
   base_name <- paste('PS',ps,'_',scenario,'_E',exp,'_R',run,sep='')
   if (on_Midway()){
@@ -973,7 +975,6 @@ createTemporalNetwork <- function(ps, scenario, exp, run, cutoff_prob=0.9, cutof
     print('Getting infection data from sqlite...')
     sampled_infections <- get_data(parameter_space = ps, experiment = exp, scenario = scenario, run = run)$sampled_infections
   }
-  
   
   # Build the data set
   print('Building data set...')
@@ -1007,29 +1008,30 @@ createTemporalNetwork <- function(ps, scenario, exp, run, cutoff_prob=0.9, cutof
   
   # Apply a cutoff
   print('Applying cutoff...')
+  
+  strains_in_layers <- subset(sampled_infections, layer%in%layers_to_include, select = c("strain_id", "allele_locus")) # Tried to do that only with the dplyr pipeline and it didnt work.
+  strains_in_layers <- distinct(strains_in_layers)
+
   if (sparse){
     require('Matrix')
-    x <- xtabs(~strainId+allele_locus, subset(sampled_strains, strain_id%in%sampled_infections$strain_id), sparse = T)
-    # This applies the overlapAlleleAdj function on a sparse matrix
-    similarityMatrix <- tcrossprod(x>0)
-    similarityMatrix <- similarityMatrix/rowSums(x>0)
+    A <- xtabs(~strain_id+allele_locus, strains_in_layers, sparse = T)
+    # Create edges using a sparse matrix
+    similarityMatrix_sparse <- tcrossprod(A>0)
+    similarityMatrix_sparse <- similarityMatrix_sparse/rowSums(A>0)
+    # Set cutoff value
+    if (is.null(cutoff_value)){cutoff_value <- quantile(as.vector(similarityMatrix_sparse), probs = cutoff_prob)}
+    # Remove edges from the similarity matrix
+    similarityMatrix_sparse <- as(similarityMatrix_sparse, "dgTMatrix")
+    ind <- similarityMatrix_sparse@x < cutoffValue
+    similarityMatrix_sparse@x <- similarityMatrix_sparse@x[!ind]
+    similarityMatrix_sparse@i <- similarityMatrix_sparse@i[!ind]
+    similarityMatrix_sparse@j <- similarityMatrix_sparse@j[!ind]
   } else {
-    x <- xtabs(~strain_id+allele_locus, subset(sampled_strains, strain_id%in%sampled_infections$strain_id))
-    similarityMatrix <- overlapAlleleAdj(x)
-  }
-  if (is.null(cutoff_value)){
-    cutoff_value <- quantile(as.vector(similarityMatrix), probs = cutoff_prob)
-  }
-  print(cutoff_value)
-
-  # Remove edges from the similarity matrix
-  if (sparse){
-    similarityMatrix <- as(similarityMatrix, "dgTMatrix")
-    ind <- similarityMatrix@x < cutoffValue
-    similarityMatrix@x <- similarityMatrix@x[!ind]
-    similarityMatrix@i <- similarityMatrix@i[!ind]
-    similarityMatrix@j <- similarityMatrix@j[!ind]
-  } else {
+    A <- xtabs(~strain_id+allele_locus, strains_in_layers, sparse = F)
+    similarityMatrix <- overlapAlleleAdj(A)
+    # Set cutoff value
+    if (is.null(cutoff_value)){cutoff_value <- quantile(as.vector(similarityMatrix), probs = cutoff_prob)}
+    # Remove edges from the similarity matrix
     similarityMatrix[similarityMatrix<cutoff_value] <- 0
   }
   
@@ -1038,14 +1040,6 @@ createTemporalNetwork <- function(ps, scenario, exp, run, cutoff_prob=0.9, cutof
     x <- temporal_network[[i]]
     x[x<cutoff_value] <- 0
     temporal_network[[i]] <- x
-  }
-  
-  if(write_files){
-    print('Writing similarity matrices to files...')
-    # Write similarity matrix without cutoff. This is used to plot the edge weight distributions.
-    write.table(similarityMatrix, paste('../',filenameBase,'_similarityMatrix_nocutoff.csv',sep=''), row.names = T, col.names = T, sep=',')
-    # write.table(similarityMatrix, paste(filenameBase,'_similarityMatrix.csv',sep=''), row.names = T, col.names = T, sep=',')
-    # write.table(similarityMatrix, paste('../',filenameBase,'_similarityMatrix.csv',sep=''), row.names = T, col.names = T, sep=',')
   }
   
   print('Done!')
@@ -1063,7 +1057,7 @@ createTemporalNetwork <- function(ps, scenario, exp, run, cutoff_prob=0.9, cutof
 
 
 
-# Functions for network properties ----------------------------------------
+# Network properties ------------------------------------------------------
 f_01_averageLocalClusteringCoeff <- function(g,GC=F){
   if (GC) {
     gc <- giant.component(g)
