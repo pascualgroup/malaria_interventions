@@ -737,78 +737,117 @@ plotLayer <- function(network_object, l, edge_weight_multiply=1, remove.loops=T,
 
 # This function obtains data from an sqlite file and prepares them for further analysis.
 # requires sqldf
-get_data <- function(parameter_space, scenario, experiment, run, sampling_period=30, host_age_structure=F){
+get_data <- function(parameter_space, scenario, experiment, run, sampling_period=30, host_age_structure=F, use_sqlite=T, tables_to_get=c('summary_general','sampled_infections')){
   # Initialize
-  base_name <- paste('PS',parameter_space,'_',scenario,'_E',experiment,'_R',run,sep='')
-  if (on_Midway()){
-    sqlite_file <- paste('sqlite/',base_name,'.sqlite',sep='')
+  if (use_sqlite){
+    base_name <- paste('PS',parameter_space,'_',scenario,'_E',experiment,'_R',run,sep='')
+    if (on_Midway()){
+      sqlite_file <- paste('sqlite/',base_name,'.sqlite',sep='')
+    } else {
+      sqlite_file <- paste('~/Documents/malaria_interventions_data/sqlite_',scenario,'/',base_name,'.sqlite',sep='')
+    }
+    
+    if (!file.exists(sqlite_file)) {
+      print (paste(sqlite_file, ' does not exist, ignoring and terminating function'))
+      return(NULL)
+    }
+    # parameter_file <- paste(base_name,'.py',sep='') # This may be necessary so I leave it
+    
+    # Extract data from sqlite. variable names correspond to table names
+    db <- dbConnect(SQLite(), dbname = sqlite_file)
+    summary_general <- dbGetQuery(db, 'SELECT * FROM summary')
+    summary_general$PS <- parameter_space
+    summary_general$exp <- experiment
+    summary_general$scenario <- scenario
+    summary_general$run <- run
+    summary_general$year <- gl(n = max(summary_general$time)/360, length = nrow(summary_general), k = 1)
+    summary_general$month <- gl(n = 12, k = 1, length = nrow(summary_general),labels = c('Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'), ordered = F)
+    
+    summary_alleles <- dbGetQuery(db, 'SELECT * FROM summary_alleles')
+    summary_alleles %<>% group_by(time) %>% summarise(n_alleles=sum(n_circulating_alleles))
+    
+    summary_general <- suppressMessages(left_join(summary_general, summary_alleles))
+    
+    if ('sampled_infections'%in%tables_to_get){
+      sampled_infections <- dbGetQuery(db, 'SELECT * FROM sampled_infections')
+      sampled_infections$PS <- parameter_space
+      sampled_infections$exp <- experiment
+      sampled_infections$scenario <- scenario
+      sampled_infections$run <- run
+    }
+    
+    # Extract statistics
+    if (nrow(summary_general)%%sampling_period==1){# The beginning of the data set in E00 has a timestap of 0 and this line is unnecesary. So remove it
+      summary_general <- summary_general[-1,]
+    }
+    
+    ## Prevalence
+    summary_general$prevalence <- summary_general$n_infected/10^4
+    
+    ## Get EIR from the table in the sqlite
+    summary_general$EIR <- summary_general$n_infected_bites/10000 # 10000 is the size of the human population
+    
+    # ##EIR can also be calculated manually as EIR=biting_rate * prevalence
+    # biting_rate <- get_biting_rate(parameter_file)
+    # summary_general$b <- NA
+    # summary_general$b[] <- biting_rate # The [] is for recycling the biting_rate
+    # summary_general$EIR1 <- summary_general$prevalence*summary_general$b*sampling_period
+    
+    # # Annual EIR is given by dividing by the sampling period to get a daily EIR, then multiplying by 360
+    # summary_general %>% mutate(eir_y=EIR2/sampling_period*360) %>% group_by(year) %>% summarise(EIR_Year=mean(eir_y))
+    
+    # MOI#
+    if ('sampled_infections'%in%tables_to_get){
+      meanMOI <- sampled_infections %>% group_by(time, host_id) %>% summarise(MOI=length(strain_id)) %>% group_by(time) %>% summarise(meanMOI=mean(MOI))
+      summary_general <- suppressMessages(inner_join(summary_general, meanMOI)) # Add MOI to the summary
+    }
+    
+    # Host age structure
+    if(host_age_structure) {
+      if (!'sampled_infections'%in%tables_to_get) {
+        print('Cannot extract host age structre without sampled_infections. Make sure sampled_infections is included in the output. Returning NULL')
+        return(NULL)
+      }
+      hosts <- dbGetQuery(db, 'SELECT * FROM hosts')
+      names(hosts)[1] <- 'host_id'
+      hosts$lifespan <- round((hosts$death_time-hosts$birth_time))
+      hosts <- subset(hosts, host_id%in%sampled_infections$host_id)
+      sampled_infections <- suppressMessages(left_join(sampled_infections, hosts, by='host_id'))
+      sampled_infections$host_age <- round((sampled_infections$time-sampled_infections$birth_time)/30)    
+    }
+  }
+  
+  if (!use_sqlite){
+    file <- paste(parameter_space,'_',scenario,'/PS',parameter_space,'_',scenario,'_E',experiment,'_R',run,'_summary_general.csv',sep='')
+    if (!file.exists(file)){
+      print(paste(file, 'does not exist, ignoring and terminating function'))
+      return(NULL)
+    }
+    summary_general <- fread(file)
+    summary_general$exp <- sprintf('%03d',summary_general$exp)
+    summary_general$PS <- sprintf('%02d',summary_general$PS)
+    summary_general$year <- as.factor(summary_general$year)
+    summary_general$month <- factor(summary_general$month, levels = c('Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'))
+    
+    
+    if ('sampled_infections'%in%tables_to_get){
+      file <- paste(parameter_space,'_',scenario,'/PS',parameter_space,'_',scenario,'_E',experiment,'_R',run,'_sampled_infections.csv',sep='')
+      if (!file.exists(file)){
+        print(paste(file, 'does not exist, ignoring and terminating function'))
+        return(NULL)
+      }
+      sampled_infections <- fread(file)
+      sampled_infections$exp <- sprintf('%03d',sampled_infections$exp)
+      sampled_infections$PS <- sprintf('%02d',sampled_infections$PS)
+    }
+  }
+  
+  
+  if ('sampled_infections'%in%tables_to_get){
+    return(list(summary_general=as.tibble(summary_general), sampled_infections=as.tibble(sampled_infections)))
   } else {
-    sqlite_file <- paste('~/Documents/malaria_interventions_data/sqlite_',scenario,'/',base_name,'.sqlite',sep='')
+    return(list(summary_general=as.tibble(summary_general)))
   }
-  
-  if (!file.exists(sqlite_file)) {
-    print (paste(sqlite_file, ' does not exist, ignoring and terminating function'))
-    return(NULL)
-  }
-  # parameter_file <- paste(base_name,'.py',sep='') # This may be necessary so I leave it
-  
-  # Extract data from sqlite. variable names correspond to table names
-  db <- dbConnect(SQLite(), dbname = sqlite_file)
-  summary_general <- dbGetQuery(db, 'SELECT * FROM summary')
-  summary_general$PS <- parameter_space
-  summary_general$exp <- experiment
-  summary_general$scenario <- scenario
-  summary_general$run <- run
-  summary_general$year <- gl(n = max(summary_general$time)/360, length = nrow(summary_general), k = 1)
-  summary_general$month <- gl(n = 12, k = 1, length = nrow(summary_general),labels = c('Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'), ordered = F)
-  
-  summary_alleles <- dbGetQuery(db, 'SELECT * FROM summary_alleles')
-  summary_alleles %<>% group_by(time) %>% summarise(n_alleles=sum(n_circulating_alleles))
-  
-  summary_general <- suppressMessages(left_join(summary_general, summary_alleles))
-  
-  sampled_infections <- dbGetQuery(db, 'SELECT * FROM sampled_infections')
-  sampled_infections$PS <- parameter_space
-  sampled_infections$exp <- experiment
-  sampled_infections$scenario <- scenario
-  sampled_infections$run <- run
-  
-  # Extract statistics
-  if (nrow(summary_general)%%sampling_period==1){# The beginning of the data set in E00 has a timestap of 0 and this line is unnecesary. So remove it
-    summary_general <- summary_general[-1,]
-  }
-  
-  ## Prevalence
-  summary_general$prevalence <- summary_general$n_infected/10^4
-  
-  ## Get EIR from the table in the sqlite
-  summary_general$EIR <- summary_general$n_infected_bites/10000 # 10000 is the size of the human population
-  
-  # ##EIR can also be calculated manually as EIR=biting_rate * prevalence
-  # biting_rate <- get_biting_rate(parameter_file)
-  # summary_general$b <- NA
-  # summary_general$b[] <- biting_rate # The [] is for recycling the biting_rate
-  # summary_general$EIR1 <- summary_general$prevalence*summary_general$b*sampling_period
-  
-  # # Annual EIR is given by dividing by the sampling period to get a daily EIR, then multiplying by 360
-  # summary_general %>% mutate(eir_y=EIR2/sampling_period*360) %>% group_by(year) %>% summarise(EIR_Year=mean(eir_y))
-  
-  # MOI#
-  meanMOI <- sampled_infections %>% group_by(time, host_id) %>% summarise(MOI=length(strain_id)) %>% group_by(time) %>% summarise(meanMOI=mean(MOI))
-  summary_general <- suppressMessages(inner_join(summary_general, meanMOI)) # Add MOI to the summary
-  
-  
-  # Host age structure
-  if(host_age_structure) {
-    hosts <- dbGetQuery(db, 'SELECT * FROM hosts')
-    names(hosts)[1] <- 'host_id'
-    hosts$lifespan <- round((hosts$death_time-hosts$birth_time))
-    hosts <- subset(hosts, host_id%in%sampled_infections$host_id)
-    sampled_infections <- suppressMessages(left_join(sampled_infections, hosts, by='host_id'))
-    sampled_infections$host_age <- round((sampled_infections$time-sampled_infections$birth_time)/30)    
-  }
-  
-  return(list(summary_general=as.tibble(summary_general), sampled_infections=as.tibble(sampled_infections)))
 }
 
 
@@ -816,14 +855,14 @@ get_data <- function(parameter_space, scenario, experiment, run, sampling_period
 
 
 # This function compares an experiment to control and calculates statistics for the intervention
-post_intervention_stats <- function(PS, scenario='S', exp, run, post_intervention_lag=360, control_data=NULL, plot.it=F, design_irs){
+post_intervention_stats <- function(PS, scenario='S', exp, run, post_intervention_lag=360, control_data=NULL, plot.it=F, design_irs, use_sqlite=F){
   
   plots_out <- list()
   
   # If a data frame with control data is not included (NULL), then load the
   # control experiment
   if (is.null(control_data)){
-    control_data <- get_data(parameter_space = PS, scenario = scenario, experiment = '001', run = run)[[1]]
+    control_data <- get_data(parameter_space = PS, scenario = scenario, experiment = '001', run = run, use_sqlite = use_sqlite, tables_to_get = 'summary_general')[[1]]
   }
   
   # Calculate variable means (across time) for control
@@ -843,7 +882,7 @@ post_intervention_stats <- function(PS, scenario='S', exp, run, post_interventio
   }
   
   # Load experiment data
-  experiment_data <- get_data(parameter_space = PS, scenario = scenario, experiment = exp, run = run)[[1]]
+  experiment_data <- get_data(parameter_space = PS, scenario = scenario, experiment = exp, run = run, use_sqlite = use_sqlite, tables_to_get = 'summary_general')[[1]]
   
   # Plot control vs experiment
   if (plot.it){
