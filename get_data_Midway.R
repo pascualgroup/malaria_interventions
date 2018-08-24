@@ -19,7 +19,7 @@ job_run <- as.numeric(Sys.getenv('SLURM_ARRAY_TASK_ID'))
 base_name <- paste('PS',job_ps,'_',job_scenario,'_E',job_exp,'_R',job_run,sep='')
 
 # Data from sqlite
-data <- get_data(parameter_space = job_ps, scenario = job_scenario, experiment = job_exp, run = job_run, host_age_structure = T)
+data <- get_data(parameter_space = job_ps, scenario = job_scenario, experiment = job_exp, run = job_run, host_age_structure = T, use_sqlite = T)
 write_csv(data$summary_general, paste('Results/',job_ps,'_',job_scenario,'/',base_name,'_summary_general.csv',sep=''))
 write_csv(data$sampled_infections, paste('Results/',job_ps,'_',job_scenario,'/',base_name,'_sampled_infections.csv',sep=''))
 
