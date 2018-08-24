@@ -2,19 +2,20 @@ library(tidyverse)
 library(magrittr)
 library(sqldf)
 library(igraph)
+library(data.table)
 
 # Functions ---------------------------------------------------------------
 
 ## @knitr FUNCTIONS
-source('functions.R')
+source('~/Documents/malaria_interventions/functions.R')
 ## @knitr END
 
 
 # Some example to test ----------------------------------------------------
 
 # Join pre-intervention (E000) and intervention (E003) time-series
-ctrl <- get_data(parameter_space = '36', scenario = 'S', experiment = '000', run = 1)[[1]]
-x <- get_data(parameter_space = '36', scenario = 'S', experiment = '003', run = 1)[[1]]
+ctrl <- get_data(parameter_space = '36', scenario = 'S', experiment = '000', run = 1, use_sqlite = T, tables_to_get = 'summary_general')[[1]]
+x <- get_data(parameter_space = '36', scenario = 'S', experiment = '003', run = 1, use_sqlite = F, tables_to_get = 'summary_general')[[1]]
 # Plot
 svg('/home/shai/Google Drive/LabSync/FacultyJobs/UToronto 2018/time_series_intervention.svg', 2.4, 1.7)
 x %>% bind_rows(subset(ctrl, time<min(x$time))) %>% 
@@ -36,7 +37,7 @@ setwd('~/Documents/malaria_interventions_data/')
 design <- loadExperiments_GoogleSheets() 
 ps_range <- sprintf('%0.2d', 27:39)
 exp_range <- sprintf('%0.3d', 1:4)
-run_range <- 1:10
+run_range <- 1:50
 scenario <- 'S'
 monitored_variables <- c('prevalence', 'meanMOI','n_circulating_strains', 'n_circulating_genes', 'n_alleles', 'n_total_bites')
 exp_cols <- c('black','#0A97B7','#B70A97','#97B70A')
@@ -46,7 +47,7 @@ scenario_cols <- c('red','blue','orange')
 
 # Compare between experiments within a parameter space --------------------
 PS <- '36'
-control <- get_data(parameter_space = PS, scenario = scenario, experiment = '001', run = 1)[[1]]
+control <- get_data(parameter_space = PS, scenario = scenario, experiment = '001', run = 1, use_sqlite = F, tables_to_get = 'summary_general')[[1]]
 control_means <- control %>% select(-year, -month, -n_infected) %>% 
   gather(variable, value, -time, -exp, -PS, -scenario, -run, -pop_id) %>% 
   group_by(PS, exp, variable) %>% summarise(mean_value=mean(value))
@@ -60,17 +61,10 @@ control %>% select(-year, -month, -n_infected) %>%
 
 exp_comparison <- map(run_range, function(r){
   map(exp_range, function(e){
-    print(paste(e,r,sep=' | '))
-    tmp <- get_data(parameter_space = PS, scenario = scenario, experiment = e, run = r)
+    tmp <- get_data(parameter_space = PS, scenario = scenario, experiment = e, run = r, use_sqlite = F, tables_to_get = 'summary_general')
     return(tmp[[1]])
   }) %>% bind_rows()
 }) %>% bind_rows()
-
-# Add control to the design_irs data frame
-design_irs <- create_intervention_scheme_IRS(PS_benchmark = PS, scenario_benchmark = scenario,IRS_START_TIMES = '29160', immigration_range=c(0), length_range=c(720,1800,3600), coverage_range=0.9, write_to_file = F, design_ref=design)
-design_irs %<>% slice(rep(1, each = 1)) %>% bind_rows(design_irs)
-design_irs[1, 'exp'] <- '001'
-design_irs[1, grepl("IRS", names(design_irs))] <- 'control'
 
 time_range <- c(28800,36000)
 
@@ -86,10 +80,9 @@ exp_comparison %>%
   ggplot(aes(x=time, y=value_mean, color=exp))+
   geom_line()+
   facet_wrap(~variable, scales = 'free')+
-  geom_vline(xintercept = c(29160+c(0,720,2800,3600)), linetype='dashed')+
+  geom_vline(xintercept = c(29160+c(0,720,1800,3600)), linetype='dashed')+
   scale_color_manual(values=exp_cols)+
   # scale_x_continuous(breaks=pretty(x=subset(d, time>time_range[1]&time<time_range[2])$time,n=5))+
-  geom_hline(aes(yintercept=mean_value), data=subset(control_means, variable %in% monitored_variables) , color='blue')+
   mytheme
 
 
@@ -97,16 +90,19 @@ exp_comparison %>%
 
 # Compare between parameter spaces within an experiment -------------------
 exp <- '003'
+
+# Use sqlite files
 ps_comparison <- map(run_range, function(r){
   map(ps_range, function(ps){
-    print(paste(ps,r,sep=' | '))
-    tmp <- get_data(parameter_space = ps, scenario = scenario, experiment = exp, run = r)
+    # print(paste(ps,r,sep=' | '))
+    tmp <- get_data(parameter_space = ps, scenario = scenario, experiment = exp, run = r, use_sqlite = F, tables_to_get = 'summary_general')
     return(tmp[[1]])
   }) %>% bind_rows()
 }) %>% bind_rows()
 
+
 time_range <- c(28800,max(ps_comparison$time))
-my_cols <- gg_color_hue(length(unique(ps_comparison$PS)), hue_min = 10, hue_max = 280, l = 62, c = 200)
+ps_cols <- gg_color_hue(length(unique(ps_comparison$PS)), hue_min = 10, hue_max = 280, l = 62, c = 200)
 
 ## @knitr COMPARE_DIVERSITY_PLOT
 ps_comparison %>%
@@ -121,7 +117,7 @@ ps_comparison %>%
   ggplot(aes(x=time, y=value_mean, color=N_GENES_INITIAL))+
   geom_line()+
   geom_vline(xintercept = c(29160,29160+5*360), linetype='dashed')+
-  scale_color_manual(values=my_cols)+
+  scale_color_manual(values=ps_cols)+
   scale_x_continuous(breaks=pretty(x=subset(ps_comparison, time>time_range[1]&time<time_range[2])$time,n=5))+
   facet_wrap(~variable, scales='free')+
   mytheme
@@ -136,7 +132,7 @@ ps_comparison %>%
 # Compare EIR
 ps_comparison_eir <- map(run_range, function(r){
   map(sprintf('%0.2d', c(27,30,36,39)), function(ps){
-    tmp <- get_data(parameter_space = ps, scenario = scenario, experiment = '001', run = r)
+    tmp <- get_data(parameter_space = ps, scenario = scenario, experiment = '001', run = r, use_sqlite = F, tables_to_get = 'summary_general')
     return(tmp[[1]])
   }) %>% bind_rows()
 }) %>% bind_rows()
@@ -161,28 +157,22 @@ ps_comparison_eir %>%
 # genes) after an intervention is lifted. The comparison is done to the control
 # experiment. 
 
-intervention_stats <- c()
-intervention_stats_diff <- c()
+
 design_irs <- create_intervention_scheme_IRS(PS_benchmark = '27', scenario_benchmark = scenario, IRS_START_TIMES = '29160', immigration_range=c(0), length_range=c(720,1800,3600), coverage_range=0.9, write_to_file = F, design_ref=design)
 # Add control to the design_irs data frame, which is created in build_parameter_files.R
 design_irs %<>% slice(rep(1, each = 1)) %>% bind_rows(design_irs)
 design_irs[1, 'exp'] <- '001'
 design_irs[1, 'IRS_length'] <- 0
-
+intervention_stats <- c()
+intervention_stats_diff <- c()
 for (run in run_range){
   for (ps in ps_range){
-    if (file.exists(paste('~/Documents/malaria_interventions_data/PS',ps,'_',scenario,'_E001_R',run,'.sqlite',sep=''))){
-      control_data <- get_data(parameter_space = ps, scenario = scenario, experiment = '001', run = run)[[1]]
-    }
+    control_data <- get_data(parameter_space = ps, scenario = scenario, experiment = '001', run = run, use_sqlite = F, tables_to_get = 'summary_general')[[1]]
     for (e in exp_range){
       print(paste(Sys.time(),run,ps,e,sep=' | '))
-      if (file.exists(paste('~/Documents/malaria_interventions_data/PS',ps,'_',scenario,'_E',e,'_R',run,'.sqlite',sep=''))){
-        x <- post_intervention_stats(PS = ps, scenario = scenario, exp=e, run = run, plot.it = F, control_data = control_data, design_irs = design_irs)
-        intervention_stats <- rbind(intervention_stats, x$summary_stats)
-        intervention_stats_diff <- rbind(intervention_stats_diff, x$diff_control)
-      } else {
-        cat('missing file: ');cat(paste('PS',ps,'_',scenario,'_E',e,'_R',run,'.sqlite',sep=''));cat('\n')
-      }
+      x <- post_intervention_stats(PS = ps, scenario = scenario, exp=e, run = run, plot.it = F, control_data = control_data, design_irs = design_irs, use_sqlite = F)
+      intervention_stats <- rbind(intervention_stats, x$summary_stats)
+      intervention_stats_diff <- rbind(intervention_stats_diff, x$diff_control)
     }
   }
 }
@@ -288,7 +278,7 @@ cases <- expand.grid(scenario=c('S','G','N'), exp=sprintf('%0.3d',1:4), run=run_
 scenario_comparison <- c()
 for (i in 1:nrow(cases)){
   print(paste('Scenario: ',cases$scenario[i],' | exp: ',cases$exp[i], ' | run: ',cases$run[i],sep=''))
-  tmp <- get_data(parameter_space = PS, scenario = cases$scenario[i], experiment = cases$exp[i], run = cases$run[i])[[1]]
+  tmp <- get_data(parameter_space = PS, scenario = cases$scenario[i], experiment = cases$exp[i], run = cases$run[i], use_sqlite = F, tables_to_get = 'summary_general')[[1]]
   scenario_comparison <- rbind(scenario_comparison, tmp)
 }
 
@@ -331,18 +321,12 @@ intervention_stats_diff_scenarios <- c()
 for (scenario in c('S','G','N')){
   for (run in run_range){
     for (ps in ps_range){
-      if (file.exists(paste('~/Documents/malaria_interventions_data/PS',ps,'_',scenario,'_E001_R',run,'.sqlite',sep=''))){
-        control_data <- get_data(parameter_space = ps, scenario = scenario, experiment = '001', run = run)[[1]]
-      }
+      control_data <- get_data(parameter_space = ps, scenario = scenario, experiment = '001', run = run, use_sqlite = F, tables_to_get = 'summary_general')[[1]]
       for (e in exp_range){
         print(paste(Sys.time(),scenario, run, ps, e,sep=' | '))
-        if (file.exists(paste('~/Documents/malaria_interventions_data/PS',ps,'_',scenario,'_E',e,'_R',run,'.sqlite',sep=''))){
-          x <- post_intervention_stats(PS = ps, scenario = scenario, exp=e, run = run, plot.it = F, control_data = control_data, design_irs = design_irs)
-          intervention_stats_scenarios <- rbind(intervention_stats_scenarios, x$summary_stats)
-          intervention_stats_diff_scenarios <- rbind(intervention_stats_diff_scenarios, x$diff_control)
-        } else {
-          cat('missing file: ');cat(paste('PS',ps,'_',scenario,'_E',e,'_R',run,'.sqlite',sep=''));cat('\n')
-        }
+        x <- post_intervention_stats(PS = ps, scenario = scenario, exp=e, run = run, plot.it = F, control_data = control_data, design_irs = design_irs, use_sqlite = F)
+        intervention_stats_scenarios <- rbind(intervention_stats_scenarios, x$summary_stats)
+        intervention_stats_diff_scenarios <- rbind(intervention_stats_diff_scenarios, x$diff_control)
       }
     }
   }
