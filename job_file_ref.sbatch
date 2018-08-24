@@ -12,8 +12,8 @@
 ##SBATCH --mail-user=pilosofs@uchicago.edu
 
 # Load modules
-module load python/2.7
-module load gcc/4.9
+module load python
+module load gcc
 
 # Initialize
 PS='XXX' # the parameter space

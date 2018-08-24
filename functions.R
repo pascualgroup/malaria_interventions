@@ -743,7 +743,7 @@ get_data <- function(parameter_space, scenario, experiment, run, sampling_period
   if (on_Midway()){
     sqlite_file <- paste('sqlite/',base_name,'.sqlite',sep='')
   } else {
-    sqlite_file <- paste('~/Documents/malaria_interventions_data/',base_name,'.sqlite',sep='')
+    sqlite_file <- paste('~/Documents/malaria_interventions_data/sqlite_',scenario,'/',base_name,'.sqlite',sep='')
   }
   
   if (!file.exists(sqlite_file)) {
