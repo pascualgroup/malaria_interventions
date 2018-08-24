@@ -4,16 +4,14 @@ library(sqldf)
 library(rPython)
 library(googlesheets)
 
-setwd('~/Documents/malaria_interventions')
-
-source('functions.R')
+source('~/Documents/malaria_interventions/functions.R')
 
 # Create parameter and job files -------------------------------------------
 
 setwd('~/Documents/malaria_interventions_data/')
 
 # Clear previous files if necessary
-clear_previous_files(run = 6, exclude_sqlite = F, exclude_CP = F, exclude_control = F, test = T)
+# clear_previous_files(run = 6, exclude_sqlite = F, exclude_CP = F, exclude_control = F, test = T)
 # Get data design 
 design <- loadExperiments_GoogleSheets() 
 
@@ -358,20 +356,25 @@ for (ps in ps_range){
 
 
 # Generate sbatch files to extract data -----------------------------------
-mem_per_cpu <- c(rep(4000,4),rep(10000,4),rep(32000,5))
-time <- c(rep('01:00:00',4),rep('03:00:00',4),rep('06:00:00',5))
-scenario <- 'S'
+mem_per_cpu <- data.frame(ps=27:39, mem=c(rep(4000,2),rep(8000,2),rep(12000,3),rep(16000,2),rep(32000,4))) # For S
+mem_per_cpu <- data.frame(ps=27:39, mem=c(rep(8000,2),rep(16000,2),rep(32000,9))) # For G
+time <- c(rep('01:00:00',4),rep('03:00:00',4),rep('06:00:00',5)) # For S
+time <- c(rep('04:00:00',4),rep('08:00:00',4),rep('12:00:00',5)) # For G
+ps_range <- sprintf('%0.2d', 27:39)
+scenario <- 'G'
 for (ps in ps_range){
-  x <- readLines('get_data_midway.sbatch')
+  x <- readLines('~/Documents/malaria_interventions/get_data_midway.sbatch')
   str_sub(x[2],23,25) <- ps
   str_sub(x[3],16,18) <- time[which(ps_range==ps)]
   str_sub(x[4],34,36) <- ps
   str_sub(x[5],33,35) <- ps
-  str_sub(x[9],23,25) <- mem_per_cpu[which(ps_range==ps)]
+  str_sub(x[9],23,25) <- mem_per_cpu[mem_per_cpu$ps==ps,'mem']
   str_sub(x[18],5,7) <- ps
   str_sub(x[19],11,13) <- scenario
-  writeLines(x, paste('PS',ps,'_S_get_data_midway.sbatch',sep=''))
+  writeLines(x, paste('PS',ps,'_',scenario,'_get_data_midway.sbatch',sep=''))
 }
+# for i in {27..39}; do sbatch 'PS'$i'_G_get_data_midway.sbatch'; done
+
 
 # General stuff -----------------------------------------------------------
 
