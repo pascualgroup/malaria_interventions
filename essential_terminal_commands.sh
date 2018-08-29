@@ -462,3 +462,24 @@ done
 
 
 zip mtn_7Gn_additional_result_files.zip *.* -i '*.csv' -x '*diagnostics*.csv' '*EIR*.csv' '*MOI*.csv' '*PTS*.csv' '*layerInfo*.csv' '*moduleSummary*.csv' '*temporalData*.csv' '*durationOfInfection*.csv' -m -u
+
+
+
+
+
+
+
+
+for i in {31..33}
+do
+sbatch 'PS'$i'_S_get_data_midway.sbatch'
+sbatch 'PS'$i'_G_get_data_midway.sbatch'
+done
+
+for i in {48830617..48830624}
+do
+sacct -j $i --format=jobid,jobname,partition,account,alloccpus,state,cputime,maxrss,maxvmsize --state=FAILED
+done
+
+
+

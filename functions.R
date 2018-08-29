@@ -733,7 +733,7 @@ plotLayer <- function(network_object, l, edge_weight_multiply=1, remove.loops=T,
        ...)
 }
 
-# Data manipulation -------------------------------------------------------
+# Data extraction/analysis ------------------------------------------------
 
 # This function obtains data from an sqlite file and prepares them for further analysis.
 # requires sqldf
@@ -998,7 +998,7 @@ createTemporalNetwork <- function(ps, scenario, exp, run, cutoff_prob=0.9, cutof
   if (on_Midway()){
     sqlite_file <- paste('sqlite/',base_name,'.sqlite',sep='')
   } else {
-    sqlite_file <- paste('~/Documents/malaria_interventions_data/',base_name,'.sqlite',sep='')
+    sqlite_file <- paste('~/Documents/malaria_interventions_data/sqlite_',scenario,'/',base_name,'.sqlite',sep='')
   }
   
   # Extract data from sqlite. variable names correspond to table names

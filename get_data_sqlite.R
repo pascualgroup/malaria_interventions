@@ -157,26 +157,31 @@ ps_comparison_eir %>%
 # genes) after an intervention is lifted. The comparison is done to the control
 # experiment. 
 
-
-design_irs <- create_intervention_scheme_IRS(PS_benchmark = '27', scenario_benchmark = scenario, IRS_START_TIMES = '29160', immigration_range=c(0), length_range=c(720,1800,3600), coverage_range=0.9, write_to_file = F, design_ref=design)
-# Add control to the design_irs data frame, which is created in build_parameter_files.R
-design_irs %<>% slice(rep(1, each = 1)) %>% bind_rows(design_irs)
-design_irs[1, 'exp'] <- '001'
-design_irs[1, 'IRS_length'] <- 0
-intervention_stats <- c()
-intervention_stats_diff <- c()
-for (run in run_range){
-  for (ps in ps_range){
-    control_data <- get_data(parameter_space = ps, scenario = scenario, experiment = '001', run = run, use_sqlite = F, tables_to_get = 'summary_general')[[1]]
-    for (e in exp_range){
-      print(paste(Sys.time(),run,ps,e,sep=' | '))
-      x <- post_intervention_stats(PS = ps, scenario = scenario, exp=e, run = run, plot.it = F, control_data = control_data, design_irs = design_irs, use_sqlite = F)
-      intervention_stats <- rbind(intervention_stats, x$summary_stats)
-      intervention_stats_diff <- rbind(intervention_stats_diff, x$diff_control)
+if(file.exists('intervention_stats.csv')){
+  intervention_stats <- read_csv('intervention_stats.csv')
+  intervention_stats_diff <- read_csv('intervention_stats_diff.csv')
+} else {
+  design_irs <- create_intervention_scheme_IRS(PS_benchmark = '27', scenario_benchmark = scenario, IRS_START_TIMES = '29160', immigration_range=c(0), length_range=c(720,1800,3600), coverage_range=0.9, write_to_file = F, design_ref=design)
+  # Add control to the design_irs data frame, which is created in build_parameter_files.R
+  design_irs %<>% slice(rep(1, each = 1)) %>% bind_rows(design_irs)
+  design_irs[1, 'exp'] <- '001'
+  design_irs[1, 'IRS_length'] <- 0
+  intervention_stats <- c()
+  intervention_stats_diff <- c()
+  for (run in run_range){
+    for (ps in ps_range){
+      control_data <- get_data(parameter_space = ps, scenario = scenario, experiment = '001', run = run, use_sqlite = F, tables_to_get = 'summary_general')[[1]]
+      for (e in exp_range){
+        print(paste(Sys.time(),run,ps,e,sep=' | '))
+        x <- post_intervention_stats(PS = ps, scenario = scenario, exp=e, run = run, plot.it = F, control_data = control_data, design_irs = design_irs, use_sqlite = F)
+        intervention_stats <- rbind(intervention_stats, x$summary_stats)
+        intervention_stats_diff <- rbind(intervention_stats_diff, x$diff_control)
+      }
     }
   }
+  write_csv(intervention_stats,'intervention_stats.csv')
+  write_csv(intervention_stats_diff,'intervention_stats_diff.csv')
 }
-
 
 ## @knitr TIME_TO_EXTINCTION_PLOT
 
@@ -212,7 +217,7 @@ intervention_stats %>%
   geom_line()+
   scale_x_continuous("Gene pool size", breaks = seq(1200,15600,1200)) +
   scale_color_manual(values=exp_cols)+
-  facet_wrap(~exp)+
+  # facet_wrap(~exp)+
   mytheme+
   theme(axis.text.x = element_text(angle = 90, hjust=0))
 
@@ -274,7 +279,7 @@ intervention_stats_diff %>%
 ## @knitr COMPARE_SCENARIOS_TS_LOAD
 
 PS <- '36'
-cases <- expand.grid(scenario=c('S','G','N'), exp=sprintf('%0.3d',1:4), run=run_range)
+cases <- expand.grid(scenario=c('S','G'), exp=sprintf('%0.3d',1:4), run=run_range)
 scenario_comparison <- c()
 for (i in 1:nrow(cases)){
   print(paste('Scenario: ',cases$scenario[i],' | exp: ',cases$exp[i], ' | run: ',cases$run[i],sep=''))
@@ -318,7 +323,7 @@ design_irs[1, 'IRS_length'] <- 0
 
 intervention_stats_scenarios <- c()
 intervention_stats_diff_scenarios <- c()
-for (scenario in c('S','G','N')){
+for (scenario in c('S','G')){
   for (run in run_range){
     for (ps in ps_range){
       control_data <- get_data(parameter_space = ps, scenario = scenario, experiment = '001', run = run, use_sqlite = F, tables_to_get = 'summary_general')[[1]]
@@ -463,9 +468,9 @@ setwd('~/Documents/malaria_interventions_data/')
 
 ps <- '36'
 scenario <- 'S'
-exp <- '004'
+exp <- '003'
 run <- 1
-x <- get_data(parameter_space = ps, scenario, experiment = exp, run)[[1]]
+x <- get_data(parameter_space = ps, scenario, experiment = exp, run, use_sqlite = T, tables_to_get = 'summary_general')
 x$layer <- group_indices(x, time) 
 layers_to_include = 1:max(x$layer)
 x %>% 
@@ -476,7 +481,7 @@ x %>%
   scale_x_continuous(breaks = seq(0,max(x$layer),5))+
   mytheme
 
-network_control <- createTemporalNetwork(ps, scenario, exp = '001', run, layers_to_include = layers_to_include, sampled_infections = NULL)
+network_control <- createTemporalNetwork(ps, scenario, exp = '001', run, layers_to_include = layers_to_include, sampled_infections = NULL, cutoff_value = NULL, sparse = F)
 x <- as.tibble(network_control$layer_summary)
 x %>% gather(variable, value, -layer) %>% 
   ggplot(aes(layer, value, color=variable))+
@@ -528,7 +533,7 @@ for (i in layers_to_include){
 colnames(netork_properties_control) <- names(tmp)
 netork_properties_control <- as.tibble(netork_properties_control)
 netork_properties_control$layer <- layers_to_include
-netork_properties_control  %>%  gather(variable, value, -layer) %>% 
+netork_properties_control %>% gather(variable, value, -layer) %>% 
   ggplot(aes(layer, value, color=variable))+
   geom_line()+
   scale_x_continuous(breaks = seq(1,max(layers_to_include),5))+
@@ -559,7 +564,7 @@ netork_properties_control$exp <- '001'
 netork_properties$exp <- '003'
 comparison <- rbind(netork_properties,netork_properties_control)
 comparison %>% 
-  select('exp','layer','Num_nodes','GCC','density','mean_degree','diameter','M07--A<-B->C','M06--A<->B<-C','M10--A<->B->C','M11--A<->B<->C','M16--A<->B<->C_A<->C') %>%
+  select('exp','layer','Num_nodes','GCC','density','mean_degree','diameter','M11--A<->B<->C','M16--A<->B<->C_A<->C') %>%
   gather(variable, value, -exp, -layer) %>% 
   ggplot(aes(layer, value, color=exp))+
   geom_line()+
@@ -573,6 +578,37 @@ comparison %>%
 unlist(lapply(network_test$temporal_network, nrow))
 
 
+# Network structure across runs -------------------------------------------
+
+ps <- '27'
+scenario <- 'S'
+exp <- '003'
+run <- 1
+
+get_network_structure <- function(ps, scenario, exp, run){
+  basename_control <- paste('PS',ps,'_',scenario,'_E001_R',run,sep='')
+  basename_exp <- paste('PS',ps,'_',scenario,'_E',exp,'_R',run,sep='')
+  network_control <- network_experiment <- list()
+  network_control$layer_summary <- read_csv(paste('~/Documents/malaria_interventions_data/Results/',ps,'_',scenario,'/',basename_control,'_layer_summary.',sep=''))
+  network_control <- createTemporalNetwork(ps, scenario, exp = '001', run, layers_to_include = layers_to_include, sampled_infections = NULL, cutoff_value = NULL, sparse = F)
+  x <- as.tibble(network_control$layer_summary)
+  x %>% gather(variable, value, -layer) %>% 
+    ggplot(aes(layer, value, color=variable))+
+    geom_line()+
+    scale_x_continuous(breaks = seq(1,max(x$layer)+5,5))+
+    mytheme+
+    theme(panel.grid.minor = element_blank())
+  
+  network_test <- createTemporalNetwork(ps, scenario, exp, run, cutoff_value = network_control$cutoff_value, layers_to_include = layers_to_include, sampled_infections = NULL)
+  x <- as.tibble(network_test$layer_summary)
+  x %>% gather(variable, value, -layer) %>% 
+    ggplot(aes(layer, value, color=variable))+
+    geom_line()+
+    scale_x_continuous(breaks = seq(1,max(x$layer)+5,5))+
+    mytheme+
+    theme(panel.grid.minor = element_blank())
+  
+}
 
 # Infomap -----------------------------------------------------------------
 

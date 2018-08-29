@@ -42,7 +42,7 @@ network <- createTemporalNetwork(ps = job_ps,
                                  cutoff_prob = 0.9, 
                                  cutoff_value = cutoff_value,
                                  sparse = F,
-                                 layers_to_include = NULL,
+                                 layers_to_include = 1:300,
                                  sampled_infections = data$sampled_infections)
 sink(paste('Results/',job_ps,'_',job_scenario,'/',base_name,'_network_info.csv',sep=''), append = F)
 cat(network$ps);cat('\n')

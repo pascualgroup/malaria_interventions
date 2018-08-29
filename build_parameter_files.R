@@ -129,7 +129,9 @@ for (ps in ps_range){
 # Verify files ------------------------------------------------------------
 
 # --- sqlite files ---
-files <- list.files(path = '~/Documents/malaria_interventions_data/', pattern = '\\.sqlite', full.names = F)
+files_S <- list.files(path = '~/Documents/malaria_interventions_data/sqlite_S/', pattern = '\\.sqlite', full.names = F)
+files_G <- list.files(path = '~/Documents/malaria_interventions_data/sqlite_G/', pattern = '\\.sqlite', full.names = F)
+files <- c(files_S, files_G)
 # Also consider adding following information: extracting random seeds; existence of corresponding parameter files
 files_sqlite <- tibble(file_sqlite=files,
                     PS = sapply(str_split(files,'_'),function (x) parse_number(x[1])),
@@ -154,14 +156,34 @@ unique(files_sqlite$run_time)
 files_sqlite %>% filter(is.na(run_time))
 
 
-files_sqlite %<>% mutate(scenario=factor(scenario, levels=c('S','N','G')))  %>% arrange(CP, PS, scenario, experiment, run)         
-files_sqlite %>% filter(is.na(CP) & as.numeric(PS)>=27) %>% 
-  filter(scenario=='S') %>% 
+files_sqlite %<>% mutate(scenario=factor(scenario, levels=c('S','G')))  %>% arrange(CP, PS, scenario, experiment, run)         
+files_sqlite %<>% filter(is.na(CP) & as.numeric(PS)>=27) %>% 
+  # filter(scenario=='S') %>% 
   group_by(PS,scenario,experiment) %>% 
-  summarise(runs_completed=length(run)) %>% 
+  summarise(runs_completed=length(run)) 
+files_sqlite %>% 
   filter(runs_completed<50) %>% print(n = Inf)
 files_sqlite %>% group_by(scenario, PS, experiment) %>% summarise(x=sum(runs_completed)) %>% print(n = Inf)
 files_sqlite %>% filter(scenario=='G') %>% print(n = Inf)
+
+
+# f <- read_csv('sqlite_files.txt', col_names = F)
+# f$PS = sapply(str_split(f$X1,'_'),function (x) parse_number(x[1]))
+# f$scenario=sapply(str_split(f$X1,'_'),function (x) x[2])
+# f$experiment=sapply(str_split(f$X1,'_'),function (x) str_sub(x[3],2,4))
+# f$run= sapply(str_split(f$X1,'_'),function (x) parse_number(x[4]))
+# f$PS <- sprintf('%0.2d', f$PS)
+# 
+# f %>% select(PS,scenario,experiment,run) %>% full_join(files_sqlite, by=c('PS','scenario','experiment','run')) %>% select(PS,scenario,experiment,run)
+# 
+# missing=files_sqlite %>% anti_join(f, by=c('PS','scenario','experiment','run')) %>% select(PS,scenario,experiment,run,file_sqlite) %>% print(n=Inf)
+# for (fl in missing$file_sqlite){
+#   file.rename(paste('~/Documents/malaria_interventions_data/sqlite_G/',fl,sep=''), paste('~/Documents/malaria_interventions_data/sqlite_G/tocopy/',fl,sep=''))
+# }
+
+
+
+
 
 #--- PY files ---
 files <- list.files(path = '~/Documents/malaria_interventions_data/', pattern = 'py.zip', full.names = T)
@@ -324,6 +346,11 @@ for (i in 1:nrow(ps_scen_combinations)){
 }
 
 
+
+
+
+
+
 # Add a line in the parameter files ---------------------------------------
 # This adds a line to the end of each py file
 ps_range <- sprintf('%0.2d', 28:39)
@@ -356,23 +383,25 @@ for (ps in ps_range){
 
 
 # Generate sbatch files to extract data -----------------------------------
-mem_per_cpu <- data.frame(ps=27:39, mem=c(rep(4000,2),rep(8000,2),rep(12000,3),rep(16000,2),rep(32000,4))) # For S
-mem_per_cpu <- data.frame(ps=27:39, mem=c(rep(8000,2),rep(16000,2),rep(32000,9))) # For G
-time <- c(rep('01:00:00',4),rep('03:00:00',4),rep('06:00:00',5)) # For S
-time <- c(rep('04:00:00',4),rep('08:00:00',4),rep('12:00:00',5)) # For G
+sbatch_arguments <- expand.grid(PS=27:39,scen=c('S','G'))
+sbatch_arguments$mem_per_cpu <- c(rep(4000,2),rep(8000,2),rep(12000,3),rep(16000,2),rep(32000,4),
+                                  rep(8000,2),rep(16000,2),rep(32000,8),64000)
+sbatch_arguments$time <- c(rep('01:00:00',4),rep('03:00:00',4),rep('06:00:00',5),
+                           rep('04:00:00',4),rep('08:00:00',4),rep('12:00:00',5)) # For G
+
 ps_range <- sprintf('%0.2d', 27:39)
-scenario <- 'G'
+for (scenario in c('S','G')){
 for (ps in ps_range){
   x <- readLines('~/Documents/malaria_interventions/get_data_midway.sbatch')
-  str_sub(x[2],23,25) <- ps
-  str_sub(x[3],16,18) <- time[which(ps_range==ps)]
-  str_sub(x[4],34,36) <- ps
-  str_sub(x[5],33,35) <- ps
-  str_sub(x[9],23,25) <- mem_per_cpu[mem_per_cpu$ps==ps,'mem']
+  str_sub(x[2],22,24) <- paste(ps,scenario,sep='')
+  str_sub(x[3],16,18) <- subset(sbatch_arguments, PS==ps & scen==scenario)$time
+  str_sub(x[4],33,35) <- paste(ps,scenario,sep='')
+  str_sub(x[5],32,34) <- paste(ps,scenario,sep='')
+  str_sub(x[9],23,25) <- subset(sbatch_arguments, PS==ps & scen==scenario)$mem_per_cpu
   str_sub(x[18],5,7) <- ps
   str_sub(x[19],11,13) <- scenario
   writeLines(x, paste('PS',ps,'_',scenario,'_get_data_midway.sbatch',sep=''))
-}
+}}
 # for i in {27..39}; do sbatch 'PS'$i'_G_get_data_midway.sbatch'; done
 
 

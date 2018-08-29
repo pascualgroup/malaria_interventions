@@ -1,8 +1,8 @@
 #!/bin/bash
-#SBATCH --job-name=PS_XXX
+#SBATCH --job-name=PSXXX
 #SBATCH --time=XXX
-#SBATCH --output=slurm_output/PS_XXX_%A_%a.out
-#SBATCH --error=slurm_output/PS_XXX_%A_%a.err
+#SBATCH --output=slurm_output/PSXXX_%A_%a.out
+#SBATCH --error=slurm_output/PSXXX_%A_%a.err
 #SBATCH --array=1-50
 #SBATCH --tasks=1
 #SBATCH --cpus-per-task=1 

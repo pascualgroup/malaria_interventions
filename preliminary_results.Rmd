@@ -15,6 +15,9 @@ knitr:::read_chunk('~/Documents/malaria_interventions/get_data_sqlite.R')
 library(tidyverse)
 library(magrittr)
 library(sqldf)
+library(igraph)
+library(data.table)
+library(googlesheets)
 ```
 
 ```{r INITIATE AND LOAD FUNCTIONS, cache=TRUE, include=FALSE}
@@ -45,8 +48,8 @@ I also ran low transmission, this is not presented here.
 This example is for: Immune selection with gene pool size of 12000 with no IRS (control; black) and 5-year IRS (green). The time series shows that while transmission recovers to pre-intervention levels (n_total_bites), the diversity (n-alleles, n_circulating_genes, n_circulating_strains) and epidemiology (meanMOI, prevalence) do not.
 
 ```{r EXAMPLE TIME SERIES (PLOT), echo=FALSE, fig.width=16,fig.height=9,dpi=300,out.width="1920px",out.height="1080px"}
-ctrl <- get_data(parameter_space = '36', scenario = 'S', experiment = '001', run = 1, host_age_structure = F)[[1]]
-irs <- get_data(parameter_space = '36', scenario = 'S', experiment = '003', run = 1, host_age_structure = F)[[1]]
+ctrl <- get_data(parameter_space = '36', scenario = 'S', experiment = '001', run = 1, host_age_structure = F, use_sqlite = F, tables_to_get = 'summary_general')[[1]]
+irs <- get_data(parameter_space = '36', scenario = 'S', experiment = '003', run = 1, host_age_structure = F, use_sqlite = F, tables_to_get = 'summary_general')[[1]]
 ctrl_vs_irs5 <- rbind(ctrl,irs)
 ctrl_vs_irs5 %>% 
   select(-year, -month, -n_infected) %>% 
@@ -121,39 +124,39 @@ This previous figure can be summarized by calculating the ratio between the pre-
 <<IRS_EFFECT_RATIO_PLOT>>
 ```
 
-# Selection vs. Neutral vs. Generalized immunity
-As the ulimate goal is to understand the role that population structure plays in the resiliene of the population, the next step is to compare the response of the population under different scenarios. In essence, this repeats the above analysis above for the neutral and generalized immunity cases, and then comapres the three scenarios.
+<!-- # Selection vs. Neutral vs. Generalized immunity -->
+<!-- As the ulimate goal is to understand the role that population structure plays in the resiliene of the population, the next step is to compare the response of the population under different scenarios. In essence, this repeats the above analysis above for the neutral and generalized immunity cases, and then comapres the three scenarios. -->
 
-## Time series of measure variables
-First, let's take a look how the time series of several measure variables in each of the 4 experiments change with scenario.
+<!-- ## Time series of measure variables -->
+<!-- First, let's take a look how the time series of several measure variables in each of the 4 experiments change with scenario. -->
 
-```{r COMPARE SCENARIOS (LOAD DATA), cache=TRUE, include=FALSE}
-<<COMPARE_SCENARIOS_TS_LOAD>>
-```
+<!-- ```{r COMPARE SCENARIOS (LOAD DATA), cache=TRUE, include=FALSE} -->
+<!-- <<COMPARE_SCENARIOS_TS_LOAD>> -->
+<!-- ``` -->
 
-```{r COMPARE SCENARIOS (PLOT), echo=FALSE, fig.width=16,fig.height=9,dpi=300,out.width="1920px",out.height="1080px"}
-<<COMPARE_SCENARIOS_TS_PLOT>>
-```
+<!-- ```{r COMPARE SCENARIOS (PLOT), echo=FALSE, fig.width=16,fig.height=9,dpi=300,out.width="1920px",out.height="1080px"} -->
+<!-- <<COMPARE_SCENARIOS_TS_PLOT>> -->
+<!-- ``` -->
 
-## Time and probability to extinction
-Our previous findings suggested that immune selection promotes the persistence of the parasite population across interventions. In that case we expect that the time and probability of extinction would be higher in the immune selection case.
+<!-- ## Time and probability to extinction -->
+<!-- Our previous findings suggested that immune selection promotes the persistence of the parasite population across interventions. In that case we expect that the time and probability of extinction would be higher in the immune selection case. -->
 
-```{r LOAD SCENARIOS DATA, cache=TRUE, include=FALSE}
-<<COMPARE_IRS_EFFECT_SCENARIOS_LOAD>>
-```
+<!-- ```{r LOAD SCENARIOS DATA, cache=TRUE, include=FALSE} -->
+<!-- <<COMPARE_IRS_EFFECT_SCENARIOS_LOAD>> -->
+<!-- ``` -->
 
-```{r TIME TO EXTINCTION ACROSS SCENARIOS (PLOT), echo=FALSE, fig.width=16,fig.height=9,dpi=300,out.width="1920px",out.height="1080px"}
-<<TIME_TO_EXTINCTION_SCENARIOS_PLOT>>
-```
+<!-- ```{r TIME TO EXTINCTION ACROSS SCENARIOS (PLOT), echo=FALSE, fig.width=16,fig.height=9,dpi=300,out.width="1920px",out.height="1080px"} -->
+<!-- <<TIME_TO_EXTINCTION_SCENARIOS_PLOT>> -->
+<!-- ``` -->
 
-```{r PROBABILITY OF EXTINCTION (PLOT), echo=FALSE, fig.width=16,fig.height=9,dpi=300,out.width="1920px",out.height="1080px"}
-# Calculate probability of extinction as a proportion of runs which went extinct
-<<EXTINCTION_PROB_SCENARIOS_PLOT>>
-```
+<!-- ```{r PROBABILITY OF EXTINCTION (PLOT), echo=FALSE, fig.width=16,fig.height=9,dpi=300,out.width="1920px",out.height="1080px"} -->
+<!-- # Calculate probability of extinction as a proportion of runs which went extinct -->
+<!-- <<EXTINCTION_PROB_SCENARIOS_PLOT>> -->
+<!-- ``` -->
 
-## Quantitative effect of IRS in different scenarios
-Again, calculate the ratio between pre- and post-IRS of a given measure variable, in the different scenarios. Only scenarios that did not go extinct appear. That is why the neutral scenario never appears because all runs always go extinct. Generally speaking we can see a stronger effect of IRS on populations with immune selection (red line is below orange line)
+<!-- ## Quantitative effect of IRS in different scenarios -->
+<!-- Again, calculate the ratio between pre- and post-IRS of a given measure variable, in the different scenarios. Only scenarios that did not go extinct appear. That is why the neutral scenario never appears because all runs always go extinct. Generally speaking we can see a stronger effect of IRS on populations with immune selection (red line is below orange line) -->
 
-```{r PRE- VS. POST-IRS ACROSS SCENARIOS (PLOT), echo=FALSE, fig.width=16,fig.height=9,dpi=300,out.width="1920px",out.height="1080px"}
-<<IRS_EFFECT_RATIO_SCENARIOS_PLOT>>
-```
+<!-- ```{r PRE- VS. POST-IRS ACROSS SCENARIOS (PLOT), echo=FALSE, fig.width=16,fig.height=9,dpi=300,out.width="1920px",out.height="1080px"} -->
+<!-- <<IRS_EFFECT_RATIO_SCENARIOS_PLOT>> -->
+<!-- ``` -->
