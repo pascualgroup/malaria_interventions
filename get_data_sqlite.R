@@ -4,6 +4,7 @@ library(sqldf)
 library(igraph)
 library(data.table)
 library(googlesheets)
+library(utils)
 
 # Functions ---------------------------------------------------------------
 
@@ -13,7 +14,7 @@ source('~/Documents/malaria_interventions/functions.R')
 ## @knitr INITIALIZE
 
 # Initialize important variables ------------------------------------------
-setwd('~/Dropbox/malaria_interventions_data/')
+setwd('~/Documents/malaria_interventions_data/')
 design <- loadExperiments_GoogleSheets() 
 ps_range <- sprintf('%0.2d', 27:39)
 exp_range <- sprintf('%0.3d', 1:4)
@@ -464,31 +465,27 @@ dev.off()
 
 # Network structure across runs -------------------------------------------
 
-ps <- '32'
+ps <- '27'
 scenario <- 'S'
 exp <- '002'
 run <- 12
-layers_to_include <- 1:300
+layers_to_include <- 1:200
 
 
+network_structure_S <- analyze_networks_multiple(ps = '36',scenario = 'S',runs = 1, layers_to_include = layers_to_include)
+network_structure_G <- analyze_networks_multiple(ps = '36',scenario = 'G',runs = 1, layers_to_include = layers_to_include)
 
-
-exp001 <- analyze_network('36','S','001',1, layers_to_include)
-exp002 <- analyze_network('36','S','002',1, layers_to_include)
-exp003 <- analyze_network('36','S','003',1, layers_to_include)
-exp004 <- analyze_network('36','S','004',1, layers_to_include)
-comparison <- rbind(exp001$network_properties,
-                    exp002$network_properties,
-                    exp003$network_properties,
-                    exp004$network_properties)
-comparison_interlayer <- rbind(exp001$interlayer_properties,
-                               exp002$interlayer_properties,
-                               exp003$interlayer_properties,
-                               exp004$interlayer_properties)
-
-comparison %>% 
-  select('exp','layer','Num_nodes','Num_edges','mean_edge_weight','GCC','density','mean_degree','diameter','M11--A<->B<->C','M16--A<->B<->C_A<->C') %>%
+x %>% 
+  select('exp','layer','Num_nodes','Num_edges','mean_edge_weight','GCC','density','mean_degree','diameter','M11--A<->B<->C','M16--A<->B<->C_A<->C','density_il','num_edges_il', 'mean_edge_weight_il', 'mean_strength_s') %>%
   gather(variable, value, -exp, -layer) %>% 
+  mutate(variable=factor(variable, levels=c('Num_nodes',
+                                            'Num_edges',
+                                            'density',
+                                            'mean_degree',
+                                            'mean_edge_weight',
+                                            'diameter',
+                                            'GCC','M11--A<->B<->C','M16--A<->B<->C_A<->C',
+                                            'num_edges_il','density_il','mean_edge_weight_il','mean_strength_s'))) %>% 
   ggplot(aes(layer, value, color=exp))+
   geom_line()+
   scale_color_manual(values=exp_cols)+
@@ -497,35 +494,6 @@ comparison %>%
   geom_vline(xintercept = c(13,13+24,13+60,13+120))+
   mytheme+
   theme(panel.grid.minor = element_blank(), legend.position = 'none')
-
-
-
-exp001_G <- analyze_network('36','G','001',1, layers_to_include)
-exp002_G <- analyze_network('36','G','002',1, layers_to_include)
-exp003_G <- analyze_network('36','G','003',1, layers_to_include)
-exp004_G <- analyze_network('36','G','004',1, layers_to_include)
-
-
-
-comparison_G <- rbind(network_properties_exp001_G,network_properties_exp002_G,network_properties_exp003_G,network_properties_exp004_G)
-
-comparison_interlayer <- rbind(interlayer_properties_exp001,interlayer_properties_exp002,interlayer_properties_exp003,interlayer_properties_exp004)
-comparison_interlayer_G <- rbind(interlayer_properties_exp001_G,interlayer_properties_exp002_G,interlayer_properties_exp003_G,interlayer_properties_exp004_G)
-
-
-
-comparison_G %>% 
-  select('exp','layer','Num_nodes','Num_edges','mean_edge_weight','GCC','density','mean_degree','diameter','M11--A<->B<->C','M16--A<->B<->C_A<->C') %>%
-  gather(variable, value, -exp, -layer) %>% 
-  ggplot(aes(layer, value, color=exp))+
-  geom_line()+
-  scale_color_manual(values=exp_cols)+
-  scale_x_continuous(breaks = seq(1,max(layers_to_include),20))+
-  facet_wrap(~variable,scales='free')+
-  geom_vline(xintercept = c(13,13+24,13+60,13+120))+
-  mytheme+
-  theme(panel.grid.minor = element_blank(), legend.position = 'none')
-
 
 
 # Example for structure ---------------------------------------------------

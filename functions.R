@@ -1240,11 +1240,12 @@ get_interlayer_properties <- function(network_object, layers_to_include, num_pro
     interlayer_properties[as.character(l),6] <- mean(strength(g, vids = V(g)[V(g)$type==T]))
     interlayer_properties[as.character(l),7] <- mean(strength(g, vids = V(g)[V(g)$type==F]))
   }
-  colnames(interlayer_properties) <- c('num_nodes_s','num_nodes_t','density','num_edges','mean_edge_w','mean_strength_s','mean_strength_t')
+  colnames(interlayer_properties) <- c('num_nodes_s','num_nodes_t','density_il','num_edges_il','mean_edge_weight_il','mean_strength_s','mean_strength_t')
   interlayer_properties <- as.tibble(interlayer_properties)
   interlayer_properties$layer <- head(layers_to_include, -1)
   return(interlayer_properties)
 }
+
 
 # This is a wrapper function
 analyze_network <- function(ps, scenario, exp, run, layers_to_include){
@@ -1254,6 +1255,32 @@ analyze_network <- function(ps, scenario, exp, run, layers_to_include){
   interlayer_properties <- get_interlayer_properties(network_object, layers_to_include)
   interlayer_properties$exp <- exp
   return(list(network_object=network_object,network_properties=network_properties,interlayer_properties=interlayer_properties))
+}
+
+# This is a wrapper function
+analyze_networks_multiple <- function(ps, scenario, experiments=c('001','002','003','004'), runs, layers_to_include, folder='Documents'){
+  results <- c()
+  for (exp in experiments){
+    for (run in runs){
+      network_object <- get_network_structure(ps,scenario,exp,run, layers_to_include, folder = folder)
+      
+      network_properties <- get_network_properties(network_object, layers_to_include)
+      network_properties$PS <- ps
+      network_properties$scenario <- scenario
+      network_properties$exp <- exp
+      network_properties$run <- run
+      
+      interlayer_properties <- get_interlayer_properties(network_object, layers_to_include)
+      interlayer_properties$PS <- ps
+      interlayer_properties$scenario <- scenario
+      interlayer_properties$exp <- exp
+      interlayer_properties$run <- run
+      
+      x <- full_join(network_properties, interlayer_properties, by=c('PS','scenario','exp','run','layer'))
+      results <- rbind(results, x)
+     }
+  }
+  return(results)
 }
 
 # Network properties ------------------------------------------------------
@@ -1286,7 +1313,7 @@ f_03_globalClusteringCoeff <- function(g, GC=F){
 }
 
 f_04_gdensity <- function(g){
-  return(graph.density(g, loops = F))
+  return(ecount(g)/(vcount(g)*(vcount(g)-1)))
 }
 
 f_05_proportionSingletons <- function(g){
