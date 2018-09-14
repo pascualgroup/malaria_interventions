@@ -744,7 +744,7 @@ get_data <- function(parameter_space, scenario, experiment, run, sampling_period
     if (on_Midway()){
       sqlite_file <- paste('sqlite/',base_name,'.sqlite',sep='')
     } else {
-      sqlite_file <- paste('~/Documents/malaria_interventions_data/sqlite_',scenario,'/',base_name,'.sqlite',sep='')
+      sqlite_file <- paste('~/Dropbox/malaria_interventions_data/sqlite_',scenario,'/',base_name,'.sqlite',sep='')
     }
     
     if (!file.exists(sqlite_file)) {
@@ -818,7 +818,7 @@ get_data <- function(parameter_space, scenario, experiment, run, sampling_period
   }
   
   if (!use_sqlite){
-    file <- paste(parameter_space,'_',scenario,'/PS',parameter_space,'_',scenario,'_E',experiment,'_R',run,'_summary_general.csv',sep='')
+    file <- paste('~/Dropbox/malaria_interventions_data/Results/',parameter_space,'_',scenario,'/PS',parameter_space,'_',scenario,'_E',experiment,'_R',run,'_summary_general.csv',sep='')
     if (!file.exists(file)){
       print(paste(file, 'does not exist, ignoring and returning NULL'))
       return(NULL)
@@ -998,7 +998,7 @@ createTemporalNetwork <- function(ps, scenario, exp, run, cutoff_prob=0.9, cutof
   if (on_Midway()){
     sqlite_file <- paste('sqlite/',base_name,'.sqlite',sep='')
   } else {
-    sqlite_file <- paste('~/Documents/malaria_interventions_data/sqlite_',scenario,'/',base_name,'.sqlite',sep='')
+    sqlite_file <- paste('~/Dropbox/malaria_interventions_data/sqlite_',scenario,'/',base_name,'.sqlite',sep='')
   }
   
   # Extract data from sqlite. variable names correspond to table names
@@ -1094,9 +1094,167 @@ createTemporalNetwork <- function(ps, scenario, exp, run, cutoff_prob=0.9, cutof
 
 
 
+# Get network data --------------------------------------------------------
 
+# This function builds the network object from the result files produced on Midway
+get_network_structure <- function(ps, scenario, exp, run, layers_to_include, parse_interlayer=T, plotit=F, folder='Documents'){
+  require(utils)
+  basename <- paste('PS',ps,'_',scenario,'_E',exp,'_R',run,sep='')
+  network_structure <- list()
+  
+  
+  print('Getting network info...')
+  network_structure$layer_summary <- suppressMessages(read_csv(paste('~/',folder,'/malaria_interventions_data/Results/',ps,'_',scenario,'/',basename,'_layer_summary.csv',sep='')))
+  info <- fread(paste('~/',folder,'/malaria_interventions_data/Results/',ps,'_',scenario,'/',basename,'_network_info.csv',sep=''))
+  network_structure$cutoff_prob <- as.numeric(info[5,1])
+  network_structure$cutoff_value <- as.numeric(info[6,1])
+  network_structure$base_name <- basename
+  network_structure$source <- 'CSV'
+  
+  
+  print('Parsing nodes and edges...')
+  network_structure$temporal_network <- list()
+  intralayer <- fread(paste('~/',folder,'/malaria_interventions_data/Results/',ps,'_',scenario,'/',basename,'_intralayer.csv',sep=''))
+  nodelist <- fread(paste('~/',folder,'/malaria_interventions_data/Results/',ps,'_',scenario,'/',basename,'_node_list.csv',sep=''))
+  print('Getting layers...')
+  pb <- txtProgressBar(min = 1, max=max(layers_to_include))
+  for (l in layers_to_include){
+    setTxtProgressBar(pb, l)
+    tmp <- subset(intralayer, layer_s==l)
+    if (nrow(tmp)==0){
+      network_structure$temporal_network[[l]] <- matrix(0,0,0)
+    } else {
+      names(tmp)[5] <- 'weight'
+      tmp_nodelist <- subset(nodelist, nodeID%in%union(tmp$node_s,tmp$node_t))
+      g <- graph.data.frame(tmp[,c(2,4,5)], vertices = tmp_nodelist)
+      V(g)$name <- V(g)$nodeLabel
+      network_structure$temporal_network[[l]] <- g
+    }
+  }
+  close(pb)
+  
+  
+  if(parse_interlayer){
+    print('Parsing interlayer edges...')
+    network_structure$interlayer <- list()
+    interlayer <- fread(paste('~/',folder,'/malaria_interventions_data/Results/',ps,'_',scenario,'/',basename,'_interlayer.csv',sep=''))
+    print('Getting interlayer edge structures as bipartite graphs...')
+    pb <- txtProgressBar(min = 1, max=max(layers_to_include)-1)
+    for (l in head(layers_to_include,-1)){
+      setTxtProgressBar(pb, l)
+      tmp <- subset(interlayer, layer_s==l)
+      if (nrow(tmp)==0){
+        network_structure$interlayer[[l]] <- matrix(0,0,0)
+      } else {
+        names(tmp)[5] <- 'weight'
+        tmp_nodelist <- subset(nodelist, nodeID%in%union(tmp$node_s,tmp$node_t))
+        # print('--> Applying a cutoff to the interlayer edges...')
+        tmp <- subset(tmp, weight>=network_structure$cutoff_value)
+        # print('--> Adjusting state nodes...')
+        # Need to define state nodes
+        tmp$from <- paste(tmp$layer_s,tmp$node_s,sep = '_')
+        tmp$to <- paste(tmp$layer_t,tmp$node_t,sep = '_')
+        # Define state nodes in the node list data frame
+        tmp_nodelist_from <- tmp_nodelist_to <- tmp_nodelist
+        tmp_nodelist_from$nodeID <- paste(l,tmp_nodelist_from$nodeID,sep='_')
+        tmp_nodelist_from <- subset(tmp_nodelist_from, nodeID%in%tmp$from)
+        tmp_nodelist_from$layer <- l
+        tmp_nodelist_to$nodeID <- paste(l+1,tmp_nodelist_to$nodeID,sep='_')
+        tmp_nodelist_to <- subset(tmp_nodelist_to, nodeID%in%tmp$to)
+        tmp_nodelist_to$layer <- l+1
+        tmp_nodelist <- rbind(tmp_nodelist_from,tmp_nodelist_to)
+        
+        # Create the graph
+        # print('--> parsing interlayer edges as a bipartite graph...')
+        g <- graph.data.frame(tmp[,c(6,7,5)], vertices = tmp_nodelist, directed = T)
+        tmp <- as.data.frame(tmp)
+        V(g)$type <- V(g)$name %in% tmp[,6] # make it bipartite
+        network_structure$interlayer[[l]] <- g
+      }
+    }
+    close(pb)
+  }
+  
+  if (plotit){
+    x <- as.tibble(network_structure$layer_summary)
+    print(x %>% gather(variable, value, -layer) %>% 
+            ggplot(aes(layer, value, color=variable))+
+            geom_line()+
+            scale_x_continuous(breaks = seq(1,max(x$layer)+5,5))+
+            mytheme+
+            theme(panel.grid.minor = element_blank())
+    )
+  } 
+  print('Done')
+  return(network_structure)
+}
 
+# This function gets a network object and calculates network properties poer layer
+get_network_properties <- function(network_object, layers_to_include, num_properties=25){
+  network_properties <- matrix(NA,ncol=num_properties, nrow=length(layers_to_include))
+  rownames(network_properties) <- layers_to_include
+  print('Calculating network properties for layers...')
+  pb <- txtProgressBar(min = 1, max=max(layers_to_include))
+  for (l in layers_to_include){
+    setTxtProgressBar(pb, l)
+    # print(l)
+    if (class(network_object$temporal_network[[l]])=='matrix'){
+      if (nrow(network_object$temporal_network[[l]])==0){
+        print(paste('Layer ',l,' does not exist, putting NA',sep=''))
+        network_properties[as.character(l),] <- NA
+        next
+      }
+    }
+    tmp <- calculateFeatures(network_object, l)
+    network_properties[as.character(l),] <- tmp
+  }
+  close(pb)
+  colnames(network_properties) <- names(tmp)
+  network_properties <- as.tibble(network_properties)
+  network_properties$layer <- layers_to_include
+  return(network_properties)
+}
 
+get_interlayer_properties <- function(network_object, layers_to_include, num_properties=7){
+  interlayer_properties <- matrix(NA,ncol=num_properties, nrow=length(layers_to_include)-1)
+  rownames(interlayer_properties) <- head(layers_to_include, -1)
+  print('Calculating network properties for interlayer edges...')
+  pb <- txtProgressBar(min = 1, max=max(layers_to_include)-1)
+  for (l in head(layers_to_include, -1)){
+    setTxtProgressBar(pb, l)
+    g <- network_object$interlayer[[l]]
+    # print(l)
+    if (class(g)=='matrix'){
+      if (nrow(g)==0){
+        print(paste('Layer ',l,' does not exist, putting NA',sep=''))
+        interlayer_properties[as.character(l),] <- NA
+        next
+      }
+    }
+    close(pb)
+    interlayer_properties[as.character(l),1] <- sum(V(g)$type==T)
+    interlayer_properties[as.character(l),2] <- sum(V(g)$type==F)
+    interlayer_properties[as.character(l),3] <- graph.density(g)
+    interlayer_properties[as.character(l),4] <- ecount(g)
+    interlayer_properties[as.character(l),5] <- mean(E(g)$weight)
+    interlayer_properties[as.character(l),6] <- mean(strength(g, vids = V(g)[V(g)$type==T]))
+    interlayer_properties[as.character(l),7] <- mean(strength(g, vids = V(g)[V(g)$type==F]))
+  }
+  colnames(interlayer_properties) <- c('num_nodes_s','num_nodes_t','density','num_edges','mean_edge_w','mean_strength_s','mean_strength_t')
+  interlayer_properties <- as.tibble(interlayer_properties)
+  interlayer_properties$layer <- head(layers_to_include, -1)
+  return(interlayer_properties)
+}
+
+# This is a wrapper function
+analyze_network <- function(ps, scenario, exp, run, layers_to_include){
+  network_object <- get_network_structure(ps,scenario,exp,run, layers_to_include)
+  network_properties <- get_network_properties(network_object, layers_to_include)
+  network_properties$exp <- exp
+  interlayer_properties <- get_interlayer_properties(network_object, layers_to_include)
+  interlayer_properties$exp <- exp
+  return(list(network_object=network_object,network_properties=network_properties,interlayer_properties=interlayer_properties))
+}
 
 # Network properties ------------------------------------------------------
 f_01_averageLocalClusteringCoeff <- function(g,GC=F){
@@ -1128,7 +1286,7 @@ f_03_globalClusteringCoeff <- function(g, GC=F){
 }
 
 f_04_gdensity <- function(g){
-  return(graph.density(g))
+  return(graph.density(g, loops = F))
 }
 
 f_05_proportionSingletons <- function(g){
@@ -1219,6 +1377,10 @@ f_20_averageClosenessCentrality <- function(g){
   mean(closeness(g, weights = NULL))
 }
 
+f_21_averageEdgeWeight <- function(g){
+  mean(E(g)$weight)
+}
+
 graphDensityDirected <- function(m){ # density of directed graphs
   E = sum(m!=0)-length(diag(m)) # in our networks the diagonal is 1 so this should be considered.
   N=nrow(m)
@@ -1266,19 +1428,26 @@ motifsProportion <- function(g){ # Calculate the proportion of each of the 16 mo
 
 calculateFeatures <- function(network_object, l, remove.loops=F){
   g <- network_object$temporal_network[[l]]
-  g <- graph.adjacency(g, weighted = T, mode = 'directed')
+  if (class(g)!='matrix' & class(g)!='igraph'){
+    stop('Network is not a matrix neither an igraph object')
+  }
+  if (class(g)=='matrix'){
+    g <- graph.adjacency(g, weighted = T, mode = 'directed')
+  }
   if(remove.loops){g <- simplify(g, remove.multiple = F, remove.loops = T)}
   
   featureVector <- NULL
   featureVector <- c(featureVector, vcount(g))
+  featureVector <- c(featureVector, ecount(g))
   featureVector <- c(featureVector, f_03_globalClusteringCoeff(g))
   featureVector <- c(featureVector, f_04_gdensity(g))
   featureVector <- c(featureVector, f_07_meanDegree(g))
   featureVector <- c(featureVector, f_12_ratioComponents(g))
   featureVector <- c(featureVector, f_15_giantConnectedRatio(g))
   featureVector <- c(featureVector, f_17_gdiameter(g))
+  featureVector <- c(featureVector, f_21_averageEdgeWeight(g))
   featureVector <- c(featureVector, motifsProportion(g))
-  names(featureVector)[1:7] <- c('Num_nodes','GCC','density','mean_degree','ratio_comp','nodes_in_giant_comp','diameter')
+  names(featureVector)[1:9] <- c('Num_nodes','Num_edges','GCC','density','mean_degree','ratio_comp','nodes_in_giant_comp','diameter','mean_edge_weight')
   
   # featureVector <- vector(length=32)
   # Diagnostics of transitivity

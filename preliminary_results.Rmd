@@ -98,9 +98,6 @@ In general, higher diversity promotes survival through an intervention. Although
 <<INTERVENTION_STATS_LOAD>>
 ```
 
-```{r TIME TO EXTINCTION (PLOT), echo=FALSE, fig.width=16,fig.height=9,dpi=300,out.width="1920px",out.height="1080px"}
-<<TIME_TO_EXTINCTION_PLOT>>
-```
 
 # Probability of extinction as a proportion of runs which went extinct
 Because not all runs went extinct, I quantified the ability to survive IRS as the proportion of runs that went extinct (should be 0 for control). One expects a higher proportion in a stronger IRS and lower diversity. This is the general trend although again, the expected monotnic relationship between diversity and extinction probablty is absent.
@@ -124,39 +121,42 @@ This previous figure can be summarized by calculating the ratio between the pre-
 <<IRS_EFFECT_RATIO_PLOT>>
 ```
 
-<!-- # Selection vs. Neutral vs. Generalized immunity -->
-<!-- As the ulimate goal is to understand the role that population structure plays in the resiliene of the population, the next step is to compare the response of the population under different scenarios. In essence, this repeats the above analysis above for the neutral and generalized immunity cases, and then comapres the three scenarios. -->
+# Selection vs. Generalized immunity
+As the ulimate goal is to understand the role that population structure plays in the resiliene of the population, the next step is to compare the response of the population under different scenarios. In essence, this repeats the above analysis above for the neutral and generalized immunity cases, and then comapres the three scenarios.
 
-<!-- ## Time series of measure variables -->
-<!-- First, let's take a look how the time series of several measure variables in each of the 4 experiments change with scenario. -->
+## Time series of measure variables
+First, let's take a look how the time series of several measure variables in each of the 4 experiments change with scenario.
 
-<!-- ```{r COMPARE SCENARIOS (LOAD DATA), cache=TRUE, include=FALSE} -->
-<!-- <<COMPARE_SCENARIOS_TS_LOAD>> -->
-<!-- ``` -->
+```{r COMPARE SCENARIOS (LOAD DATA), cache=TRUE, include=FALSE}
+<<COMPARE_SCENARIOS_TS_LOAD>>
+```
 
-<!-- ```{r COMPARE SCENARIOS (PLOT), echo=FALSE, fig.width=16,fig.height=9,dpi=300,out.width="1920px",out.height="1080px"} -->
-<!-- <<COMPARE_SCENARIOS_TS_PLOT>> -->
-<!-- ``` -->
+```{r COMPARE SCENARIOS (PLOT), echo=FALSE, fig.width=16,fig.height=9,dpi=300,out.width="1920px",out.height="1080px"}
+<<COMPARE_SCENARIOS_TS_PLOT>>
+```
 
-<!-- ## Time and probability to extinction -->
-<!-- Our previous findings suggested that immune selection promotes the persistence of the parasite population across interventions. In that case we expect that the time and probability of extinction would be higher in the immune selection case. -->
+## Time and probability to extinction
+Our previous findings suggested that immune selection promotes the persistence of the parasite population across interventions. In that case we expect that the time and probability of extinction would be higher in the immune selection case.
 
-<!-- ```{r LOAD SCENARIOS DATA, cache=TRUE, include=FALSE} -->
-<!-- <<COMPARE_IRS_EFFECT_SCENARIOS_LOAD>> -->
-<!-- ``` -->
+```{r LOAD SCENARIOS DATA, cache=TRUE, include=FALSE}
+<<COMPARE_IRS_EFFECT_SCENARIOS_LOAD>>
+```
 
 <!-- ```{r TIME TO EXTINCTION ACROSS SCENARIOS (PLOT), echo=FALSE, fig.width=16,fig.height=9,dpi=300,out.width="1920px",out.height="1080px"} -->
 <!-- <<TIME_TO_EXTINCTION_SCENARIOS_PLOT>> -->
 <!-- ``` -->
 
-<!-- ```{r PROBABILITY OF EXTINCTION (PLOT), echo=FALSE, fig.width=16,fig.height=9,dpi=300,out.width="1920px",out.height="1080px"} -->
-<!-- # Calculate probability of extinction as a proportion of runs which went extinct -->
-<!-- <<EXTINCTION_PROB_SCENARIOS_PLOT>> -->
-<!-- ``` -->
+```{r PROBABILITY OF EXTINCTION (PLOT), echo=FALSE, fig.width=16,fig.height=9,dpi=300,out.width="1920px",out.height="1080px"}
+# Calculate probability of extinction as a proportion of runs which went extinct
+<<EXTINCTION_PROB_SCENARIOS_PLOT>>
+```
 
-<!-- ## Quantitative effect of IRS in different scenarios -->
-<!-- Again, calculate the ratio between pre- and post-IRS of a given measure variable, in the different scenarios. Only scenarios that did not go extinct appear. That is why the neutral scenario never appears because all runs always go extinct. Generally speaking we can see a stronger effect of IRS on populations with immune selection (red line is below orange line) -->
+## Quantitative effect of IRS in different scenarios
+Again, calculate the ratio between pre- and post-IRS of a given measure variable, in the different scenarios. Only scenarios that did not go extinct appear. That is why the neutral scenario never appears because all runs always go extinct. Generally speaking we can see a stronger effect of IRS on populations with immune selection (red line is below orange line)
 
-<!-- ```{r PRE- VS. POST-IRS ACROSS SCENARIOS (PLOT), echo=FALSE, fig.width=16,fig.height=9,dpi=300,out.width="1920px",out.height="1080px"} -->
-<!-- <<IRS_EFFECT_RATIO_SCENARIOS_PLOT>> -->
-<!-- ``` -->
+```{r PRE- VS. POST-IRS ACROSS SCENARIOS (PLOT), echo=FALSE, fig.width=16,fig.height=9,dpi=300,out.width="1920px",out.height="1080px"}
+<<IRS_EFFECT_RATIO_SCENARIOS_PLOT>>
+```
+
+# Effects of structure
+It is clear then 

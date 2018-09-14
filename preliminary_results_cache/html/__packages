@@ -13,5 +13,7 @@ proto
 gsubfn
 RSQLite
 sqldf
-bindrcpp
+igraph
+data.table
 googlesheets
+bindrcpp
