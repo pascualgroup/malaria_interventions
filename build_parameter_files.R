@@ -129,8 +129,8 @@ for (ps in ps_range){
 # Verify files ------------------------------------------------------------
 
 # --- sqlite files ---
-files_S <- list.files(path = '~/Documents/malaria_interventions_data/sqlite_S/', pattern = '\\.sqlite', full.names = F)
-files_G <- list.files(path = '~/Documents/malaria_interventions_data/sqlite_G/', pattern = '\\.sqlite', full.names = F)
+files_S <- list.files(path = '/media/Data/malaria_interventions_data/sqlite/sqlite_S/', pattern = '\\.sqlite', full.names = F)
+files_G <- list.files(path = '/media/Data/malaria_interventions_data/sqlite/sqlite_G/', pattern = '\\.sqlite', full.names = F)
 files <- c(files_S, files_G)
 # Also consider adding following information: extracting random seeds; existence of corresponding parameter files
 files_sqlite <- tibble(file_sqlite=files,
@@ -156,7 +156,8 @@ unique(files_sqlite$run_time)
 files_sqlite %>% filter(is.na(run_time))
 
 
-files_sqlite %<>% mutate(scenario=factor(scenario, levels=c('S','G')))  %>% arrange(CP, PS, scenario, experiment, run)         
+files_sqlite %<>% mutate(scenario=factor(scenario, levels=c('S','G')))  %>%
+  arrange(CP, PS, scenario, experiment, run)         
 files_sqlite %<>% filter(is.na(CP) & as.numeric(PS)>=27) %>% 
   # filter(scenario=='S') %>% 
   group_by(PS,scenario,experiment) %>% 

@@ -84,11 +84,18 @@ clear_previous_files <- function(parameter_space=NULL, scenario=NULL, experiment
 }
 
 # Requires package googlesheets
-loadExperiments_GoogleSheets <- function(workBookName='malaria_interventions_design',sheetID=4){
-  GS <- gs_title(workBookName)
-  col_types <- GS %>% gs_read(ws=1, col_names=T)
-  col_t <- unname(as.list(col_types[1,]))
-  experiments <- GS %>% gs_read(ws=sheetID, col_names=T, col_types=col_t)
+loadExperiments_GoogleSheets <- function(local=F, workBookName='malaria_interventions_design',sheetID=4){
+  if (local){
+    col_types <- read.csv('~/Documents/malaria_interventions/malaria_interventions_design_col_types.csv',header = T,stringsAsFactors = F)
+    col_t <- unname(as.list(col_types[1,]))
+    experiments <- read_csv('~/Documents/malaria_interventions/malaria_interventions_design_Tests_for_pipeline.csv', col_types = as.list(col_types))
+  }
+  if (!local){
+    GS <- gs_title(workBookName)
+    col_types <- GS %>% gs_read(ws=1, col_names=T)
+    col_t <- unname(as.list(col_types[1,]))
+    experiments <- GS %>% gs_read(ws=sheetID, col_names=T, col_types=col_t)
+  }
   print(experiments)
   return(experiments)
 }
@@ -698,9 +705,9 @@ generate_plots <- function(data, time_range=NULL){
 }
 
 
-plotLayer <- function(network_object, l, edge_weight_multiply=1, remove.loops=T, ver.col=NULL, coords,...) { 
+plotLayer <- function(network_object, l, edge_weight_multiply=1, remove.loops=T, ver.col=NULL, coords=NULL,...) { 
   g <- network_object$temporal_network[[l]]
-  g <- graph.adjacency(g, weighted = T, mode = 'directed')
+  if (class(g)=='matrix'){g <- graph.adjacency(g, weighted = T, mode = 'directed')}
   if(remove.loops){g <- simplify(g, remove.multiple = F, remove.loops = T)}
   # g <- delete_edges(g, which(E(g)$weight<quantile(E(g)$weight, cutoff_g))) # remove all edges smaller than the cutoff
   # layout <-layout.kamada.kawai(g)
@@ -735,6 +742,7 @@ plotLayer <- function(network_object, l, edge_weight_multiply=1, remove.loops=T,
 
 # Data extraction/analysis ------------------------------------------------
 
+
 # This function obtains data from an sqlite file and prepares them for further analysis.
 # requires sqldf
 get_data <- function(parameter_space, scenario, experiment, run, sampling_period=30, host_age_structure=F, use_sqlite=T, tables_to_get=c('summary_general','sampled_infections')){
@@ -744,7 +752,7 @@ get_data <- function(parameter_space, scenario, experiment, run, sampling_period
     if (on_Midway()){
       sqlite_file <- paste('sqlite/',base_name,'.sqlite',sep='')
     } else {
-      sqlite_file <- paste('~/Dropbox/malaria_interventions_data/sqlite_',scenario,'/',base_name,'.sqlite',sep='')
+      sqlite_file <- paste('/media/Data/malaria_interventions_data/sqlite_',scenario,'/',base_name,'.sqlite',sep='')
     }
     
     if (!file.exists(sqlite_file)) {
@@ -818,7 +826,7 @@ get_data <- function(parameter_space, scenario, experiment, run, sampling_period
   }
   
   if (!use_sqlite){
-    file <- paste('~/Dropbox/malaria_interventions_data/Results/',parameter_space,'_',scenario,'/PS',parameter_space,'_',scenario,'_E',experiment,'_R',run,'_summary_general.csv',sep='')
+    file <- paste('/media/Data/malaria_interventions_data/Results/',parameter_space,'_',scenario,'/PS',parameter_space,'_',scenario,'_E',experiment,'_R',run,'_summary_general.csv',sep='')
     if (!file.exists(file)){
       print(paste(file, 'does not exist, ignoring and returning NULL'))
       return(NULL)
@@ -963,6 +971,16 @@ post_intervention_stats <- function(PS, scenario='S', exp, run, post_interventio
 }
 
 
+get_duration_infection <- function(parameter_space, scenario, experiment, run){
+  if (on_Midway()){
+    sqlite_file <- list.files(path = 'sqlite/', pattern=paste('PS',parameter_space,'_',scenario,'_E',experiment,'_R',run,'.sqlite',sep=''), full.names = T)
+  } else {
+    sqlite_file <- list.files(path = paste('/media/Data/malaria_interventions_data/sqlite_',scenario,'/',sep=''), pattern=paste('PS',parameter_space,'_',scenario,'_E',experiment,'_R',run,'.sqlite',sep=''), full.names = T)
+  }
+  db <- dbConnect(SQLite(), dbname = sqlite_file)
+  sampled_duration <- dbGetQuery(db, 'SELECT * FROM sampled_duration')
+  return(as.tibble(sampled_duration))
+}
 
 # Generate networks -------------------------------------------------------
 
@@ -998,7 +1016,7 @@ createTemporalNetwork <- function(ps, scenario, exp, run, cutoff_prob=0.9, cutof
   if (on_Midway()){
     sqlite_file <- paste('sqlite/',base_name,'.sqlite',sep='')
   } else {
-    sqlite_file <- paste('~/Dropbox/malaria_interventions_data/sqlite_',scenario,'/',base_name,'.sqlite',sep='')
+    sqlite_file <- paste('/media/Data/malaria_interventions_data/sqlite_',scenario,'/',base_name,'.sqlite',sep='')
   }
   
   # Extract data from sqlite. variable names correspond to table names
@@ -1097,15 +1115,15 @@ createTemporalNetwork <- function(ps, scenario, exp, run, cutoff_prob=0.9, cutof
 # Get network data --------------------------------------------------------
 
 # This function builds the network object from the result files produced on Midway
-get_network_structure <- function(ps, scenario, exp, run, layers_to_include, parse_interlayer=T, plotit=F, folder='Documents'){
+get_network_structure <- function(ps, scenario, exp, run, layers_to_include, parse_interlayer=T, plotit=F, folder='/media/Data/'){
   require(utils)
   basename <- paste('PS',ps,'_',scenario,'_E',exp,'_R',run,sep='')
   network_structure <- list()
   
   
   print('Getting network info...')
-  network_structure$layer_summary <- suppressMessages(read_csv(paste('~/',folder,'/malaria_interventions_data/Results/',ps,'_',scenario,'/',basename,'_layer_summary.csv',sep='')))
-  info <- fread(paste('~/',folder,'/malaria_interventions_data/Results/',ps,'_',scenario,'/',basename,'_network_info.csv',sep=''))
+  network_structure$layer_summary <- suppressMessages(read_csv(paste(folder,'/malaria_interventions_data/Results/',ps,'_',scenario,'/',basename,'_layer_summary.csv',sep='')))
+  info <- fread(paste(folder,'/malaria_interventions_data/Results/',ps,'_',scenario,'/',basename,'_network_info.csv',sep=''))
   network_structure$cutoff_prob <- as.numeric(info[5,1])
   network_structure$cutoff_value <- as.numeric(info[6,1])
   network_structure$base_name <- basename
@@ -1114,8 +1132,8 @@ get_network_structure <- function(ps, scenario, exp, run, layers_to_include, par
   
   print('Parsing nodes and edges...')
   network_structure$temporal_network <- list()
-  intralayer <- fread(paste('~/',folder,'/malaria_interventions_data/Results/',ps,'_',scenario,'/',basename,'_intralayer.csv',sep=''))
-  nodelist <- fread(paste('~/',folder,'/malaria_interventions_data/Results/',ps,'_',scenario,'/',basename,'_node_list.csv',sep=''))
+  intralayer <- fread(paste(folder,'/malaria_interventions_data/Results/',ps,'_',scenario,'/',basename,'_intralayer.csv',sep=''))
+  nodelist <- fread(paste(folder,'/malaria_interventions_data/Results/',ps,'_',scenario,'/',basename,'_node_list.csv',sep=''))
   print('Getting layers...')
   pb <- txtProgressBar(min = 1, max=max(layers_to_include))
   for (l in layers_to_include){
@@ -1137,7 +1155,7 @@ get_network_structure <- function(ps, scenario, exp, run, layers_to_include, par
   if(parse_interlayer){
     print('Parsing interlayer edges...')
     network_structure$interlayer <- list()
-    interlayer <- fread(paste('~/',folder,'/malaria_interventions_data/Results/',ps,'_',scenario,'/',basename,'_interlayer.csv',sep=''))
+    interlayer <- fread(paste(folder,'/malaria_interventions_data/Results/',ps,'_',scenario,'/',basename,'_interlayer.csv',sep=''))
     print('Getting interlayer edge structures as bipartite graphs...')
     pb <- txtProgressBar(min = 1, max=max(layers_to_include)-1)
     for (l in head(layers_to_include,-1)){
@@ -1258,11 +1276,11 @@ analyze_network <- function(ps, scenario, exp, run, layers_to_include){
 }
 
 # This is a wrapper function
-analyze_networks_multiple <- function(ps, scenario, experiments=c('001','002','003','004'), runs, layers_to_include, folder='Documents'){
+analyze_networks_multiple <- function(ps, scenario, experiments=c('001','002','003','004'), runs, layers_to_include, parse_interlayer=T, folder='/media/Data/'){
   results <- c()
   for (exp in experiments){
     for (run in runs){
-      network_object <- get_network_structure(ps,scenario,exp,run, layers_to_include, folder = folder)
+      network_object <- get_network_structure(ps,scenario,exp,run, layers_to_include, folder = folder, parse_interlayer = parse_interlayer)
       
       network_properties <- get_network_properties(network_object, layers_to_include)
       network_properties$PS <- ps
@@ -1270,13 +1288,16 @@ analyze_networks_multiple <- function(ps, scenario, experiments=c('001','002','0
       network_properties$exp <- exp
       network_properties$run <- run
       
-      interlayer_properties <- get_interlayer_properties(network_object, layers_to_include)
-      interlayer_properties$PS <- ps
-      interlayer_properties$scenario <- scenario
-      interlayer_properties$exp <- exp
-      interlayer_properties$run <- run
-      
-      x <- full_join(network_properties, interlayer_properties, by=c('PS','scenario','exp','run','layer'))
+      if(parse_interlayer){
+        interlayer_properties <- get_interlayer_properties(network_object, layers_to_include)
+        interlayer_properties$PS <- ps
+        interlayer_properties$scenario <- scenario
+        interlayer_properties$exp <- exp
+        interlayer_properties$run <- run
+        x <- full_join(network_properties, interlayer_properties, by=c('PS','scenario','exp','run','layer'))
+      } else {
+        x <- network_properties
+      }
       results <- rbind(results, x)
      }
   }
