@@ -22,22 +22,23 @@ run_range <- 1:50
 scenario <- 'S'
 monitored_variables <- c('prevalence', 'meanMOI','n_circulating_strains', 'n_circulating_genes', 'n_alleles', 'n_total_bites')
 exp_cols <- c('black','#0A97B7','#B70A97','#97B70A')
+exp_labels=c('Control','2-yr','5-yr','10-yr')
 scenario_cols <- c('red','blue','orange')
 
-factorial_design <- expand.grid(PS=ps_range,exp=exp_range,run=run_range,scenario=c('S','G'))
-if(!file.exists('/media/Data/malaria_interventions_data/all_summary_general_data.csv')){
-  all_data <- NULL
-  for (i in 1:nrow(factorial_design)){
-    print(unname(factorial_design[i,]))
-    tmp <- get_data(parameter_space = factorial_design[i,'PS'], 
-                    scenario = factorial_design[i,'scenario'],
-                    experiment = factorial_design[i,'exp'],
-                    run = factorial_design[i,'run'], 
-                    use_sqlite = F, tables_to_get = 'summary_general')  
-    all_data <- rbind(all_data, tmp[[1]])
-  }
-  write.csv('/media/Data/malaria_interventions_data/all_summary_general_data.csv')
-}
+# factorial_design <- expand.grid(PS=ps_range,exp=exp_range,run=run_range,scenario=c('S','G'))
+# if(!file.exists('/media/Data/malaria_interventions_data/all_summary_general_data.csv')){
+#   all_data <- NULL
+#   for (i in 1:nrow(factorial_design)){
+#     print(unname(factorial_design[i,]))
+#     tmp <- get_data(parameter_space = factorial_design[i,'PS'], 
+#                     scenario = factorial_design[i,'scenario'],
+#                     experiment = factorial_design[i,'exp'],
+#                     run = factorial_design[i,'run'], 
+#                     use_sqlite = F, tables_to_get = 'summary_general')  
+#     all_data <- rbind(all_data, tmp[[1]])
+#   }
+#   write.csv('/media/Data/malaria_interventions_data/all_summary_general_data.csv')
+# }
 
 ## @knitr END
 
@@ -99,7 +100,7 @@ exp_comparison %>%
   geom_line()+
   facet_wrap(~variable, scales = 'free')+
   geom_vline(xintercept = c(29160+c(0,720,1800,3600)), linetype='dashed')+
-  scale_color_manual(values=exp_cols)+
+  scale_color_manual(values=exp_cols, labels=exp_labels)+
   # scale_x_continuous(breaks=pretty(x=subset(d, time>time_range[1]&time<time_range[2])$time,n=5))+
   mytheme
 
@@ -222,29 +223,32 @@ if(file.exists('intervention_stats.csv') & file.exists('intervention_stats_diff.
   write_csv(intervention_stats_diff,'intervention_stats_diff.csv')
 }
 
+# as.tibble(intervention_stats) %>% group_by(PS,scenario,exp) %>% summarise(num_runs=length(unique(run))) %>% print(n=Inf)
+# as.tibble(intervention_stats_diff) %>% group_by(PS,scenario,exp) %>% summarise(num_runs=length(unique(run))) %>% print(n=Inf)
+
 ## @knitr END
 
 
-# Get genetic diversity at the onset of intervention ----------------------
-diversity_at_onset <- all_data %>% filter(time%in%(as.numeric(design_irs$IRS_START_TIMES)-15)) %>% 
-  group_by(PS,exp,scenario) %>% summarise(genes_at_onset=mean(n_circulating_genes))
+## @knitr TIME_TO_EXTINCTION_PLOT Get genetic diversity at the onset of
 
-
-## @knitr TIME_TO_EXTINCTION_PLOT
+#intervention. To plot as a function of this diversity instead of the gene pool.
+#It is essentially the same though.
+# diversity_at_onset <- all_data %>% filter(time%in%(as.numeric(design_irs$IRS_START_TIMES)-15)) %>%
+#   group_by(PS,exp,scenario) %>% summarise(genes_at_onset=mean(n_circulating_genes))
 
 # Time to extinction as a function of the diversity
 intervention_stats %>% 
   filter(scenario == 'S') %>% 
-  left_join(diversity_at_onset) %>% 
+  # left_join(diversity_at_onset) %>% 
   left_join(subset(design, select=c(PS,BITING_RATE_MEAN,N_GENES_INITIAL)), by='PS') %>%
-  # group_by(PS, BITING_RATE_MEAN, N_GENES_INITIAL, scenario, exp) %>%
-  group_by(PS, genes_at_onset, N_GENES_INITIAL, scenario, exp) %>%
+  group_by(PS, BITING_RATE_MEAN, N_GENES_INITIAL, scenario, exp) %>%
+  # group_by(PS, genes_at_onset, N_GENES_INITIAL, scenario, exp) %>%
   summarise(time_ext_max=max(time_extinct), time_ext_mean=mean(time_extinct)) %>% 
   ggplot()+
-  geom_point(aes(x=as.numeric(genes_at_onset), y=time_ext_max), size=5, color='red')+
-  geom_point(aes(x=as.numeric(genes_at_onset), y=time_ext_mean), size=5, color='blue')+
-  geom_line(aes(x=as.numeric(genes_at_onset), y=time_ext_max), color='red')+
-  geom_line(aes(x=as.numeric(genes_at_onset), y=time_ext_mean), color='blue')+
+  geom_point(aes(x=as.numeric(N_GENES_INITIAL), y=time_ext_max), size=5, color='red')+
+  geom_point(aes(x=as.numeric(N_GENES_INITIAL), y=time_ext_mean), size=5, color='blue')+
+  geom_line(aes(x=as.numeric(N_GENES_INITIAL), y=time_ext_max), color='red')+
+  geom_line(aes(x=as.numeric(N_GENES_INITIAL), y=time_ext_mean), color='blue')+
   scale_x_continuous("Gene pool size", breaks = seq(1200,15600,1200)) +
   labs(y='Mean and max time to extinction')+
   facet_grid(~exp)+
@@ -257,30 +261,14 @@ intervention_stats %>%
 # Calculate probability of extinction as a proportion of runs which went extinct
 intervention_stats %>% 
   filter(scenario == 'S') %>% 
-  left_join(subset(design, select=c(PS,BITING_RATE_MEAN,N_GENES_INITIAL)), by='PS') %>% 
-  left_join(subset(design_irs, select=c(exp,IRS_START_TIMES,IRS_length))) %>%
-  distinct(PS, N_GENES_INITIAL, exp, run, time_extinct,IRS_START_TIMES,IRS_length) %>% 
-  mutate(extinct=ifelse(time_extinct<as.numeric(IRS_START_TIMES)+as.numeric(IRS_length),1,0)) %>%
-  group_by(PS, N_GENES_INITIAL, exp) %>% 
-  summarise(extinct_prob=sum(extinct)/max(intervention_stats$run)) %>% 
-  ggplot(aes(x=N_GENES_INITIAL, y=extinct_prob, group=exp, color=exp))+
-  geom_point(size=4)+
-  geom_line()+
-  scale_x_continuous("Gene pool size", breaks = seq(1200,15600,1200)) +
-  scale_color_manual(values=exp_cols)+
-  # facet_wrap(~exp)+
-  mytheme+
-  theme(axis.text.x = element_text(angle = 90, hjust=0))
-
-
-intervention_stats %>% 
-  filter(scenario == 'S') %>% 
-  left_join(diversity_at_onset) %>% 
+  # left_join(diversity_at_onset) %>% 
   left_join(subset(design, select=c(PS,BITING_RATE_MEAN,N_GENES_INITIAL)), by='PS') %>%
   left_join(subset(design_irs, select=c(exp,IRS_START_TIMES,IRS_length))) %>%
-  distinct(PS, genes_at_onset, N_GENES_INITIAL, exp, run, time_extinct,IRS_START_TIMES,IRS_length) %>% 
+  # distinct(PS, genes_at_onset, N_GENES_INITIAL, exp, run, time_extinct,IRS_START_TIMES,IRS_length) %>% 
+  distinct(PS, N_GENES_INITIAL, exp, run, time_extinct,IRS_START_TIMES,IRS_length) %>% 
   mutate(extinct=ifelse(time_extinct<as.numeric(IRS_START_TIMES)+as.numeric(IRS_length),1,0)) %>%
-  group_by(PS, N_GENES_INITIAL, genes_at_onset, exp) %>% 
+  # group_by(PS, N_GENES_INITIAL, genes_at_onset, exp) %>% 
+  group_by(PS, N_GENES_INITIAL, exp) %>% 
   summarise(extinct_prob=sum(extinct)/max(intervention_stats$run)) %>% 
   ggplot(aes(x=N_GENES_INITIAL, y=extinct_prob, group=exp, color=exp))+ # Can use either genes_at_onset or N_GENES_INITIAL
   # ggplot(aes(x=genes_at_onset, y=extinct_prob, group=exp, color=exp))+ # Can use either genes_at_onset or N_GENES_INITIAL
@@ -288,10 +276,11 @@ intervention_stats %>%
   geom_line()+
   scale_x_continuous("Gene pool size", breaks = seq(1200,15600,1200)) +
   # scale_x_continuous("Gene pool size", breaks = seq(min(diversity_at_onset$genes_at_onset),max(diversity_at_onset$genes_at_onset),length.out = 15)) +
-  scale_color_manual(values=exp_cols)+
+  scale_color_manual(values=exp_cols, labels=exp_labels)+
   # facet_wrap(~exp)+
   mytheme+
   theme(axis.text.x = element_text(angle = 90, hjust=0))
+
 ## @knitr IRS_EFFECT_TS_PLOT
 
 # A time series of difference between control and experiment.
@@ -303,10 +292,10 @@ intervention_stats_diff %>%
   group_by(time,variable,PS,scenario,exp,BITING_RATE_MEAN,N_GENES_INITIAL) %>% 
   summarise(diff=mean(diff)) %>% 
   ggplot(aes(x=time, y=diff))+
-  geom_line(color='#97B70A', size=1)+
-  geom_hline(yintercept = 0, color='black')+
-  facet_wrap(~variable, scales='free_y')+
-  mytheme+theme(legend.position = 'none')
+    geom_line(color='#97B70A', size=1)+
+    geom_hline(yintercept = 0, color='black')+
+    facet_wrap(~variable, scales='free_y')+
+    mytheme+theme(legend.position = 'none')
 
 
 ## @knitr IRS_EFFECT_RATIO_PLOT
@@ -332,16 +321,16 @@ intervention_stats_diff %>%
   mutate(error_up=mean_ratio+sd_ratio,
          error_low=mean_ratio-sd_ratio) %>%
   ggplot(aes(x=as.numeric(N_GENES_INITIAL), y=mean_ratio, color=exp, group=exp))+
-  geom_point(size=3)+
-  geom_line()+
-  scale_x_continuous("Gene pool size", breaks = seq(1200,15600,1200)) +
-  geom_errorbar(aes(ymin=error_low, ymax=error_up), width=0.1)+
-  geom_line(aes(x=as.numeric(N_GENES_INITIAL), y=error_up, color=exp, group=exp), linetype='dashed')+
-  geom_line(aes(x=as.numeric(N_GENES_INITIAL), y=error_low, color=exp, group=exp), linetype='dashed')+
-  scale_color_manual(values=exp_cols)+
-  facet_wrap(~variable,scales='free_y')+
-  mytheme+
-  theme(axis.text.x = element_text(angle = 90, hjust=0))
+    geom_point(size=3)+
+    geom_line()+
+    scale_x_continuous("Gene pool size", breaks = seq(1200,15600,1200)) +
+    geom_errorbar(aes(ymin=error_low, ymax=error_up), width=0.1)+
+    geom_line(aes(x=as.numeric(N_GENES_INITIAL), y=error_up, color=exp, group=exp), linetype='dashed')+
+    geom_line(aes(x=as.numeric(N_GENES_INITIAL), y=error_low, color=exp, group=exp), linetype='dashed')+
+    scale_color_manual(values=exp_cols, labels=exp_labels)+
+    facet_wrap(~variable,scales='free_y')+
+    mytheme+
+    theme(axis.text.x = element_text(angle = 90, hjust=0))
 
 
 ## @knitr END
@@ -460,74 +449,42 @@ intervention_stats_diff %>%
 
 
 # Edge weight distributions -----------------------------------------------
-PS <- '36'
+## @knitr Edge_weights_distributions_Load
+
+PS <- '29'
 scenario <- 'S'
-exp_comparison <- map(exp_range, function(e){
-  tmp <- get_data(parameter_space = PS, scenario = scenario, experiment = e, run = 1, use_sqlite = F, tables_to_get = 'summary_general')
-  return(tmp[[1]])
-}) %>% bind_rows()
-plot_S <- exp_comparison %>%
-  left_join(layer_map) %>% 
-  select(-year, -month, -n_infected) %>% 
-  filter(time>time_range[1]&time<time_range[2]) %>%
-  gather(variable, value, -time, -layer, -exp, -PS, -scenario, -run, -pop_id) %>% 
-  filter(variable %in% c('n_circulating_strains','n_circulating_genes')) %>%
-  group_by(time, layer, PS, exp, variable) %>% # Need to average across runs
-  summarise(value_mean=mean(value)) %>% 
-  ggplot(aes(x=layer, y=value_mean, color=exp))+
-  geom_line()+
-  facet_wrap(~variable, scales = 'free')+
-  geom_vline(xintercept = c(12+c(0,24,60,120)), linetype='dashed')+
-  scale_color_manual(values=exp_cols)+
-  labs(title=scenario)+
-  # scale_x_continuous(breaks=pretty(x=subset(d, time>time_range[1]&time<time_range[2])$time,n=5))+
-  mytheme
-scenario <- 'G'
-exp_comparison <- map(exp_range, function(e){
-  tmp <- get_data(parameter_space = PS, scenario = scenario, experiment = e, run = 1, use_sqlite = F, tables_to_get = 'summary_general')
-  return(tmp[[1]])
-}) %>% bind_rows()
-plot_G <- exp_comparison %>%
-  left_join(layer_map) %>% 
-  select(-year, -month, -n_infected) %>% 
-  filter(time>time_range[1]&time<time_range[2]) %>%
-  gather(variable, value, -time, -layer, -exp, -PS, -scenario, -run, -pop_id) %>% 
-  filter(variable %in% c('n_circulating_strains','n_circulating_genes')) %>%
-  group_by(time, layer, PS, exp, variable) %>% # Need to average across runs
-  summarise(value_mean=mean(value)) %>% 
-  ggplot(aes(x=layer, y=value_mean, color=exp))+
-  geom_line()+
-  facet_wrap(~variable, scales = 'free')+
-  geom_vline(xintercept = c(12+c(0,24,60,120)), linetype='dashed')+
-  scale_color_manual(values=exp_cols)+
-  labs(title=scenario)+
-  # scale_x_continuous(breaks=pretty(x=subset(d, time>time_range[1]&time<time_range[2])$time,n=5))+
-  mytheme
-cowplot::plot_grid(plot_S,plot_G,nrow = 2,ncol=1)
+run <- 1
+exp_comparison <- 
+  map(c('S','G'), function(scenario){
+    map(exp_range, function(e){
+      tmp <- get_data(parameter_space = PS, scenario = scenario, experiment = e, run = run, use_sqlite = F, tables_to_get = 'summary_general')
+      return(tmp[[1]])
+    }) %>% bind_rows()
+  }) %>% bind_rows()
 
 x <- unique(exp_comparison$time)
 layer_map <- tibble(layer=1:length(x), time=x)
 
-layers_to_include <- 1:200
+layers_to_include <- 1:120
 
-network_S_001 <- get_network_structure(ps = PS,scenario = 'S', exp='001', run=1, layers_to_include=layers_to_include, parse_interlayer=F, plotit=F, folder='/media/Data/')
-network_S_002 <- get_network_structure(ps = PS,scenario = 'S', exp='002', run=1, layers_to_include=layers_to_include, parse_interlayer=F, plotit=F, folder='/media/Data/')
-network_S_003 <- get_network_structure(ps = PS,scenario = 'S', exp='003', run=1, layers_to_include=layers_to_include, parse_interlayer=F, plotit=F, folder='/media/Data/')
+network_S_001 <- get_network_structure(ps = PS,scenario = 'S', exp='001', run=run, layers_to_include=layers_to_include, parse_interlayer=F, plotit=F, folder='/media/Data/')
+network_S_002 <- get_network_structure(ps = PS,scenario = 'S', exp='002', run=run, layers_to_include=layers_to_include, parse_interlayer=F, plotit=F, folder='/media/Data/')
+network_S_003 <- get_network_structure(ps = PS,scenario = 'S', exp='003', run=run, layers_to_include=layers_to_include, parse_interlayer=F, plotit=F, folder='/media/Data/')
 edge_weights_df_S <- NULL
 for (exp in c('001','002','003')){
   x <- get(paste('network_S_',exp,sep=''))
   x <- x$temporal_network
   for (i in layers_to_include){
     print(paste(exp,i,sep=' | '))
-    if (class(x[[i]])!='igraph') {next}
+    if (class(x[[i]])!='igraph') {next} # If there is no layer because there was exticntion.
     tmp <- data.frame(exp=exp, layer=i, weight=E(x[[i]])$weight)
     edge_weights_df_S <- rbind(edge_weights_df_S, tmp)
   }
 }
 
-network_G_001 <- get_network_structure(ps = PS,scenario = 'G', exp='001', run=1, layers_to_include=layers_to_include, parse_interlayer=F, plotit=F, folder='/media/Data/')
-network_G_002 <- get_network_structure(ps = PS,scenario = 'G', exp='002', run=1, layers_to_include=layers_to_include, parse_interlayer=F, plotit=F, folder='/media/Data/')
-network_G_003 <- get_network_structure(ps = PS,scenario = 'G', exp='003', run=1, layers_to_include=layers_to_include, parse_interlayer=F, plotit=F, folder='/media/Data/')
+network_G_001 <- get_network_structure(ps = PS,scenario = 'G', exp='001', run=run, layers_to_include=layers_to_include, parse_interlayer=F, plotit=F, folder='/media/Data/')
+network_G_002 <- get_network_structure(ps = PS,scenario = 'G', exp='002', run=run, layers_to_include=layers_to_include, parse_interlayer=F, plotit=F, folder='/media/Data/')
+network_G_003 <- get_network_structure(ps = PS,scenario = 'G', exp='003', run=run, layers_to_include=layers_to_include, parse_interlayer=F, plotit=F, folder='/media/Data/')
 edge_weights_df_G <- NULL
 for (exp in c('001','002','003')){
   x <- get(paste('network_G_',exp,sep=''))
@@ -544,16 +501,39 @@ edge_weights_df_S$scenario <- 'S'
 edge_weights_df_G$scenario <- 'G'
 edge_weights_df <- rbind(edge_weights_df_S,edge_weights_df_G)
 
+## @knitr Edge_weights_distributions_Plot
+exp_comparison %>%
+  mutate(scenario=factor(scenario, levels=c('S','G'))) %>% 
+  left_join(layer_map) %>% 
+  select(-year, -month, -n_infected) %>% 
+  filter(time>time_range[1]&time<time_range[2]) %>%
+  gather(variable, value, -time, -layer, -exp, -PS, -scenario, -run, -pop_id) %>% 
+  filter(variable %in% c('n_circulating_strains','n_circulating_genes')) %>%
+  group_by(scenario, time, layer, PS, exp, variable) %>% # Need to average across runs
+  summarise(value_mean=mean(value)) %>% 
+  ggplot(aes(x=layer, y=value_mean, color=exp))+
+  geom_line()+
+  facet_wrap(scenario~variable, scales = 'free')+
+  geom_vline(xintercept = c(12+c(0,24,60,120)), linetype='dashed')+
+  scale_color_manual(values=exp_cols)+
+  # scale_x_continuous(breaks=pretty(x=subset(d, time>time_range[1]&time<time_range[2])$time,n=5))+
+  mytheme
+
 as.tibble(edge_weights_df) %>% 
   # filter(exp != '001') %>% 
-  filter(layer %in% seq(72,200,by = 6)) %>% 
-  # filter(scenario == 'G') %>% 
+  filter(layer %in% seq(12,120,by = 6)) %>% 
+  # filter(scenario == 'G') %>%
   mutate(scenario=factor(scenario, levels=c('S','G'))) %>% 
   ggplot(aes(weight, fill=scenario, y=..scaled..))+
     geom_density(alpha=0.6) +
     scale_fill_manual(values=scenario_cols)+
-    facet_grid(exp~layer)
+    facet_grid(exp~layer)+
+  mytheme
 
+## @knitr END
+
+
+# Distribution of unique alleles within a genome --------------------------
 
 
 # Network structure across runs -------------------------------------------
@@ -593,21 +573,27 @@ plot(cl, simplify(g), vertex.label=NA, vertex.size=4, edge.arrow.width=0.2,edge.
 
 
 # DOI vs. infections curve ------------------------------------------------
-
-doi_S <- get_duration_infection(parameter_space = PS, scenario = 'S', experiment = '003', run = 1)
-doi_G <- get_duration_infection(parameter_space = PS, scenario = 'G', experiment = '003', run = 1)
+PS <- '36'
+doi_S <- get_duration_infection(parameter_space = PS, scenario = 'S', experiment = '001', run = 1)
 doi_S <- subset(doi_S, time>=28815 & time <=39945)
-doi_G <- subset(doi_G, time>=28815 & time <=39945)
 doi_S$layer <- .bincode(round(doi_S$time), breaks = seq(28815,39945,by = 30))
+
+doi_G <- get_duration_infection(parameter_space = PS, scenario = 'G', experiment = '001', run = 1)
+doi_G <- subset(doi_G, time>=28815 & time <=39945)
 doi_G$layer <- .bincode(round(doi_G$time), breaks = seq(28815,39945,by = 30))
 
 doi_S$scenario <- 'S'
 doi_G$scenario <- 'G'
-doi_S %>% bind_rows(doi_G) %>% 
-  filter(layer %in% 24:60) %>% 
+doi_S %>% 
+  # bind_rows(doi_G) %>%
+  mutate(scenario=factor(scenario, levels = c('S','G'))) %>%
+  filter(layer %in% 1:12) %>% 
+  filter(infection_id<=400) %>% 
   ggplot(aes(x=infection_id, y=duration, color=scenario))+
-    geom_point()+
-    facet_wrap(~layer)
+    geom_point(alpha=0.6)+
+    scale_color_manual(values=scenario_cols)+
+    # facet_wrap(~layer)+
+    mytheme
 
 
 # Example for structure ---------------------------------------------------
@@ -780,4 +766,8 @@ calendar <- data.frame(running_day=seq(from = 1,to = 360*num_years,by=1),
 # calendar$burnin <- 'No'
 # calendar$burnin[1:burnin] <- 'Yes'
 calendar <- as_tibble(calendar)
-calendar %>% filter(running_day==10930)
+calendar$layer <- .bincode(round(doi_S$time), breaks = seq(28815,39945,by = 30))
+calendar %>% 
+  filter(running_day>=28815 & running_day <=39945) %>% 
+  mutate(layer=.bincode(running_day, breaks = seq(28815,39945,by = 30))) %>% 
+  filter(layer==7)
