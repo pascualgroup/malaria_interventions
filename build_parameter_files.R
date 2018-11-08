@@ -8,7 +8,7 @@ source('~/Documents/malaria_interventions/functions.R')
 
 # Create parameter and job files -------------------------------------------
 
-setwd('~/Documents/malaria_interventions_data/')
+setwd('/media/Data/malaria_interventions_data/')
 
 # Clear previous files if necessary
 # clear_previous_files(run = 6, exclude_sqlite = F, exclude_CP = F, exclude_control = F, test = T)
@@ -129,8 +129,8 @@ for (ps in ps_range){
 # Verify files ------------------------------------------------------------
 
 # --- sqlite files ---
-files_S <- list.files(path = '/media/Data/malaria_interventions_data/sqlite/sqlite_S/', pattern = '\\.sqlite', full.names = F)
-files_G <- list.files(path = '/media/Data/malaria_interventions_data/sqlite/sqlite_G/', pattern = '\\.sqlite', full.names = F)
+files_S <- list.files(path = '/media/Data/malaria_interventions_data/sqlite_S/', pattern = '\\.sqlite', full.names = F)
+files_G <- list.files(path = '/media/Data/malaria_interventions_data/sqlite_G/', pattern = '\\.sqlite', full.names = F)
 files <- c(files_S, files_G)
 # Also consider adding following information: extracting random seeds; existence of corresponding parameter files
 files_sqlite <- tibble(file_sqlite=files,
@@ -147,7 +147,7 @@ subset(files_sqlite, size<1)
 
 files_sqlite$run_time <- unlist(lapply(files_sqlite$file_sqlite[is.na(files_sqlite$CP)], function (f) {
   print(f)
-  db <- dbConnect(SQLite(), dbname = paste('~/Documents/malaria_interventions_data/',f,sep=''))
+  db <- dbConnect(SQLite(), dbname = paste('/media/Data/malaria_interventions_data/',f,sep=''))# see if folder is correct
   x <- dbGetQuery(db, 'SELECT max(time) FROM summary')
   dbDisconnect(db)
   x
