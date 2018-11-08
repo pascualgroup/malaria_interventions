@@ -13,13 +13,13 @@ setwd('~/Documents/malaria_interventions_data/')
 # Clear previous files if necessary
 # clear_previous_files(run = 6, exclude_sqlite = F, exclude_CP = F, exclude_control = F, test = T)
 # Get data design 
-design <- loadExperiments_GoogleSheets() 
+design <- loadExperiments_GoogleSheets(local = T) 
 
 # Create the reference experiments (checkpoint and control)
 ps_range <- sprintf('%0.2d', 27:39)
 exp_range <- sprintf('%0.3d', 0:4)
 run_range <- 1:50
-work_scenario <- 'S'
+work_scenario <- 'G'
 
 # Generate 000 and 001 experiments
 design_subset <- subset(design, PS %in% ps_range & scenario==work_scenario)

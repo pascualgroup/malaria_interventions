@@ -451,7 +451,7 @@ intervention_stats_diff %>%
 # Edge weight distributions -----------------------------------------------
 ## @knitr Edge_weights_distributions_Load
 
-PS <- '29'
+PS <- '36'
 scenario <- 'S'
 run <- 1
 exp_comparison <- 
@@ -502,6 +502,29 @@ edge_weights_df_G$scenario <- 'G'
 edge_weights_df <- rbind(edge_weights_df_S,edge_weights_df_G)
 
 ## @knitr Edge_weights_distributions_Plot
+as.tibble(edge_weights_df) %>% 
+  # filter(exp != '001') %>% 
+  filter(layer %in% seq(1,120,by = 12)) %>% 
+  # filter(scenario == 'G') %>%
+  mutate(scenario=factor(scenario, levels=c('S','G'))) %>% 
+  ggplot(aes(weight, fill=scenario, y=..scaled..))+
+  geom_density(alpha=0.6) +
+  scale_fill_manual(values=scenario_cols)+
+  facet_grid(exp~layer)+
+  mytheme
+
+as.tibble(edge_weights_df) %>% 
+  # filter(exp != '001') %>% 
+  filter(layer %in% 26:38) %>% 
+  # filter(scenario == 'G') %>%
+  mutate(scenario=factor(scenario, levels=c('S','G'))) %>% 
+  ggplot(aes(weight, fill=scenario, y=..scaled..))+
+  geom_density(alpha=0.6) +
+  scale_fill_manual(values=scenario_cols)+
+  facet_grid(exp~layer)+
+  mytheme
+## @knitr END
+
 exp_comparison %>%
   mutate(scenario=factor(scenario, levels=c('S','G'))) %>% 
   left_join(layer_map) %>% 
@@ -519,34 +542,100 @@ exp_comparison %>%
   # scale_x_continuous(breaks=pretty(x=subset(d, time>time_range[1]&time<time_range[2])$time,n=5))+
   mytheme
 
-as.tibble(edge_weights_df) %>% 
-  # filter(exp != '001') %>% 
-  filter(layer %in% seq(12,120,by = 6)) %>% 
-  # filter(scenario == 'G') %>%
-  mutate(scenario=factor(scenario, levels=c('S','G'))) %>% 
-  ggplot(aes(weight, fill=scenario, y=..scaled..))+
-    geom_density(alpha=0.6) +
-    scale_fill_manual(values=scenario_cols)+
-    facet_grid(exp~layer)+
+
+
+
+# Allelic diversity within a genome --------------------------
+
+## @knitr Allele_diversity_load
+
+ps <- '36'
+scenario <- 'G'
+exp <- '002'
+run <- 1
+
+get_genetic_composition <- function(ps, scenario, exp, run, layers_to_include=1:300){
+  # Define the sqlite file to use
+  base_name <- paste('PS',ps,'_',scenario,'_E',exp,'_R',run,sep='')
+  if (on_Midway()){
+    sqlite_file <- paste('sqlite/',base_name,'.sqlite',sep='')
+  } else {
+    sqlite_file <- paste('/media/Data/malaria_interventions_data/sqlite_',scenario,'/',base_name,'.sqlite',sep='')
+  }
+  
+  # Extract data from sqlite. variable names correspond to table names
+  db <- dbConnect(SQLite(), dbname = sqlite_file)
+  print('Getting genetic data from sqlite...')
+  sampled_strains <- as.tibble(dbGetQuery(db, 'SELECT id, gene_id FROM sampled_strains'))
+  names(sampled_strains)[1] <- c('strain_id')
+  sampled_alleles <- as.tibble(dbGetQuery(db, 'SELECT * FROM sampled_alleles'))
+  names(sampled_alleles)[3] <- c('allele_id')
+  sampled_strains <- full_join(sampled_strains, sampled_alleles)
+  sampled_strains$allele_locus <- paste(sampled_strains$allele_id,sampled_strains$locus,sep='_') # each allele in a locus is unique
+  
+  # Get sampled infections
+  sampled_infections <- get_data(parameter_space = ps, experiment = exp, scenario = scenario, run = run)$sampled_infections
+  x <- unique(sampled_infections$time)
+  layer_map <- tibble(layer=1:length(x), time=x)
+  sampled_infections %<>% left_join(layer_map)
+  
+  result <- sampled_infections %>% 
+    filter(layer %in% layers_to_include) %>% 
+    left_join(sampled_strains, by='strain_id')
+  return(result)
+}
+
+genetic_composition_S <- get_genetic_composition(ps = '36', scenario = 'S', exp = '003', run = 50)
+genetic_composition_G <- get_genetic_composition(ps = '36', scenario = 'G', exp = '003', run = 50)
+
+## @knitr Allele_diversity_plot
+
+genetic_composition_S %>% bind_rows(genetic_composition_G) %>% 
+  mutate(scenario=factor(scenario, levels = c('S','G'))) %>% 
+  filter(layer %in% 1:75) %>%
+  select(scenario, time, layer, strain_id, allele_locus) %>% 
+  group_by(scenario, time, layer,strain_id) %>% 
+  summarise(num_unique_alleles=length(unique(allele_locus))) %>% 
+  group_by(scenario, time, layer) %>% 
+  summarise(mean_unique_alleles=mean(num_unique_alleles)) %>% 
+  ggplot(aes(x=layer,y=mean_unique_alleles, color=scenario))+ 
+  geom_vline(xintercept = c(12,24,72),color='purple')+
+  scale_color_manual(values=scenario_cols) +
+  geom_line()+
   mytheme
 
 ## @knitr END
 
 
-# Distribution of unique alleles within a genome --------------------------
-
-
 # Network structure across runs -------------------------------------------
+## @knitr Network_structure_load
 
 layers_to_include <- 1:200
+PS <- '36'
+run <- 1
 
-network_structure_S <- analyze_networks_multiple(ps = '36',scenario = 'S',runs = 1, layers_to_include = layers_to_include, parse_interlayer = F)
-network_structure_G <- analyze_networks_multiple(ps = '36',scenario = 'G',runs = 1, layers_to_include = layers_to_include, parse_interlayer = F)
+# network_structure_S <- analyze_networks_multiple(ps = '36',scenario = 'S',runs = 1, layers_to_include = layers_to_include, parse_interlayer = F)
+# write.csv(network_structure_S,paste('/media/Data/malaria_interventions_data/Results/',PS,'_',scenario,'/',PS,'_',scenario,'_','R',run,'_network_properties.csv',sep=''),row.names = F)
+
+# network_structure_G <- analyze_networks_multiple(ps = '36',scenario = 'G',runs = 1, layers_to_include = layers_to_include, parse_interlayer = F)
+# scenario <- 'G'
+# write.csv(network_structure_G,paste('/media/Data/malaria_interventions_data/Results/',PS,'_',scenario,'/',PS,'_',scenario,'_','R',run,'_network_properties.csv',sep=''),row.names = F)
+
+scenario <- 'S'
+network_structure_S <- read_csv(paste('/media/Data/malaria_interventions_data/Results/',PS,'_',scenario,'/',PS,'_',scenario,'_','R',run,'_network_properties.csv',sep=''))
+scenario <- 'G'
+network_structure_G <- read_csv(paste('/media/Data/malaria_interventions_data/Results/',PS,'_',scenario,'/',PS,'_',scenario,'_','R',run,'_network_properties.csv',sep=''))
+
 
 network_properties <- c('Num_nodes','Num_edges','mean_edge_weight','GCC','density','mean_degree','diameter','M11--A<->B<->C','M16--A<->B<->C_A<->C')
-network_structure_G %>% 
-  select(c('exp','layer',network_properties)) %>%
-  gather(variable, value, -exp, -layer) %>% 
+
+## @knitr Network_structure_plot_001
+network_structure_S %>% 
+  bind_rows(network_structure_G) %>% 
+  mutate(scenario=factor(scenario,levels = c('S','G'))) %>% 
+  select(c('exp','layer','scenario',network_properties)) %>%
+  gather(variable, value, -exp, -layer, -scenario) %>%
+  filter(exp=='001') %>% 
   mutate(variable=factor(variable, levels=c('Num_nodes',
                                             'Num_edges',
                                             'density',
@@ -555,14 +644,41 @@ network_structure_G %>%
                                             'diameter',
                                             # 'num_edges_il','density_il','mean_edge_weight_il','mean_strength_s,'
                                             'GCC','M11--A<->B<->C','M16--A<->B<->C_A<->C'))) %>% 
-  ggplot(aes(layer, value, color=exp))+
+  ggplot(aes(layer, value, color=scenario))+
   geom_line()+
-  scale_color_manual(values=exp_cols)+
+  scale_color_manual(values=scenario_cols)+
   scale_x_continuous(breaks = seq(1,max(layers_to_include),20))+
-  facet_wrap(~variable,scales='free')+
-  geom_vline(xintercept = c(13,13+24,13+60,13+120))+
-  mytheme+
-  theme(panel.grid.minor = element_blank(), legend.position = 'none')
+  facet_wrap(~variable, scales='free')+
+  geom_vline(xintercept = c(13,13+24,13+60,13+120), color='gray', linetype='dashed')+
+  mytheme
+  # theme(panel.grid.minor = element_blank(), legend.position = 'none')
+
+## @knitr Network_structure_plot_002
+network_structure_S %>% 
+  bind_rows(network_structure_G) %>% 
+  mutate(scenario=factor(scenario,levels = c('S','G'))) %>% 
+  select(c('exp','layer','scenario',network_properties)) %>%
+  gather(variable, value, -exp, -layer, -scenario) %>%
+  filter(exp=='002') %>% 
+  mutate(variable=factor(variable, levels=c('Num_nodes',
+                                            'Num_edges',
+                                            'density',
+                                            'mean_degree',
+                                            'mean_edge_weight',
+                                            'diameter',
+                                            # 'num_edges_il','density_il','mean_edge_weight_il','mean_strength_s,'
+                                            'GCC','M11--A<->B<->C','M16--A<->B<->C_A<->C'))) %>% 
+  ggplot(aes(layer, value, color=scenario))+
+  geom_line()+
+  scale_color_manual(values=scenario_cols)+
+  scale_x_continuous(breaks = seq(1,max(layers_to_include),20))+
+  facet_wrap(~variable, scales='free')+
+  geom_vline(xintercept = c(13,13+24,13+60,13+120), color='gray', linetype='dashed')+
+  mytheme
+# theme(panel.grid.minor = element_blank(), legend.position = 'none')
+
+## @knitr END
+
 
 plotLayer(network_S_003, l = 42, remove.loops = T, edge_weight_multiply = 1, coords = NULL)
 plotLayer(network_G_003, l = 42, remove.loops = T, edge_weight_multiply = 1, coords = NULL)
@@ -585,14 +701,14 @@ doi_G$layer <- .bincode(round(doi_G$time), breaks = seq(28815,39945,by = 30))
 doi_S$scenario <- 'S'
 doi_G$scenario <- 'G'
 doi_S %>% 
-  # bind_rows(doi_G) %>%
+  bind_rows(doi_G) %>%
   mutate(scenario=factor(scenario, levels = c('S','G'))) %>%
   filter(layer %in% 1:12) %>% 
   filter(infection_id<=400) %>% 
   ggplot(aes(x=infection_id, y=duration, color=scenario))+
     geom_point(alpha=0.6)+
     scale_color_manual(values=scenario_cols)+
-    # facet_wrap(~layer)+
+    facet_wrap(~layer)+
     mytheme
 
 
