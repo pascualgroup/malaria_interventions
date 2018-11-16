@@ -88,7 +88,7 @@ loadExperiments_GoogleSheets <- function(local=F, workBookName='malaria_interven
   if (local){
     col_types <- read.csv('~/Documents/malaria_interventions/malaria_interventions_design_col_types.csv',header = T,stringsAsFactors = F)
     col_t <- unname(as.list(col_types[1,]))
-    experiments <- read_csv('~/Documents/malaria_interventions/malaria_interventions_design_Tests_for_pipeline.csv', col_types = as.list(col_types))
+    experiments <- read_csv(paste('~/Documents/malaria_interventions/',workBookName,sep=''), col_types = as.list(col_types))
   }
   if (!local){
     GS <- gs_title(workBookName)
@@ -210,13 +210,15 @@ create_intervention_scheme_IRS <- function(PS_benchmark, scenario_benchmark, IRS
 # This function obtains the duration of infection from the selection mode
 # counterpart simulations to calculate the var switching rate in the neutral
 # scenario. it makes more sense to take the duration from the control experiment
-# (001), otherwise interventions can affect it, so I set exepriment=001 as
-# default.
+# (001), otherwise interventions or transience can affect it, so I set
+# exepriment=001 as default. sqlite_path_global is a global parameter with the
+# path to the sqlite files. It is needed because different projects may have
+# different paths to keep sqlite files.
 set_transition_rate_neutral <- function(parameter_space, run, N_GENES_PER_STRAIN = 60){
   if (on_Midway()){
     sqlite_file <- list.files(path = 'sqlite/', pattern=paste('PS',parameter_space,'_S_E001_R',run,'.sqlite',sep=''), full.names = T)
   } else {
-    sqlite_file <- list.files(path = '~/Documents/malaria_interventions_data/', pattern=paste('PS',parameter_space,'_S_E001_R',run,'.sqlite',sep=''), full.names = T)
+    sqlite_file <- list.files(path = sqlite_path_global, pattern=paste('PS',parameter_space,'_S_E001_R',run,'.sqlite',sep=''), full.names = T)
   }
   db <- dbConnect(SQLite(), dbname = sqlite_file)
   sampled_duration <- dbGetQuery(db, 'SELECT duration FROM sampled_duration')
@@ -230,7 +232,7 @@ set_transition_rate_neutral <- function(parameter_space, run, N_GENES_PER_STRAIN
 # file.
 get_transition_rate_neutral <- function(PS, run){
   transition_rate <- c()
-  x <- try(readLines(paste('PS',PS,'_N_','E000_R',run,'.py',sep='')))
+  x <- try(readLines(paste(parameter_files_path_global,'/','PS',PS,'_N_','E000_R',run,'.py',sep='')))
   if (inherits(x, "try-error")){
     print(paste('Cannot find parameter file to extract transition rate! (','PS',PS,'_N_','E000_R',run,'.py)',sep=''))
     transition_rate <- NA
@@ -252,7 +254,7 @@ set_generalized_immunity <- function(parameter_space, run){
     sqlite_file <- paste('sqlite/','PS',parameter_space,'_S_E001_R',run,'.sqlite',sep='')
     pyFile <- readLines('generalized_immunity_fitting.py')
   } else {
-    sqlite_file <- paste('/home/shai/Documents/malaria_interventions_data/','PS',parameter_space,'_S_E001_R',run,'.sqlite',sep='')
+    sqlite_file <- paste(sqlite_path_global,'/','PS',parameter_space,'_S_E001_R',run,'.sqlite',sep='')
     pyFile <- readLines('/home/shai/Documents/malaria_interventions/generalized_immunity_fitting.py')
   }
   pyFile[11] <- paste('path=','"',sqlite_file,'"',sep='')
@@ -277,7 +279,7 @@ set_generalized_immunity <- function(parameter_space, run){
 # A function to obtain the GI parameters from an existing checkpoint parameter
 # file.
 get_generalized_immunity <- function(PS, run){
-  x <- try(readLines(paste('PS',PS,'_G_','E000_R',run,'.py',sep='')))
+  x <- try(readLines(paste(parameter_files_path_global,'/','PS',PS,'_G_','E000_R',run,'.py',sep='')))
   if (inherits(x, "try-error")){
     print(paste('Cannot find parameter file to extract parameters! (','PS',PS,'_G_','E000_R',run,'.py)',sep=''))
     params <- NA
@@ -364,7 +366,8 @@ set_MDA <- function(design_ID, run, experimental_design){
 
 # Function to create the necesary files and pipeline for a single run of an experiment.
 # Each run has its own random seed across experiments and scenarios.
-create_run <- function(design_ID, run, RANDOM_SEED, experimental_design, biting_rate_mathematica=NULL, params_GI=NULL){
+create_run <- function(design_ID, run, RANDOM_SEED, experimental_design, biting_rate_mathematica=NULL, params_GI=NULL, target_folder=NULL){
+  if(is.null(target_folder)){target_folder <- getwd()}
   
   # Regime
   parameter_space <- experimental_design$PS[design_ID]
@@ -383,6 +386,10 @@ create_run <- function(design_ID, run, RANDOM_SEED, experimental_design, biting_
   param_data[param_data$param=='T_END',] <- set_parameter(param_data, 'T_END', T_END)
   param_data[param_data$param=='VERIFICATION_ON',] <- set_parameter(param_data, 'VERIFICATION_ON', 'False')
   param_data[param_data$param=='VERIFICATION_PERIOD',] <- set_parameter(param_data, 'VERIFICATION_PERIOD', T_END)
+  
+  if(scenario=='S'){
+  param_data[param_data$param=='TRANSITION_RATE_NOT_IMMUNE',] <- set_parameter(param_data, 'TRANSITION_RATE_NOT_IMMUNE', experimental_design$TRANSITION_RATE_NOT_IMMUNE[design_ID])
+  }
   
   # Scenario
   if(scenario=='N'){
@@ -485,7 +492,7 @@ create_run <- function(design_ID, run, RANDOM_SEED, experimental_design, biting_
   }
   
   # Write parameter file
-  output_file=paste(base_name,'.py',sep = '')
+  output_file=paste(target_folder,'/',base_name,'.py',sep = '')
   param_data$output <- paste(param_data$param,param_data$value,sep='=')
   write_lines(param_data$output, output_file)
 }
@@ -494,7 +501,8 @@ create_run <- function(design_ID, run, RANDOM_SEED, experimental_design, biting_
 # Midway), for several experiments and runs. It keeps the random seed for each
 # RUN across experiments AND PARAMETER SPACES the same. Also possible to provide
 # a random seed. row_range is the row numbers in the design data frame.
-generate_files <- function(row_range, run_range, random_seed=NULL, experimental_design, biting_rate_file='mosquito_population_seasonality.csv', params_GI=NULL){
+generate_files <- function(row_range, run_range, random_seed=NULL, experimental_design, biting_rate_file='mosquito_population_seasonality.csv', params_GI=NULL,target_folder=NULL){
+  if(is.null(target_folder)){target_folder <- getwd()}
   
   if (!is.null(biting_rate_file)){
     biting_rate_mathematica <- read_csv(biting_rate_file, col_names = c('day','num_mosquitos'))
@@ -526,7 +534,7 @@ generate_files <- function(row_range, run_range, random_seed=NULL, experimental_
     # immunity then the fit for some runs may have not convereged (functions
     # 'create_run' and 'set_generalized_immunity'). Parameter files cannot be
     # produced in these cases and so the function skips to the next case.
-    try_run <- create_run(design_ID, RUN, RANDOM_SEED, experimental_design, biting_rate_mathematica, params_GI=params_GI)
+    try_run <- create_run(design_ID, RUN, RANDOM_SEED, experimental_design, biting_rate_mathematica, params_GI=params_GI, target_folder = target_folder)
     if (is.null(try_run)){
       cases$file_created[idx] <- F
       next
@@ -588,13 +596,18 @@ generate_files <- function(row_range, run_range, random_seed=NULL, experimental_
     job_lines[19] <- paste("PS='",parameter_space,"'",sep='')
     job_lines[20] <- paste("scenario='",scenario,"'",sep='')
     job_lines[21] <- paste("exp='",experiment,"'",sep='')
+    
+    if (str_detect(target_folder,'PLOS_Biol')){
+      job_lines[23] <- "base_folder='/scratch/midway2/pilosofs/PLOS_Biol/'"
+    }
+    
     if (experiment == '000'){
       job_lines[26] <- "CHECKPOINT='create'"
     }
     if (experiment != '000'){
       job_lines[26] <- "CHECKPOINT='load'"
     }
-    output_file=paste(base_name,'.sbatch',sep = '')
+    output_file=paste(target_folder,'/',base_name,'.sbatch',sep = '')
     write_lines(job_lines, output_file)
   }
   
@@ -750,9 +763,11 @@ get_data <- function(parameter_space, scenario, experiment, run, sampling_period
   if (use_sqlite){
     base_name <- paste('PS',parameter_space,'_',scenario,'_E',experiment,'_R',run,sep='')
     if (on_Midway()){
-      sqlite_file <- paste('sqlite/',base_name,'.sqlite',sep='')
+      sqlite_file <- paste('/scratch/midway2/pilosofs/PLOS_Biol/sqlite/',base_name,'.sqlite',sep='')
+      print(sqlite_file)
+      print(file.exists(sqlite_file))
     } else {
-      sqlite_file <- paste('/media/Data/malaria_interventions_data/sqlite_',scenario,'/',base_name,'.sqlite',sep='')
+      sqlite_file <- paste('/media/Data/PLOS_Biol/sqlite_',scenario,'/',base_name,'.sqlite',sep='')
     }
     
     if (!file.exists(sqlite_file)) {
@@ -762,6 +777,7 @@ get_data <- function(parameter_space, scenario, experiment, run, sampling_period
     # parameter_file <- paste(base_name,'.py',sep='') # This may be necessary so I leave it
     
     # Extract data from sqlite. variable names correspond to table names
+    print('Connecting to sqlite file...')
     db <- dbConnect(SQLite(), dbname = sqlite_file)
     summary_general <- dbGetQuery(db, 'SELECT * FROM summary')
     summary_general$PS <- parameter_space
@@ -1014,9 +1030,9 @@ createTemporalNetwork <- function(ps, scenario, exp, run, cutoff_prob=0.9, cutof
   # Define the sqlite file to use
   base_name <- paste('PS',ps,'_',scenario,'_E',exp,'_R',run,sep='')
   if (on_Midway()){
-    sqlite_file <- paste('sqlite/',base_name,'.sqlite',sep='')
+    sqlite_file <- paste('/scratch/midway2/pilosofs/PLOS_Biol/sqlite/',base_name,'.sqlite',sep='')
   } else {
-    sqlite_file <- paste('/media/Data/malaria_interventions_data/sqlite_',scenario,'/',base_name,'.sqlite',sep='')
+    sqlite_file <- paste('/media/Data/PLOS_Biol/sqlite_',scenario,'/',base_name,'.sqlite',sep='')
   }
   
   # Extract data from sqlite. variable names correspond to table names
@@ -1094,12 +1110,15 @@ createTemporalNetwork <- function(ps, scenario, exp, run, cutoff_prob=0.9, cutof
     similarityMatrix[similarityMatrix<cutoff_value] <- 0
   }
   
+  
   for (i in 1:length(temporal_network)){
     # print(i)
     x <- temporal_network[[i]]
     x[x<cutoff_value] <- 0
     temporal_network[[i]] <- x
+    layer_summary$density[i] <- sum(x>0)/(nrow(x)*ncol(x))
   }
+  
   
   print('Done!')
   return(list(temporal_network=temporal_network, 
@@ -1305,6 +1324,12 @@ analyze_networks_multiple <- function(ps, scenario, experiments=c('001','002','0
 }
 
 # Network properties ------------------------------------------------------
+density_bipartite <- function(x){
+  return(
+    sum(x>0)/(nrow(x)*ncol(x))
+  )  
+}
+
 f_01_averageLocalClusteringCoeff <- function(g,GC=F){
   if (GC) {
     gc <- giant.component(g)
@@ -1586,7 +1611,7 @@ build_interlayer_edges_1step <- function(t, nodeList, network_object){
 # interlayer edge lists in a format: [layer_source, node_source, layer_target node_target, weight].
 # It also returns the list of node names.
 # requires igraph
-build_infomap_objects <- function(network_object, write_to_infomap_file=T, return_objects=T){
+build_infomap_objects <- function(network_object, write_to_infomap_file=T, infomap_file_name, return_objects=T){
   temporal_network <- network_object$temporal_network
   base_name <- network_object$base_name
 
@@ -1607,24 +1632,22 @@ build_infomap_objects <- function(network_object, write_to_infomap_file=T, retur
   if (write_to_infomap_file){
     ## Write file for infomap
     print('Writing Infomap files')
-    if (on_Midway()){
-      file <- paste('Results/',job_ps,'_',job_scenario,'/',base_name,'_Infomap_multilayer','.txt',sep='')
-    } else {
-      file <- paste(base_name,'_Infomap_multilayer','.txt',sep='')
-    }
-    print(paste('Infomap file:',file))
-    if (file.exists(file)){unlink(file)}
-    sink(file, append = F)
-    cat("# A network in a general multiplex format");cat('\n')
-    cat(paste("*Vertices",nrow(nodeList)));cat('\n')
-    write.table(nodeList, file, append = T,sep=' ', quote = T, row.names = F, col.names = F)
-    cat("*Multiplex");cat('\n')
-    cat("# layer node layer node [weight]");cat('\n')
-    cat("# Intralayer edges");cat('\n')
-    write.table(infomap_intralayer, file, sep = ' ', row.names = F, col.names = F, quote = F, append = T)
-    cat("# Interlayer edges");cat('\n')
-    write.table(infomap_interlayer, file, sep = ' ', row.names = F, col.names = F, quote = F, append = T)
-    sink.reset()
+    print(paste('Infomap file:',infomap_file_name))
+    if (file.exists(infomap_file_name)){unlink(infomap_file_name)}
+    
+    edges_to_write <- rbind(infomap_intralayer,infomap_interlayer)
+    fwrite(edges_to_write, infomap_file_name, sep=' ', col.names = F)
+    # sink(infomap_file_name, append = T)
+    # cat("# A network in a general multiplex format");cat('\n')
+    # cat(paste("*Vertices",nrow(nodeList)));cat('\n')
+    # write.table(nodeList, infomap_file_name, sep=' ', quote = T, row.names = F, col.names = F, append=T)
+    # cat("*Multiplex");cat('\n')
+    # cat("# layer node layer node [weight]");cat('\n')
+    # cat("# Intralayer edges");cat('\n')
+    # write.table(infomap_intralayer, infomap_file_name, sep = ' ', row.names = F, col.names = F, quote = F, append = T)
+    # cat("# Interlayer edges");cat('\n')
+    # write.table(infomap_interlayer, infomap_file_name, sep = ' ', row.names = F, col.names = F, quote = F, append = T)
+    # sink.reset()
   }
   
   if (return_objects){

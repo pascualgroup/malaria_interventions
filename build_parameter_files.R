@@ -18,8 +18,8 @@ design <- loadExperiments_GoogleSheets(local = T)
 # Create the reference experiments (checkpoint and control)
 ps_range <- sprintf('%0.2d', 27:39)
 exp_range <- sprintf('%0.3d', 0:4)
-run_range <- 1:50
-work_scenario <- 'G'
+run_range <- 1
+work_scenario <- 'S'
 
 # Generate 000 and 001 experiments
 design_subset <- subset(design, PS %in% ps_range & scenario==work_scenario)
@@ -187,7 +187,7 @@ files_sqlite %>% filter(scenario=='G') %>% print(n = Inf)
 
 
 #--- PY files ---
-files <- list.files(path = '~/Documents/malaria_interventions_data/', pattern = 'py.zip', full.names = T)
+files <- list.files(path = '/media/Data/malaria_interventions_data/parameter_files/', pattern = 'py.zip', full.names = T)
 files <- map(files, function(f){
   unzip(f, list=T)
 }) %>% bind_rows()
@@ -315,6 +315,8 @@ seed_check <- files_df %>% distinct(scenario, PS, run, seed) %>% group_by(scenar
 # Generate sbatch files to create the missing checkpoints -----------------
 
 ps_scen_combinations <- as.tibble(files_CP_missing) %>% distinct(scenario,PS)
+
+ps_scen_combinations <- expand.grid(PS=27:39,scenario='G')
 
 for (i in 1:nrow(ps_scen_combinations)){
   ps <- ps_scen_combinations$PS[i]
