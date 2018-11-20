@@ -222,7 +222,7 @@ set_transition_rate_neutral <- function(parameter_space, run, N_GENES_PER_STRAIN
   }
   db <- dbConnect(SQLite(), dbname = sqlite_file)
   sampled_duration <- dbGetQuery(db, 'SELECT duration FROM sampled_duration')
-  mean_doi <- mean(sampled_duration$duration)
+  mean_doi <- mean(sampled_duration$duration-14)
   TRANSITION_RATE_NOT_IMMUNE <- 1/(mean_doi/N_GENES_PER_STRAIN)
   # setwd('~/Documents/malaria_interventions/')
   return(TRANSITION_RATE_NOT_IMMUNE)
@@ -269,7 +269,7 @@ set_generalized_immunity <- function(parameter_space, run){
     GENERAL_IMMUNITY_PARAMS <- python.get('generalImmunityParams')
     GENERAL_IMMUNITY_PARAMS <- paste('[',paste(GENERAL_IMMUNITY_PARAMS, collapse = ','),']',sep='')
     CLEARANCE_RATE_IMMUNE <- python.get('clearanceRateConstantImmune')
-    file.remove('generalized_immunity_fitting_experiment.py')
+    # file.remove('generalized_immunity_fitting_experiment.py')
     return(list(N_INFECTIONS_FOR_GENERAL_IMMUNITY=N_INFECTIONS_FOR_GENERAL_IMMUNITY,
                 GENERAL_IMMUNITY_PARAMS=GENERAL_IMMUNITY_PARAMS,
                 CLEARANCE_RATE_IMMUNE=CLEARANCE_RATE_IMMUNE))

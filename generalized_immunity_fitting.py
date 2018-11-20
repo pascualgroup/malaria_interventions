@@ -16,11 +16,11 @@ with con:
 		rows = cur.fetchall()
 		
 
-xd = np.array([x[1] for x in rows])  #number of infections
+xd = np.array([x[1] for x in rows])-1  #number of infections
 yd = np.array([x[0] for x in rows])  #infection duration
 
 #get range of infection times
-newxd=range(xd.min(),xd.max())
+newxd=range(xd.min(),xd.max()+1)
 # mean of infection duration as a function of infection times
 xys = stats.binned_statistic(xd,yd,'mean',bins=newxd)
 bc = np.bincount(xd)
