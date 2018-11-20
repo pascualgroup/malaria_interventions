@@ -39,7 +39,7 @@ Rscript $prog $PS $scenario '001' $cutoff_prob
 
 # Run Infomap
 infomap_name='PS'$PS'_'$scenario'_E001_R'$SLURM_ARRAY_TASK_ID'_'$cutoff_prob'_Infomap_multilayer'
-./Infomap_v01926 $infomap_name'.txt' . -i multilayer -d -N 20 --rawdir --two-level --tree --expanded
+./Infomap_v01926 $infomap_name'.txt' . -i multilayer -d -N 10 --rawdir --two-level --tree --expanded
 
 
 # remove files

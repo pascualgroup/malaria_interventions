@@ -758,7 +758,7 @@ plotLayer <- function(network_object, l, edge_weight_multiply=1, remove.loops=T,
 
 # This function obtains data from an sqlite file and prepares them for further analysis.
 # requires sqldf
-get_data <- function(parameter_space, scenario, experiment, run, sampling_period=30, host_age_structure=F, use_sqlite=T, tables_to_get=c('summary_general','sampled_infections')){
+get_data <- function(parameter_space, scenario, experiment, run, cutoff_prob=0.9, sampling_period=30, host_age_structure=F, use_sqlite=T, tables_to_get=c('summary_general','sampled_infections')){
   # Initialize
   if (use_sqlite){
     base_name <- paste('PS',parameter_space,'_',scenario,'_E',experiment,'_R',run,sep='')
@@ -822,7 +822,7 @@ get_data <- function(parameter_space, scenario, experiment, run, sampling_period
     
     # MOI#
     if ('sampled_infections'%in%tables_to_get){
-      meanMOI <- sampled_infections %>% group_by(time, host_id) %>% summarise(MOI=length(strain_id)) %>% group_by(time) %>% summarise(meanMOI=mean(MOI))
+      meanMOI <- sampled_infections %>% group_by(time, host_id) %>% dplyr::summarise(MOI=length(strain_id)) %>% group_by(time) %>% summarise(meanMOI=mean(MOI))
       summary_general <- suppressMessages(inner_join(summary_general, meanMOI)) # Add MOI to the summary
     }
     
@@ -842,7 +842,7 @@ get_data <- function(parameter_space, scenario, experiment, run, sampling_period
   }
   
   if (!use_sqlite){
-    file <- paste('/media/Data/malaria_interventions_data/Results/',parameter_space,'_',scenario,'/PS',parameter_space,'_',scenario,'_E',experiment,'_R',run,'_summary_general.csv',sep='')
+    file <- paste('/media/Data/PLOS_Biol/Results/',parameter_space,'_',scenario,'/PS',parameter_space,'_',scenario,'_E',experiment,'_R',run,'_',cutoff_prob,'_summary_general.csv',sep='')
     if (!file.exists(file)){
       print(paste(file, 'does not exist, ignoring and returning NULL'))
       return(NULL)
@@ -1026,7 +1026,7 @@ build_layer <- function(infection_df){
 }
 
 
-createTemporalNetwork <- function(ps, scenario, exp, run, cutoff_prob=0.9, cutoff_value=NULL, sparse=F, layers_to_include=NULL, sampled_infections=NULL){
+createTemporalNetwork_v1 <- function(ps, scenario, exp, run, cutoff_prob=0.9, cutoff_value=NULL, sparse=F, layers_to_include=NULL, sampled_infections=NULL){
   # Define the sqlite file to use
   base_name <- paste('PS',ps,'_',scenario,'_E',exp,'_R',run,sep='')
   if (on_Midway()){
@@ -1086,7 +1086,7 @@ createTemporalNetwork <- function(ps, scenario, exp, run, cutoff_prob=0.9, cutof
   
   strains_in_layers <- subset(sampled_infections, layer%in%layers_to_include, select = c("strain_id", "allele_locus")) # Tried to do that only with the dplyr pipeline and it didnt work.
   strains_in_layers <- distinct(strains_in_layers)
-
+  
   if (sparse){
     require('Matrix')
     A <- xtabs(~strain_id+allele_locus, strains_in_layers, sparse = T)
@@ -1130,19 +1130,136 @@ createTemporalNetwork <- function(ps, scenario, exp, run, cutoff_prob=0.9, cutof
 }
 
 
+createTemporalNetwork <- function(ps, scenario, exp, run, cutoff_prob=0.9, cutoff_value=NULL, layers_to_include=NULL, sampled_infections=NULL){
+  # Define the sqlite file to use
+  base_name <- paste('PS',ps,'_',scenario,'_E',exp,'_R',run,sep='')
+  if (on_Midway()){
+    sqlite_file <- paste('/scratch/midway2/pilosofs/PLOS_Biol/sqlite/',base_name,'.sqlite',sep='')
+  } else {
+    sqlite_file <- paste('/media/Data/PLOS_Biol/sqlite_',scenario,'/',base_name,'.sqlite',sep='')
+  }
+  
+  # Extract data from sqlite. variable names correspond to table names
+  db <- dbConnect(SQLite(), dbname = sqlite_file)
+  print('Getting genetic data from sqlite...')
+  sampled_strains <- as.tibble(dbGetQuery(db, 'SELECT id, gene_id FROM sampled_strains'))
+  names(sampled_strains)[1] <- c('strain_id')
+  sampled_alleles <- as.tibble(dbGetQuery(db, 'SELECT * FROM sampled_alleles'))
+  names(sampled_alleles)[3] <- c('allele_id')
+  sampled_strains <- full_join(sampled_strains, sampled_alleles)
+  sampled_strains$allele_locus <- paste(sampled_strains$allele_id,sampled_strains$locus,sep='_') # each allele in a locus is unique
+  dbDisconnect(db)
+  ## Get infection data
+  if (is.null(sampled_infections)){
+    print('Getting infection data from sqlite...')
+    sampled_infections <- get_data(parameter_space = ps, experiment = exp, scenario = scenario, run = run)$sampled_infections
+  }
+  
+  # Build the data set
+  print('Building data set...')
+  ## Add layer numbers. Each time point is a layer
+  sampled_infections$layer <- group_indices(sampled_infections, time) 
+  sampled_infections %<>% arrange(layer,strain_id,host_id) %>% 
+    group_by(layer,strain_id) %>% 
+    mutate(strain_copy = row_number()) # add unique id for each strain copy within each layer. A strain copy is an instance of a strain in a particualr host
+  sampled_infections$strain_id_unique <- paste(sampled_infections$strain_id,sampled_infections$strain_copy,sep='_') # Create the unique strains
+  ## Integrate the strain composition into the infections table
+  if (all(unique(sampled_strains$strain_id)%in%unique(sampled_infections$strain_id))==F || all(unique(sampled_infections$strain_id)%in%unique(sampled_strains$strain_id))==F) {
+    stop('There may be a mismatch in repertoires between the sampled_strains and sampled_infections data sets. Revise!')
+  }
+  sampled_infections %<>% select(time, layer, host_id, strain_id, strain_copy, strain_id_unique) %>% 
+    left_join(sampled_strains)
+  
+  # Build layers
+  print('Building layers...')
+  Layers <- list()
+  if (is.null(layers_to_include)){
+    layers_to_include <- sort(unique(sampled_infections$layer))
+  }
+  for (l in layers_to_include){
+    cat(paste('[',Sys.time(), '] building layer ',l,'\n',sep=''))
+    sampled_infections_layer <- subset(sampled_infections, layer==l) # This is MUCH faster than sampled_infections_layer <- sampled_infections %>% filter(layer==l)
+    Layers[[which(layers_to_include==l)]] <- build_layer(sampled_infections_layer)
+  }
+  intralayer_matrices <- lapply(Layers, function(x) x$similarity_matrix)   # Get just the matrices
+  layer_summary <- do.call(rbind, lapply(Layers, function(x) x$layer_summary)) # Get the layer summary
+  layer_summary$layer <- layers_to_include
+  
+  # Build "interlayer networks"
+  print('Building inter-layer networks...')
+  interlayer_matrices <- list()
+  for (t in layers_to_include[-length(layers_to_include)]){
+    strain_copies_t <- rownames(intralayer_matrices[[t]]) # repertoires at time t
+    strain_copies_t1 <- rownames(intralayer_matrices[[t+1]]) # repertoires at time t+1
+    # need minimum of 2 strains in t and t+1 to build a matrix
+    if (length(strain_copies_t)<2 | length(strain_copies_t1)<2){
+      print(paste('No interlayer edges between layers',t, 'and',t+1,'because there are < 2 repertoires.'))
+      return(NULL)
+    } 
+    sampled_infections_interlayer <- subset(sampled_infections, layer%in%c(t,t+1)) # This is MUCH faster than sampled_infections_layer <- sampled_infections %>% filter(layer==l)
+    x <- build_layer(sampled_infections_interlayer)$similarity_matrix # This is the similarity matrix for all the repertoires in both layers.
+    # Pull only the similarity values between the repertoires from the correct layers (i.e. create a bipartite)
+    inter_layer_edges_matrix <- x[strain_copies_t,strain_copies_t1]
+    interlayer_matrices[[t]] <- inter_layer_edges_matrix
+    print(paste('Built interlayer edges for layers: ',t,'-->',t+1,sep=''))
+  }
+  
+  # Create cutoff
+  # Cutoff is based on all the intralayer and interlayer edges.
+  if (is.null(cutoff_value)){
+    intralayer_edges <- unlist(sapply(intralayer_matrices, as.vector))
+    interlayer_edges <- unlist(sapply(interlayer_matrices, as.vector))
+    edges <- c(intralayer_edges,interlayer_edges)
+    cutoff_value <- quantile(edges, probs = cutoff_prob)
+    # as.tibble(edges) %>% ggplot(aes(value))+geom_density()+geom_vline(xintercept = cutoff_value)
+  }
+  
+  # Apply cutoff to layers
+  layer_summary$density <- layer_summary$density_interlayer <- NA
+  print('Applying cutoff to layers...')
+  for (i in 1:length(intralayer_matrices)){
+    # print(i)
+    x <- intralayer_matrices[[i]]
+    x[x<cutoff_value] <- 0
+    intralayer_matrices[[i]] <- x
+    layer_summary$density[i] <- sum(x>0)/(nrow(x)*ncol(x))
+  }
+  # Apply cutoff to interlayer blocks
+  print('Applying cutoff to interlayer blocks...')
+  for (i in 1:length(interlayer_matrices)){
+    # print(i)
+    x <- interlayer_matrices[[i]]
+    x[x<cutoff_value] <- 0
+    interlayer_matrices[[i]] <- x
+    layer_summary$density_interlayer[i] <- sum(x>0)/(nrow(x)*ncol(x))
+  }
+  
+  layer_summary <- as.tibble(layer_summary) %>% select(layer, hosts, repertoires_unique, repertoires_total, density, density_interlayer)
+  
+  print('Done!')
+  return(list(intralayer_matrices=intralayer_matrices, 
+              interlayer_matrices=interlayer_matrices,
+              intralayer_edges_no_cutoff=intralayer_edges, # Raw values of intralayer edges, incase needed to plot edge weight distributions
+              interlayer_edges_no_cutoff=interlayer_edges, # Raw values of interlayer edges, incase needed to plot edge weight distributions
+              cutoff_prob=cutoff_prob, 
+              cutoff_value=cutoff_value, 
+              layer_summary=layer_summary, 
+              base_name = base_name, ps=ps, scenario=scenario, experiment=exp, run=run))
+}
+
 
 # Get network data --------------------------------------------------------
 
 # This function builds the network object from the result files produced on Midway
-get_network_structure <- function(ps, scenario, exp, run, layers_to_include, parse_interlayer=T, plotit=F, folder='/media/Data/'){
+get_network_structure <- function(ps, scenario, exp, run, cutoff_prob, layers_to_include, parse_interlayer=T, plotit=F, folder='/media/Data/'){
   require(utils)
-  basename <- paste('PS',ps,'_',scenario,'_E',exp,'_R',run,sep='')
+  basename <- paste('PS',ps,'_',scenario,'_E',exp,'_R',run,'_',cutoff_prob,sep='')
   network_structure <- list()
   
   
   print('Getting network info...')
-  network_structure$layer_summary <- suppressMessages(read_csv(paste(folder,'/malaria_interventions_data/Results/',ps,'_',scenario,'/',basename,'_layer_summary.csv',sep='')))
-  info <- fread(paste(folder,'/malaria_interventions_data/Results/',ps,'_',scenario,'/',basename,'_network_info.csv',sep=''))
+  network_structure$layer_summary <- suppressMessages(read_csv(paste(folder,'/Results/',ps,'_',scenario,'/',basename,'_layer_summary.csv',sep='')))
+  info <- fread(paste(folder,'/Results/',ps,'_',scenario,'/',basename,'_network_info.csv',sep=''))
   network_structure$cutoff_prob <- as.numeric(info[5,1])
   network_structure$cutoff_value <- as.numeric(info[6,1])
   network_structure$base_name <- basename
@@ -1151,8 +1268,8 @@ get_network_structure <- function(ps, scenario, exp, run, layers_to_include, par
   
   print('Parsing nodes and edges...')
   network_structure$temporal_network <- list()
-  intralayer <- fread(paste(folder,'/malaria_interventions_data/Results/',ps,'_',scenario,'/',basename,'_intralayer.csv',sep=''))
-  nodelist <- fread(paste(folder,'/malaria_interventions_data/Results/',ps,'_',scenario,'/',basename,'_node_list.csv',sep=''))
+  intralayer <- fread(paste(folder,'/Results/',ps,'_',scenario,'/',basename,'_intralayer.csv',sep=''))
+  nodelist <- fread(paste(folder,'/Results/',ps,'_',scenario,'/',basename,'_node_list.csv',sep=''))
   print('Getting layers...')
   pb <- txtProgressBar(min = 1, max=max(layers_to_include))
   for (l in layers_to_include){
@@ -1558,10 +1675,14 @@ calculateFeatures <- function(network_object, l, remove.loops=F){
 ##  A function that gets the layer as a matrix and writes it for infomap as an edge list
 # network_object is a list of matrices, each element in the list is a layer.
 # requires igraph
-matrix_to_infomap <- function(l, nodeList, network_object){
-  current_layer <- network_object$temporal_network[[l]]
+matrix_to_infomap_intralayer <- function(l, nodeList, network_object){
+  current_layer <- network_object$intralayer_matrices[[l]]
   if(nrow(current_layer)<2){
-    print(paste('Less than 2 repertoires in layer',l,'!!! skipping intralayer edges'))
+    print(paste('Less than 2 repertoires in layer',l,'!!! skipping layer.'))
+    return(NULL)
+  }
+  if (all(current_layer==0)){
+    print(paste('All edges in layer',l,' are 0!!! skipping layer.'))
     return(NULL)
   }
   g <- graph.adjacency(current_layer, mode = 'directed', weighted = T)
@@ -1576,34 +1697,25 @@ matrix_to_infomap <- function(l, nodeList, network_object){
   return(current_layer_el)
 }
 
-## A function that calculates interlayer edges between layer t and t+1
-build_interlayer_edges_1step <- function(t, nodeList, network_object){
-  strain_copies_t <- rownames(network_object$temporal_network[[t]]) # repertoires at time t
-  strain_copies_t1 <- rownames(network_object$temporal_network[[t+1]]) # repertoires at time t+1
-  # need minimum of 2 strains in t and t+1 to build a matrix
-  if (length(strain_copies_t)<2 | length(strain_copies_t1)<2){
-    print(paste('No interlayer edges between layers',t, 'and',t+1,'because there are < 2 repertoires.'))
-    return(NULL)
-  } 
-  # Pull the similarity values between the repertoires from the general similarity matrix, then write back the repertoire copy names
-  inter_layer_edges_matrix <- network_object$similarityMatrix[splitText(strain_copies_t, after = F, '_'),splitText(strain_copies_t1, after = F, '_')] 
-  rownames(inter_layer_edges_matrix) <- strain_copies_t
-  colnames(inter_layer_edges_matrix) <- strain_copies_t1
-  if (all(inter_layer_edges_matrix==0)){
-    print(paste('All interlayer edges between layers',t, 'and',t+1,' are 0 (due to the cutoff). skipping.'))
+##  A function that gets the layer as a matrix and writes it for infomap as an edge list
+# network_object is a list of matrices, each element in the list is a layer.
+# requires igraph
+matrix_to_infomap_interlayer <- function(l, nodeList, network_object){
+  interlayer_block <- network_object$interlayer_matrices[[l]]
+  if (all(interlayer_block==0)){
+    print(paste('There are no interlayer edges in block',l,'-->',l+1,'!!! skipping layer.'))
     return(NULL)
   }
-  # transform to an edge list
-  g <- graph.incidence(inter_layer_edges_matrix, directed = T, mode = 'out', weighted = T)
-  inter_layer_edges <- as.tibble(as_data_frame(g, what = 'edges'))
-  names(inter_layer_edges) <- c('node_s','node_t','w')
-  inter_layer_edges$layer_s <- t
-  inter_layer_edges$layer_t <- t+1
-  inter_layer_edges$node_s <- nodeList$nodeID[match(inter_layer_edges$node_s,nodeList$nodeLabel)]
-  inter_layer_edges$node_t <- nodeList$nodeID[match(inter_layer_edges$node_t,nodeList$nodeLabel)]
-  inter_layer_edges %<>% select(layer_s, node_s, layer_t, node_t, w)
-  print(paste('Built interlayer edges for layers: ',t,'-->',t+1,' | ', nrow(inter_layer_edges),' edges',sep=''))
-  return(inter_layer_edges)
+  g <- graph.incidence(incidence = interlayer_block, mode = 'out', weighted = T)
+  current_layer_el <- as.tibble(as_data_frame(g, what = 'edges'))
+  names(current_layer_el) <- c('node_s','node_t','w')
+  current_layer_el$layer_s <- l
+  current_layer_el$layer_t <- l
+  current_layer_el$node_s <- nodeList$nodeID[match(current_layer_el$node_s,nodeList$nodeLabel)]
+  current_layer_el$node_t <- nodeList$nodeID[match(current_layer_el$node_t,nodeList$nodeLabel)]
+  current_layer_el %<>% select(layer_s, node_s, layer_t, node_t, w) # Re-arrange columns for the infomap input order
+  print(paste('[',Sys.time(), '] Created interlayer edge list for layers ',l,'-->',l+1,' for Infomap | ', nrow(current_layer_el),' edges',sep=''))
+  return(current_layer_el)
 }
 
 
@@ -1612,21 +1724,21 @@ build_interlayer_edges_1step <- function(t, nodeList, network_object){
 # It also returns the list of node names.
 # requires igraph
 build_infomap_objects <- function(network_object, write_to_infomap_file=T, infomap_file_name, return_objects=T){
-  temporal_network <- network_object$temporal_network
+  intralayer_matrices <- network_object$intralayer_matrices
   base_name <- network_object$base_name
 
   # Get the node list
-  nodeLabel <- sort(unique(unlist(lapply(temporal_network,rownames))))
+  nodeLabel <- sort(unique(unlist(lapply(intralayer_matrices,rownames))))
   nodeList <- data.frame(nodeID=1:length(nodeLabel), nodeLabel)
   
-  # Create intralayer edge lists
-  layers <- 1:length(temporal_network)
-  infomap_intralayer <- lapply(layers, function (x) matrix_to_infomap(x, nodeList = nodeList, network_object = network_object))
+  # Create intralayer edge lists.
+  layers <- 1:length(intralayer_matrices)
+  infomap_intralayer <- lapply(layers, function (x) matrix_to_infomap_intralayer(x, nodeList = nodeList, network_object = network_object))
   infomap_intralayer <- do.call("rbind", infomap_intralayer)
   
-  # Create interlayer edge lists. Only connect consecutive layers (interlayer edges ONLY go from layer l to l+1).
+  # Create interlayer edge lists.
   layers <- layers[-length(layers)]
-  infomap_interlayer <- lapply(layers, function (x) build_interlayer_edges_1step(x, nodeList = nodeList, network_object = network_object))
+  infomap_interlayer <- lapply(layers, function (x) matrix_to_infomap_interlayer(x, nodeList = nodeList, network_object = network_object))
   infomap_interlayer <- do.call("rbind", infomap_interlayer)
   
   if (write_to_infomap_file){
