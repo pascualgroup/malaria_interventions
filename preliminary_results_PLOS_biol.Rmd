@@ -1,0 +1,104 @@
+---
+title: "Preliminary results PLOS Biol"
+output:
+  html_document: 
+    fig_height: 8
+    fig_width: 12
+  pdf_document: default
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+knitr::opts_knit$set(root.dir = "/media/Data/PLOS_Biol/")
+knitr:::read_chunk('~/Documents/malaria_interventions/get_data_sqlite_plosbiol.R')
+```
+
+```{r LOAD PACKAGES, include=FALSE, echo=FALSE}
+library(tidyverse)
+library(magrittr)
+library(sqldf)
+library(igraph)
+library(data.table)
+library(googlesheets)
+```
+
+```{r INITIATE AND LOAD FUNCTIONS, cache=TRUE, include=FALSE}
+<<FUNCTIONS>>
+
+<<INITIALIZE>>
+```
+
+The design of the experiments (table with parameters) can be found [here](https://docs.google.com/spreadsheets/d/1OgWI-aBrAkT7gW2lbIBxsgRdyWgYO-9mNV6n3dtclTg/edit?usp=sharing).
+
+* **PS**: parameter space: 01,02,03 for low, medium, high diversity.
+* **exp**: 000 is to run to checkpoint; 001 is the experiment itself (no seasonality)
+
+Design in a nutshell:
+
+|PS | N_GENES_INITIAL | BITING_RATE_MEAN | N_LOCI | N_ALLELES_INITIAL|
+|---|-----------------|-----------------|--------|-------------------|
+|01 |   120           |      0.1        |   2    | 12                |
+|02 |   1200          |      0.2        |   2    | 120               |  
+|03 |   12000         |      0.5        |   2    | 1200              |
+
+
+I kept daily biting rates fixed to 1.
+
+# 1. Basic variables for each scenario across regimes
+
+## 1.1 diversity
+
+### Selection
+```{r basic_variables_selection, cache=TRUE, echo=FALSE, fig.width=16,fig.height=9,dpi=96,out.width="1920px",out.height="1080px"}
+<<basic_variables_selection>>
+```
+
+### Complete neutrality 
+
+```{r variables_neutral,  cache=TRUE, echo=FALSE, fig.width=16,fig.height=9,dpi=96,out.width="1920px",out.height="1080px"}
+<<basic_variables_neutral>>
+```
+
+## 1.2 EIR
+
+### Selection
+```{r EIR_selection, cache=TRUE, echo=FALSE, fig.width=16,fig.height=9,dpi=96,out.width="1920px",out.height="1080px"}
+<<EIR_selection>>
+```
+
+### Complete neutrality 
+
+```{r EIR_neutral,  cache=TRUE, echo=FALSE, fig.width=16,fig.height=9,dpi=96,out.width="1920px",out.height="1080px"}
+<<EIR_neutral>>
+```
+
+## 1.3 Edge weight values
+
+### Selection
+```{r Edge_weights_distributions_S, cache=TRUE, echo=FALSE, fig.width=16,fig.height=9,dpi=96,out.width="1920px",out.height="1080px"}
+<<Edge_weights_distributions_S>>
+```
+
+### Complete neutrality
+```{r Edge_weights_distributions_N, cache=TRUE, echo=FALSE, fig.width=16,fig.height=9,dpi=96,out.width="1920px",out.height="1080px"}
+<<Edge_weights_distributions_N>>
+```
+
+# 2. Compare scenarios for a given regime
+
+Notice the order of magnitude difference in the number of repertoires
+
+### Low diversity & transmission
+```{r compare_scenarios_01, cache=TRUE, echo=FALSE, fig.width=16,fig.height=9,dpi=96,out.width="1920px",out.height="1080px"}
+<<compare_scenarios_01>>
+```
+
+### Medium diversity & transmission
+```{r compare_scenarios_02, cache=TRUE, echo=FALSE, fig.width=16,fig.height=9,dpi=96,out.width="1920px",out.height="1080px"}
+<<compare_scenarios_02>>
+```
+
+### High diversity & transmission
+```{r compare_scenarios_03, cache=TRUE, echo=FALSE, fig.width=16,fig.height=9,dpi=96,out.width="1920px",out.height="1080px"}
+<<compare_scenarios_03>>
+```
