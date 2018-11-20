@@ -28,12 +28,7 @@ library(googlesheets)
 <<INITIALIZE>>
 ```
 
-The design of the experiments (table with parameters) can be found [here](https://docs.google.com/spreadsheets/d/1OgWI-aBrAkT7gW2lbIBxsgRdyWgYO-9mNV6n3dtclTg/edit?usp=sharing).
-
-* **PS**: parameter space: 01,02,03 for low, medium, high diversity.
-* **exp**: 000 is to run to checkpoint; 001 is the experiment itself (no seasonality)
-
-Design in a nutshell:
+The design of the experiments (table with parameters) can be found [here](https://docs.google.com/spreadsheets/d/1OgWI-aBrAkT7gW2lbIBxsgRdyWgYO-9mNV6n3dtclTg/edit?usp=sharing). But here is a brief description.
 
 |PS | N_GENES_INITIAL | BITING_RATE_MEAN | N_LOCI | N_ALLELES_INITIAL|
 |---|-----------------|-----------------|--------|-------------------|
@@ -41,12 +36,17 @@ Design in a nutshell:
 |02 |   1200          |      0.2        |   2    | 120               |  
 |03 |   12000         |      0.5        |   2    | 1200              |
 
+* **PS**: parameter space: 01,02,03 for low, medium, high diversity.
+* **exp**: 000 is to run to checkpoint; 001 is the experiment itself (no seasonality)
+
 
 I kept daily biting rates fixed to 1.
 
 # 1. Basic variables for each scenario across regimes
 
 ## 1.1 diversity
+
+In the complete neutrality, the number of circulating strains seems just too much. This is orders of magnitude more than the selection.
 
 ### Selection
 ```{r basic_variables_selection, cache=TRUE, echo=FALSE, fig.width=16,fig.height=9,dpi=96,out.width="1920px",out.height="1080px"}
@@ -60,6 +60,7 @@ I kept daily biting rates fixed to 1.
 ```
 
 ## 1.2 EIR
+The EIR for selection seems too low? For neutrality it is an order of magnitude more.
 
 ### Selection
 ```{r EIR_selection, cache=TRUE, echo=FALSE, fig.width=16,fig.height=9,dpi=96,out.width="1920px",out.height="1080px"}
@@ -72,17 +73,6 @@ I kept daily biting rates fixed to 1.
 <<EIR_neutral>>
 ```
 
-## 1.3 Edge weight values
-
-### Selection
-```{r Edge_weights_distributions_S, cache=TRUE, echo=FALSE, fig.width=16,fig.height=9,dpi=96,out.width="1920px",out.height="1080px"}
-<<Edge_weights_distributions_S>>
-```
-
-### Complete neutrality
-```{r Edge_weights_distributions_N, cache=TRUE, echo=FALSE, fig.width=16,fig.height=9,dpi=96,out.width="1920px",out.height="1080px"}
-<<Edge_weights_distributions_N>>
-```
 
 # 2. Compare scenarios for a given regime
 
@@ -102,3 +92,17 @@ Notice the order of magnitude difference in the number of repertoires
 ```{r compare_scenarios_03, cache=TRUE, echo=FALSE, fig.width=16,fig.height=9,dpi=96,out.width="1920px",out.height="1080px"}
 <<compare_scenarios_03>>
 ```
+
+## 1.3 Edge weight values
+
+### Selection
+![](/media/Data/PLOS_Biol/Edge_weights_distributions_S.png)
+
+<!-- ```{r Edge_weights_distributions_S, cache=TRUE, echo=FALSE, fig.width=16,fig.height=9,dpi=96,out.width="1920px",out.height="1080px"} -->
+<!-- <<Edge_weights_distributions_S>> -->
+<!-- ``` -->
+
+<!-- ### Complete neutrality -->
+<!-- ```{r Edge_weights_distributions_N, cache=TRUE, echo=FALSE, fig.width=16,fig.height=9,dpi=96,out.width="1920px",out.height="1080px"} -->
+<!-- <<Edge_weights_distributions_N>> -->
+<!-- ``` -->
