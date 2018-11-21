@@ -225,6 +225,7 @@ set_transition_rate_neutral <- function(parameter_space, run, N_GENES_PER_STRAIN
   mean_doi <- mean(sampled_duration$duration-14)
   TRANSITION_RATE_NOT_IMMUNE <- 1/(mean_doi/N_GENES_PER_STRAIN)
   # setwd('~/Documents/malaria_interventions/')
+  dbDisconnect(db)
   return(TRANSITION_RATE_NOT_IMMUNE)
 }
 
@@ -839,6 +840,7 @@ get_data <- function(parameter_space, scenario, experiment, run, cutoff_prob=0.9
       sampled_infections <- suppressMessages(left_join(sampled_infections, hosts, by='host_id'))
       sampled_infections$host_age <- round((sampled_infections$time-sampled_infections$birth_time)/30)    
     }
+    dbDisconnect(db)
   }
   
   if (!use_sqlite){
@@ -995,6 +997,7 @@ get_duration_infection <- function(parameter_space, scenario, experiment, run){
   }
   db <- dbConnect(SQLite(), dbname = sqlite_file)
   sampled_duration <- dbGetQuery(db, 'SELECT * FROM sampled_duration')
+  dbDisconnect(db)
   return(as.tibble(sampled_duration))
 }
 
@@ -1767,4 +1770,69 @@ build_infomap_objects <- function(network_object, write_to_infomap_file=T, infom
   }
 }
 
+
+
+infomap_readTreeFile <- function(PS, scenario, exp, run, cutoff_prob, folder='/media/Data/PLOS_Biol/Results/'){
+  
+  if (on_Midway()){
+    infomap_file <-       paste('/scratch/midway2/pilosofs/PLOS_Biol/Results/',PS,'_',scenario,'/PS',PS,'_',scenario,'_E',exp,'_R',run,'_',cutoff_prob,'_Infomap_multilayer_expanded.tree',sep='')
+    node_list <- read_csv(paste('/scratch/midway2/pilosofs/PLOS_Biol/Results/',PS,'_',scenario,'/PS',PS,'_',scenario,'_E',exp,'_R',run,'_',cutoff_prob,'_node_list.csv',sep=''), col_types = list(col_character(),col_character()))
+  } else {
+    infomap_file <-       paste(folder,'/',PS,'_',scenario,'/PS',PS,'_',scenario,'_E',exp,'_R',run,'_',cutoff_prob,'_Infomap_multilayer_expanded.tree',sep='')
+    node_list <- read_csv(paste(folder,'/',PS,'_',scenario,'/PS',PS,'_',scenario,'_E',exp,'_R',run,'_',cutoff_prob,'_node_list.csv',sep=''), col_types = list(col_character(),col_character()))
+  }
+  lines <- readLines(infomap_file)
+  cat(lines[1]);cat('\n')
+  x <- fread(infomap_file, skip = 2, stringsAsFactors = F) # Read results of Infomap
+  
+  # Create a data frame to store results
+  modules <- tibble(module=rep(NA,nrow(x)),
+                    nodeID=rep(NA,nrow(x)),
+                    layer=rep(NA,nrow(x)),
+                    path=x$V1)
+  
+  modules$module <- as.numeric(str_split(string = modules$path, pattern = ':', simplify = T)[,1])
+  modules$nodeID <- str_trim(str_split(string = x$V3, pattern = '\\|', simplify = T)[,1])
+  modules$layer <- as.numeric(str_trim(str_split(string = x$V3, pattern = '\\|', simplify = T)[,2]))
+  
+  cat(nrow(x),'state nodes','in',paste(max(modules$module),'modules'));cat('\n')
+  
+  # Rename modules because Infomap gives random names
+  modules2 <- modules %>% 
+    distinct(module,layer) %>% 
+    arrange(module,layer)
+  x <- c(1,table(modules2$module))
+  module_birth_layers <- modules2 %>% slice(cumsum(x)) %>% arrange(layer,module)
+  module_renaming <- data.frame(module=module_birth_layers$module, module_renamed = 1:max(module_birth_layers$module)) 
+  modules2 %<>% left_join(module_renaming)
+  modules2 %<>% full_join(modules) 
+  modules2 %<>% select(-module, -path)
+  names(modules2)[2] <- 'module'
+  modules2 %<>% arrange(module, layer, nodeID)
+  
+  # Change node IDs to repertoire names
+  modules2 %<>% left_join(node_list) %>% 
+    rename(strain_unique=nodeLabel) %>% 
+    mutate(strain_id=str_split(strain_unique,'_', simplify = T)[,1])
+  
+  # Add information
+  modules2$PS <- PS
+  modules2$scenario <- scenario
+  modules2$exp <- exp
+  modules2$run <- run
+  modules2$cutoff_prob <- cutoff_prob
+  
+  # Get the gene list for the repertoires
+  if (on_Midway()){
+    db <- dbConnect(SQLite(), dbname = paste('/scratch/midway2/pilosofs/PLOS_Biol/sqlite/','PS',PS,'_',scenario,'_E',exp,'_R',run,'.sqlite',sep=''))
+  } else {
+    db <- dbConnect(SQLite(), dbname = paste('/media/Data/PLOS_Biol/sqlite_',scenario,'/','PS',PS,'_',scenario,'_E',exp,'_R',run,'.sqlite',sep=''))
+  }
+  
+  sampled_strains <- as.tibble(dbGetQuery(db, 'SELECT id,gene_id FROM sampled_strains'))
+  names(sampled_strains)[1] <- 'strain_id'
+  sampled_alleles <- as.tibble(dbGetQuery(db, 'SELECT * FROM sampled_alleles'))
+  dbDisconnect(db)
+  return(list(modules=modules2,sampled_strains=sampled_strains,sampled_alleles=sampled_alleles))
+}
 

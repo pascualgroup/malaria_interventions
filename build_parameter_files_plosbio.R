@@ -20,7 +20,7 @@ parameter_files_path_global <- '/media/Data/PLOS_Biol/parameter_files'
 design <- loadExperiments_GoogleSheets(local = F, workBookName = 'PLOS_Biol_design', sheetID = 2) 
 
 # Create the reference experiments (checkpoint and control)
-ps_range <- sprintf('%0.2d', 2)
+ps_range <- sprintf('%0.2d', 4)
 exp_range <- sprintf('%0.3d', 0:1)
 run_range <- 1
 work_scenario <- 'G'

@@ -49,28 +49,39 @@ I kept daily biting rates fixed to 1.
 In the complete neutrality, the number of circulating strains seems just too much. This is orders of magnitude more than the selection.
 
 ### Selection
-```{r basic_variables_selection, cache=TRUE, echo=FALSE, fig.width=16,fig.height=9,dpi=96,out.width="1920px",out.height="1080px"}
-<<basic_variables_selection>>
+```{r basic_variables_S, cache=TRUE, echo=FALSE, fig.width=16,fig.height=9,dpi=96,out.width="1920px",out.height="1080px"}
+<<basic_variables_S>>
 ```
 
 ### Complete neutrality 
 
-```{r variables_neutral,  cache=TRUE, echo=FALSE, fig.width=16,fig.height=9,dpi=96,out.width="1920px",out.height="1080px"}
-<<basic_variables_neutral>>
+```{r basic_variables_N,  cache=TRUE, echo=FALSE, fig.width=16,fig.height=9,dpi=96,out.width="1920px",out.height="1080px"}
+<<basic_variables_N>>
 ```
+
+### Complete generalized immunity 
+
+```{r basic_variables_G,  cache=TRUE, echo=FALSE, fig.width=16,fig.height=9,dpi=96,out.width="1920px",out.height="1080px"}
+<<basic_variables_G>>
+```
+
 
 ## 1.2 EIR
 The EIR for selection seems too low? For neutrality it is an order of magnitude more.
 
 ### Selection
-```{r EIR_selection, cache=TRUE, echo=FALSE, fig.width=16,fig.height=9,dpi=96,out.width="1920px",out.height="1080px"}
-<<EIR_selection>>
+```{r EIR_S, cache=TRUE, echo=FALSE, fig.width=16,fig.height=9,dpi=96,out.width="1920px",out.height="1080px"}
+<<EIR_S>>
 ```
 
 ### Complete neutrality 
+```{r EIR_N,  cache=TRUE, echo=FALSE, fig.width=16,fig.height=9,dpi=96,out.width="1920px",out.height="1080px"}
+<<EIR_N>>
+```
 
-```{r EIR_neutral,  cache=TRUE, echo=FALSE, fig.width=16,fig.height=9,dpi=96,out.width="1920px",out.height="1080px"}
-<<EIR_neutral>>
+### Generalized immunity
+```{r EIR_G,  cache=TRUE, echo=FALSE, fig.width=16,fig.height=9,dpi=96,out.width="1920px",out.height="1080px"}
+<<EIR_G>>
 ```
 
 
@@ -97,6 +108,9 @@ Notice the order of magnitude difference in the number of repertoires
 
 ### Selection
 ![](/media/Data/PLOS_Biol/Edge_weights_distributions_S.png)
+
+### Generalized immunity
+![](/media/Data/PLOS_Biol/Edge_weights_distributions_G.png)
 
 <!-- ```{r Edge_weights_distributions_S, cache=TRUE, echo=FALSE, fig.width=16,fig.height=9,dpi=96,out.width="1920px",out.height="1080px"} -->
 <!-- <<Edge_weights_distributions_S>> -->

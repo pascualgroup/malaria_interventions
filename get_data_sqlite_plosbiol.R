@@ -22,7 +22,7 @@ run_range <- 1
 monitored_variables <- c('prevalence', 'meanMOI','n_circulating_strains', 'n_circulating_genes', 'n_alleles', 'n_total_bites')
 ps_cols <- c('#0A97B7','#B70A97','#97B70A')
 exp_labels=c('Control','2-yr','5-yr','10-yr')
-scenario_cols <- c('red','blue','orange')
+scenario_cols <- c('red','orange','blue')
 
 
 compare_ps <- function(ps_range=c('01','02','03'), scenario, exp, run_range, cutoff_prob=c(0.25,0.7,0.9)){
@@ -81,7 +81,7 @@ compare_scenarios <- function(PS, scenarios=c('S','N'), run_range, cutoff_prob){
   time_range <- c(28800,max(scenario_comparison$time))
   
   p <- scenario_comparison %>%
-    mutate(scenario=factor(scenario, levels=c('S','N'))) %>% 
+    mutate(scenario=factor(scenario, levels=scenarios)) %>% 
     select(-year, -month, -n_infected) %>% 
     filter(time>time_range[1]&time<time_range[2]) %>%
     gather(variable, value, -time, -exp, -PS, -scenario, -run) %>% 
@@ -91,18 +91,22 @@ compare_scenarios <- function(PS, scenarios=c('S','N'), run_range, cutoff_prob){
     ggplot(aes(x=time, y=value_mean, color=scenario))+
     geom_line()+
     scale_color_manual(values=scenario_cols)+
-    facet_wrap(~variable+scenario, scales='free')+
+    facet_wrap(~variable, scales='free')+
     mytheme
   
   return(p)
 }
 
-get_edge_disributions <- function(PS, scenario, exp, run, cutoff_prob){
+get_edge_disributions <- function(PS, scenario, exp, run, cutoff_prob, get_inter=T){
   x <- readLines(paste('/media/Data/PLOS_Biol/Results/',PS,'_',scenario,'/PS',PS,'_',scenario,'_E',exp,'_R',run,'_',cutoff_prob,'_network_info.csv',sep=''))
   cutoff_value <- as.numeric(x[6])
   intra <- fread(paste('/media/Data/PLOS_Biol/Results/',PS,'_',scenario,'/PS',PS,'_',scenario,'_E',exp,'_R',run,'_',cutoff_prob,'_intralayer_no_cutoff.csv',sep=''))  
-  inter <- fread(paste('/media/Data/PLOS_Biol/Results/',PS,'_',scenario,'/PS',PS,'_',scenario,'_E',exp,'_R',run,'_',cutoff_prob,'_interlayer_no_cutoff.csv',sep=''))  
-  x <- rbind(intra,inter)
+  if (get_inter){
+    inter <- fread(paste('/media/Data/PLOS_Biol/Results/',PS,'_',scenario,'/PS',PS,'_',scenario,'_E',exp,'_R',run,'_',cutoff_prob,'_interlayer_no_cutoff.csv',sep=''))  
+    x <- rbind(intra,inter)
+  } else {
+    x <- intra
+  }
   x$PS=PS
   x$scenario=scenario
   x$exp=exp
@@ -117,33 +121,39 @@ get_edge_disributions <- function(PS, scenario, exp, run, cutoff_prob){
 
 # Compare between parameter spaces within an experiment -------------------
 
-## @knitr basic_variables_selection
-basic_variable_s <- compare_ps(ps_range=c('01','02','03'), 'S', exp = '001', 1, cutoff_prob=c(0.25,0.7,0.9))
-basic_variable_s[[1]]
+## @knitr basic_variables_S
+basic_variable_S <- compare_ps(ps_range=c('01','02','03'), 'S', exp = '001', 1, cutoff_prob=c(0.25,0.7,0.9))
+basic_variable_S[[1]]
 
-## @knitr basic_variables_neutral
-basic_variable_n <- compare_ps(ps_range=c('01','02','03'), 'N', exp = '001', 1, cutoff_prob=c(0.25,0.7,0.9))
-basic_variable_n[[1]]
+## @knitr basic_variables_N
+basic_variable_N <- compare_ps(ps_range=c('01','02','03'), 'N', exp = '001', 1, cutoff_prob=c(0.25,0.7,0.9))
+basic_variable_N[[1]]
 
-## @knitr EIR_selection
-basic_variable_s[[2]]
+## @knitr basic_variables_G
+basic_variable_G <- compare_ps(ps_range=c('01','02','03'), 'G', exp = '001', 1, cutoff_prob=c(0.25,0.7,0.9))
+basic_variable_G[[1]]
 
-## @knitr EIR_neutral
-basic_variable_n[[2]]
+## @knitr EIR_S
+basic_variable_S[[2]]
 
+## @knitr EIR_N
+basic_variable_N[[2]]
+
+## @knitr EIR_G
+basic_variable_G[[2]]
 ## @knitr END
 
 
 # Compare between scenarios within a parameter space and experiment -------
 
 ## @knitr compare_scenarios_01
-x <- compare_scenarios(PS = '01', scenarios = c('S','N'), run_range = 1, cutoff_prob = 0.25)
+x <- compare_scenarios(PS = '01', scenarios = c('S','N','G'), run_range = 1, cutoff_prob = 0.25)
 x
 ## @knitr compare_scenarios_02
-x <- compare_scenarios(PS = '02', scenarios = c('S','N'), run_range = 1, cutoff_prob = 0.7)
+x <- compare_scenarios(PS = '02', scenarios = c('S','N','G'), run_range = 1, cutoff_prob = 0.7)
 x
 ## @knitr compare_scenarios_03
-x <- compare_scenarios(PS = '03', scenarios = c('S','N'), run_range = 1, cutoff_prob = 0.9)
+x <- compare_scenarios(PS = '03', scenarios = c('S','N','G'), run_range = 1, cutoff_prob = 0.9)
 x
 ## @knitr END
 
@@ -166,123 +176,101 @@ my_labels <- as_labeller(c(`01` = cutoff_df$label[1],
 png('Edge_weights_distributions_S.png', width = 1920, height = 1080)
 x %>% ggplot(aes(value,fill=PS))+
   geom_density()+
-  geom_vline(data=cutoff_df, aes(xintercept = cutoff_value), color='red')+
+  geom_vline(data=cutoff_df, aes(xintercept = cutoff_value), color='red', size=2)+
   scale_fill_manual(values=ps_cols)+
   facet_wrap(~PS,scales = 'free',labeller = my_labels)+
   theme_bw(base_size=26)
 dev.off()
+edges_S <- x
 ## @knitr END
 
-# NOTE THAT IT IS IMPOSSIBLE TO PLOT EDGE WEIGHTS FOR NEUTRALITY: THERE IS NOT ENOUGH MEMORY TO LOAD ALL THE INTERACTIONS
-## @knitr Edge_weights_distributions_N
-edges_N_01 <- get_edge_disributions(PS = '01',scenario = 'N',exp = '001',1, 0.25)
-edges_N_02 <- get_edge_disributions(PS = '02',scenario = 'N',exp = '001',1, 0.7)
-edges_N_03 <- get_edge_disributions(PS = '03',scenario = 'N',exp = '001',1, 0.9)
-x <- rbind(edges_N_01,edges_N_02,edges_N_03)
+
+
+## @knitr Edge_weights_distributions_G
+edges_G_01 <- get_edge_disributions(PS = '01',scenario = 'G',exp = '001',1, 0.25)
+edges_G_02 <- get_edge_disributions(PS = '02',scenario = 'G',exp = '001',1, 0.7)
+edges_G_03 <- get_edge_disributions(PS = '03',scenario = 'G',exp = '001',1, 0.9)
+x <- rbind(edges_G_01,edges_G_02,edges_G_03)
 x <- as.tibble(x)
 cutoff_df <- x %>% distinct(PS, cutoff_value, cutoff_prob)
 cutoff_df$label <- paste('PS: ',cutoff_df$PS,'--Cutoff quantile: ',cutoff_df$cutoff_prob,sep='')
 my_labels <- as_labeller(c(`01` = cutoff_df$label[1],
                            `02` = cutoff_df$label[2],
                            `03` = cutoff_df$label[3]))
+png('Edge_weights_distributions_G.png', width = 1920, height = 1080)
 x %>% ggplot(aes(value,fill=PS))+
   geom_density()+
-  geom_vline(data=cutoff_df, aes(xintercept = cutoff_value), color='blue')+
+  geom_vline(data=cutoff_df, aes(xintercept = cutoff_value), color='orange', size=2)+
   scale_fill_manual(values=ps_cols)+
-  facet_wrap(~PS,scales = 'free',labeller = my_labels)
+  facet_wrap(~PS,scales = 'free',labeller = my_labels)+
+  theme_bw(base_size=26)
+dev.off()
+edges_G <- x
+## @knitr END
+
+# NOTE THAT IT IS IMPOSSIBLE TO PLOT EDGE WEIGHTS FOR NEUTRALITY: THERE IS NOT ENOUGH MEMORY TO LOAD ALL THE INTERACTIONS
+## @knitr Edge_weights_distributions_N
+edges_N_01 <- get_edge_disributions(PS = '01',scenario = 'N',exp = '001',1, 0.25, get_inter = F)
+edges_N_02 <- get_edge_disributions(PS = '02',scenario = 'N',exp = '001',1, 0.7, get_inter = F)
+edges_N_03 <- get_edge_disributions(PS = '03',scenario = 'N',exp = '001',1, 0.9, get_inter = F)
+x <- rbind(edges_N_01,edges_N_02)
+x <- as.tibble(x)
+cutoff_df <- x %>% distinct(PS, cutoff_value, cutoff_prob)
+cutoff_df$label <- paste('PS: ',cutoff_df$PS,'--Cutoff quantile: ',cutoff_df$cutoff_prob,sep='')
+my_labels <- as_labeller(c(`01` = cutoff_df$label[1],
+                           `02` = cutoff_df$label[2],
+                           `03` = cutoff_df$label[3]))
+png('Edge_weights_distributions_N.png', width = 1920, height = 1080)
+x %>% ggplot(aes(value,fill=PS))+
+  geom_density()+
+  geom_vline(data=cutoff_df, aes(xintercept = cutoff_value), color='blue', size=2)+
+  scale_fill_manual(values=ps_cols)+
+  facet_wrap(~PS,scales = 'free',labeller = my_labels)+
+  theme_bw(base_size=26)
+dev.off()
+edges_N <- x
 ## @knitr END
 
 
 
 # Infomap -----------------------------------------------------------------
-file <- '/media/Data/PLOS_Biol/Results/03_S/PS03_S_E001_R1_0.9_Infomap_multilayer_expanded.tree'
-infomap_readTreeFile <- function(file){
-  lines <- readLines(file)
-  cat(lines[1]);cat('\n')
-  x <- fread(file, skip = 2, stringsAsFactors = F) # Read results of Infomap
-  
-  # Create a data frame to store results
-  modules <- tibble(module=rep(NA,nrow(x)),
-                        strain=rep(NA,nrow(x)),
-                        layer=rep(NA,nrow(x)),
-                        path=x$V1)
-  
-  modules$module <- as.numeric(str_split(string = modules$path, pattern = ':', simplify = T)[,1])
-  modules$strain <- str_trim(str_split(string = x$V3, pattern = '\\|', simplify = T)[,1])
-  modules$layer <- as.numeric(str_trim(str_split(string = x$V3, pattern = '\\|', simplify = T)[,2]))
-  
-  cat(nrow(x),'state nodes','in',paste(max(modules$module),'modules'));cat('\n')
-  
-  # Rename modules because Infomap gives random names
-  modules2 <- modules %>% 
-    distinct(module,layer) %>% 
-    arrange(module,layer)
-  x <- c(1,table(modules2$module))
-  module_birth_layers <- modules2 %>% slice(cumsum(x)) %>% arrange(layer,module)
-  module_renaming <- data.frame(module=module_birth_layers$module, module_renamed = 1:max(module_birth_layers$module)) 
-  
-  modules2 %<>% left_join(module_renaming)
-  modules2 %<>% full_join(modules) 
-  modules2 %<>% select(-module, -path)
-  names(modules2)[2] <- 'module'
-  modules2 %<>% arrange(module, layer, strain)
- return(modules2)
+
+PS <- design_basic[i,1]
+scenario <- design_basic[i,2]
+exp <- design_basic[i,3]
+run <- design_basic[i,4]
+cutoff_prob <- design_basic[i,5]
+design_basic <- expand.grid(PS=sprintf('%0.2d', 1:3),
+                            scenario=c('S','N','G'), 
+                            exp='001',
+                            run_range=1, 
+                            stringsAsFactors = F)
+design_basic$cutoff_prob <- rep(c(0.25,0.7,0.9),length(unique(design_basic$scenario))*length(unique(run_range)))
+
+module_results <- c()
+for (i in 1:nrow(design_basic)){
+  PS <- design_basic[i,1]
+  scenario <- design_basic[i,2]
+  exp <- design_basic[i,3]
+  run <- design_basic[i,4]
+  cutoff_prob <- design_basic[i,5]
+  x <- infomap_readTreeFile(PS,scenario,exp,run,cutoff_prob)
+  write_csv(x$modules, paste('/media/Data/PLOS_Biol/Results/',PS,'_',scenario,'/PS',PS,'_',scenario,'_E',exp,'_R',run,'_',cutoff_prob,'_modules.csv',sep=''))
+  write_csv(x$sampled_strains, paste('/media/Data/PLOS_Biol/Results/',PS,'_',scenario,'/PS',PS,'_',scenario,'_E',exp,'_R',run,'_',cutoff_prob,'_sampled_strains.csv',sep=''))
+  write_csv(x$sampled_alleles, paste('/media/Data/PLOS_Biol/Results/',PS,'_',scenario,'/PS',PS,'_',scenario,'_E',exp,'_R',run,'_',cutoff_prob,'_sampled_alleles.csv',sep=''))
+  # module_results <- rbind(module_results, x)
 }
 
-modules <- infomap_readTreeFile(file)
-modules %>% 
-  distinct(module,layer) %>% 
-  ggplot(aes(x=layer, y=module, color=module))+
+module_results %>% 
+  distinct(module,layer,PS, scenario) %>% 
+  mutate(scenario=factor(scenario, levels=c('S','N','G'))) %>% 
+  ggplot(aes(x=layer, y=module, color=scenario))+
   geom_point(size=2)+
-  # scale_x_continuous(breaks = tickBreaks)+
-  # scale_y_discrete(breaks = tickBreaks_y)+
-  labs(y= 'module ID', x='Time (months)')
+  scale_color_manual(values = scenario_cols)+
+  labs(y= 'module ID', x='Time (months)')+
+  facet_grid(PS~scenario, scales='free')
 
-# Files to calculate statistic
-write_csv(modules, '~/Dropbox/Qixin_Shai_Malaria/PS03_S_E001_R1_0.9_modules.csv')
-
-if (use_sqlite){
-  base_name <- paste('PS',parameter_space,'_',scenario,'_E',experiment,'_R',run,sep='')
-  if (on_Midway()){
-    sqlite_file <- paste('/scratch/midway2/pilosofs/PLOS_Biol/sqlite/',base_name,'.sqlite',sep='')
-    print(sqlite_file)
-    print(file.exists(sqlite_file))
-  } else {
-    sqlite_file <- paste('/media/Data/PLOS_Biol/sqlite_',scenario,'/',base_name,'.sqlite',sep='')
-  }
   
-  if (!file.exists(sqlite_file)) {
-    print (paste(sqlite_file, ' does not exist, ignoring and returning NULL'))
-    return(NULL)
-  }
-  # parameter_file <- paste(base_name,'.py',sep='') # This may be necessary so I leave it
-  
-  # Extract data from sqlite. variable names correspond to table names
-  print('Connecting to sqlite file...')
-  db <- dbConnect(SQLite(), dbname = sqlite_file)
-  summary_general <- dbGetQuery(db, 'SELECT * FROM summary')
-  summary_general$PS <- parameter_space
-  summary_general$exp <- experiment
-  summary_general$scenario <- scenario
-  summary_general$run <- run
-  summary_general$year <- gl(n = max(summary_general$time)/360, length = nrow(summary_general), k = 1)
-  summary_general$month <- gl(n = 12, k = 1, length = nrow(summary_general),labels = c('Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'), ordered = F)
-  
-  summary_alleles <- dbGetQuery(db, 'SELECT * FROM summary_alleles')
-  summary_alleles %<>% group_by(time) %>% summarise(n_alleles=sum(n_circulating_alleles))
-  
-  summary_general <- suppressMessages(left_join(summary_general, summary_alleles))
-  
-  if ('sampled_infections'%in%tables_to_get){
-    sampled_infections <- dbGetQuery(db, 'SELECT * FROM sampled_infections')
-    sampled_infections$PS <- parameter_space
-    sampled_infections$exp <- experiment
-    sampled_infections$scenario <- scenario
-    sampled_infections$run <- run
-  }
-  
-
-
 
 
 modulePersistence <- modules %>% group_by(module_renamed) %>% summarise(birth_layer=min(layer), death_layer=max(layer), persistence=death_layer-birth_layer+1)
