@@ -20,7 +20,7 @@ xd = np.array([x[1] for x in rows])-1  #number of infections
 yd = np.array([x[0] for x in rows])  #infection duration
 
 #get range of infection times
-newxd=range(xd.min(),xd.max()+1)
+newxd=range(xd.min(),xd.max()+2)
 # mean of infection duration as a function of infection times
 xys = stats.binned_statistic(xd,yd,'mean',bins=newxd)
 bc = np.bincount(xd)
@@ -28,7 +28,10 @@ flt = np.where(bc>1)  #take only bins that have more than 1 incidents
 x = flt[0]
 y = xys[0][flt[0]]-14 
 infectionTimesToImmune = max(x)
-clearanceRateConstantImmune = 1/(np.mean(yd[xd>max(x)]) - 14)
+if len(yd[xd>max(x)])>0:
+	clearanceRateConstantImmune = 1/(np.mean(yd[xd>max(x)]) - 14)
+else:
+	clearanceRateConstantImmune = 1/y[-1]
 
 while True:
 	try:

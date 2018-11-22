@@ -20,7 +20,7 @@ parameter_files_path_global <- '/media/Data/PLOS_Biol/parameter_files'
 design <- loadExperiments_GoogleSheets(local = F, workBookName = 'PLOS_Biol_design', sheetID = 2) 
 
 # Create the reference experiments (checkpoint and control)
-ps_range <- sprintf('%0.2d', 4)
+ps_range <- sprintf('%0.2d', 1)
 exp_range <- sprintf('%0.3d', 0:1)
 run_range <- 1
 work_scenario <- 'G'
@@ -392,7 +392,7 @@ for (ps in ps_range){
 
 
 # Generate sbatch files to extract data -----------------------------------
-sbatch_arguments <- expand.grid(PS=sprintf('%0.2d', 1:3),
+sbatch_arguments <- expand.grid(PS=sprintf('%0.2d', 4:6),
                                 scen=c('S','N','G'), 
                                 array='1', 
                                 stringsAsFactors = F)
@@ -404,8 +404,8 @@ sbatch_arguments$time <- c('02:00:00','02:00:00','02:00:00','10:00:00','10:00:00
 # sbatch_arguments$time <- c(rep('01:00:00',4),rep('03:00:00',4),rep('06:00:00',5),
 #                            rep('04:00:00',4),rep('08:00:00',4),rep('12:00:00',5)) # For G
 
-ps_range <- sprintf('%0.2d', 1:3)
-for (scenario in c('G')){
+ps_range <- sprintf('%0.2d', 4:6)
+for (scenario in c('S','N','G')){
   for (ps in ps_range){
     x <- readLines('~/Documents/malaria_interventions/get_data_midway_plosbiol.sbatch')
     str_sub(x[2],22,24) <- paste(ps,scenario,sep='')

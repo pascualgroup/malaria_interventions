@@ -240,7 +240,7 @@ scenario <- design_basic[i,2]
 exp <- design_basic[i,3]
 run <- design_basic[i,4]
 cutoff_prob <- design_basic[i,5]
-design_basic <- expand.grid(PS=sprintf('%0.2d', 1:3),
+design_basic <- expand.grid(PS=sprintf('%0.2d', 1:6),
                             scenario=c('S','N','G'), 
                             exp='001',
                             run_range=1, 
@@ -254,11 +254,15 @@ for (i in 1:nrow(design_basic)){
   exp <- design_basic[i,3]
   run <- design_basic[i,4]
   cutoff_prob <- design_basic[i,5]
-  x <- infomap_readTreeFile(PS,scenario,exp,run,cutoff_prob)
-  write_csv(x$modules, paste('/media/Data/PLOS_Biol/Results/',PS,'_',scenario,'/PS',PS,'_',scenario,'_E',exp,'_R',run,'_',cutoff_prob,'_modules.csv',sep=''))
-  write_csv(x$sampled_strains, paste('/media/Data/PLOS_Biol/Results/',PS,'_',scenario,'/PS',PS,'_',scenario,'_E',exp,'_R',run,'_',cutoff_prob,'_sampled_strains.csv',sep=''))
-  write_csv(x$sampled_alleles, paste('/media/Data/PLOS_Biol/Results/',PS,'_',scenario,'/PS',PS,'_',scenario,'_E',exp,'_R',run,'_',cutoff_prob,'_sampled_alleles.csv',sep=''))
-  # module_results <- rbind(module_results, x)
+  # x <- infomap_readTreeFile(PS,scenario,exp,run,cutoff_prob)
+  # write_csv(x$modules, paste('/media/Data/PLOS_Biol/Results/',PS,'_',scenario,'/PS',PS,'_',scenario,'_E',exp,'_R',run,'_',cutoff_prob,'_modules.csv',sep=''))
+  # write_csv(x$sampled_strains, paste('/media/Data/PLOS_Biol/Results/',PS,'_',scenario,'/PS',PS,'_',scenario,'_E',exp,'_R',run,'_',cutoff_prob,'_sampled_strains.csv',sep=''))
+  # write_csv(x$sampled_alleles, paste('/media/Data/PLOS_Biol/Results/',PS,'_',scenario,'/PS',PS,'_',scenario,'_E',exp,'_R',run,'_',cutoff_prob,'_sampled_alleles.csv',sep=''))
+  file <- paste('/media/Data/PLOS_Biol/Results/',PS,'_',scenario,'/PS',PS,'_',scenario,'_E',exp,'_R',run,'_',cutoff_prob,'_modules.csv',sep='')
+  if(file.exists(file)){
+    x <- read_csv(file)  
+    module_results <- rbind(module_results, x)
+  }
 }
 
 module_results %>% 
@@ -270,13 +274,60 @@ module_results %>%
   labs(y= 'module ID', x='Time (months)')+
   facet_grid(PS~scenario, scales='free')
 
-  
+
+# Module persistence
+module_persistence <- module_results %>% 
+  mutate(scenario=factor(scenario, levels=c('S','N','G'))) %>% 
+  group_by(PS,scenario,module) %>% 
+  summarise(birth_layer=min(layer), death_layer=max(layer), persistence=death_layer-birth_layer+1)
+module_persistence %>% 
+  filter(PS %in% c('01','02','03')) %>% 
+  ggplot(aes(persistence, y=..count.., fill=scenario))+
+  geom_density()+
+  geom_rug(aes(x=persistence, y=0), position = position_jitter(height = 0))+
+  scale_fill_manual(values = scenario_cols)+
+  labs(x='Persistence (months)')+
+  facet_grid(PS~scenario, scales='free_y')
+
+# Strain persistence. For that need to cluster the strains
+PS <- '03'
+scenario <- 'S'
+modules <- read_csv(paste('/media/Data/PLOS_Biol/Results/',PS,'_',scenario,'/PS',PS,'_',scenario,'_E',exp,'_R',run,'_',cutoff_prob,'_modules.csv',sep=''))
+sampled_strains <- read_csv(paste('/media/Data/PLOS_Biol/Results/',PS,'_',scenario,'/PS',PS,'_',scenario,'_E',exp,'_R',run,'_',cutoff_prob,'_sampled_strains.csv',sep=''))
+sampled_alleles <- read_csv(paste('/media/Data/PLOS_Biol/Results/',PS,'_',scenario,'/PS',PS,'_',scenario,'_E',exp,'_R',run,'_',cutoff_prob,'_sampled_alleles.csv',sep=''))
+
+setequal(sampled_strains$strain_id, modules$strain_id)
+
+sampled_alleles$allele_locus <- paste(sampled_alleles$allele, sampled_alleles$locus,sep='_')
+sampled_alleles %<>% select(gene_id, allele_locus) %>% arrange(gene_id,allele_locus)
+sampled_strains %<>% left_join(sampled_alleles) %>% distinct(strain_id,allele_locus)
+
+y <- xtabs(~strain_id+allele_locus, sampled_strains)
+y <- matrix(y, nrow = nrow(y), ncol=ncol(y), dimnames = list(rownames(y),colnames(y)))
+otutab <- as.data.frame(y)
+otutab <- cbind(rownames(otutab), otutab)
+rownames(otutab) <- NULL
+names(otutab)[1] <- '#OTU ID'
+otutab[1:5,1:5]
+fwrite(otutab, 'otutab.txt', sep = '\t', quote = F)
+
+# Cluster Yellowstone using USEARCH
+system("./usearch10.0.240_i86linux32 -cluster_fast Yellowstone_unique_no_singletons.fa -id 0.8 -centroids Yellowstone_otus.fa -uc Yellowstone_uc.txt -relabel Otu") #find clusters of seqs
+system('./usearch10.0.240_i86linux32 -otutab Yellowstone_all_spacers_renamed.fasta -db Yellowstone_otus.fa -otutabout Yellowstone_otutab.txt -id 0.8 -dbmatched Yellowstone_otus_with_sizes.fa -sizeout -notmatched Mutnovsky_notmatched.fa -sample_delim ";"') #build otu table
 
 
-modulePersistence <- modules %>% group_by(module_renamed) %>% summarise(birth_layer=min(layer), death_layer=max(layer), persistence=death_layer-birth_layer+1)
-modulePersistence %>% ggplot(aes(persistence))+geom_density()
 
 
+
+strain_persistence <- module_results %>% 
+  mutate(scenario=factor(scenario, levels=c('S','N','G'))) %>% 
+  group_by(PS,scenario,strain_id) %>% 
+  summarise(birth_layer=min(layer), death_layer=max(layer), persistence=death_layer-birth_layer+1)
+strain_persistence %>% ggplot(aes(persistence, fill=scenario))+
+  geom_density()+
+  scale_fill_manual(values = scenario_cols)+
+  labs(x='Persistence (months)')+
+  facet_grid(PS~scenario, scales='free_y')
 
 # Compare curves firs GI and IS -------------------------------------------
 

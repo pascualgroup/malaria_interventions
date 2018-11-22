@@ -1773,7 +1773,7 @@ build_infomap_objects <- function(network_object, write_to_infomap_file=T, infom
 
 
 infomap_readTreeFile <- function(PS, scenario, exp, run, cutoff_prob, folder='/media/Data/PLOS_Biol/Results/'){
-  
+  print ('Reading infomap file...')
   if (on_Midway()){
     infomap_file <-       paste('/scratch/midway2/pilosofs/PLOS_Biol/Results/',PS,'_',scenario,'/PS',PS,'_',scenario,'_E',exp,'_R',run,'_',cutoff_prob,'_Infomap_multilayer_expanded.tree',sep='')
     node_list <- read_csv(paste('/scratch/midway2/pilosofs/PLOS_Biol/Results/',PS,'_',scenario,'/PS',PS,'_',scenario,'_E',exp,'_R',run,'_',cutoff_prob,'_node_list.csv',sep=''), col_types = list(col_character(),col_character()))
@@ -1783,21 +1783,29 @@ infomap_readTreeFile <- function(PS, scenario, exp, run, cutoff_prob, folder='/m
   }
   lines <- readLines(infomap_file)
   cat(lines[1]);cat('\n')
-  x <- fread(infomap_file, skip = 2, stringsAsFactors = F) # Read results of Infomap
+  # x <- fread(infomap_file, skip = 2, stringsAsFactors = F) # Read results of Infomap
+  x <- read_delim(infomap_file, 
+                  delim = ' ',
+                  col_types = list(col_character(), col_double(), col_character(), col_integer(), col_integer()), 
+                  col_names = c('path', 'flow', 'name', 'layer', 'node'),
+                  skip = 2) # Read results of Infomap
+  print(x)
   
   # Create a data frame to store results
   modules <- tibble(module=rep(NA,nrow(x)),
                     nodeID=rep(NA,nrow(x)),
                     layer=rep(NA,nrow(x)),
-                    path=x$V1)
+                    path=x$path)
   
+  print('Creating module data frame...')
   modules$module <- as.numeric(str_split(string = modules$path, pattern = ':', simplify = T)[,1])
-  modules$nodeID <- str_trim(str_split(string = x$V3, pattern = '\\|', simplify = T)[,1])
-  modules$layer <- as.numeric(str_trim(str_split(string = x$V3, pattern = '\\|', simplify = T)[,2]))
+  modules$nodeID <- str_trim(str_split(string = x$name, pattern = '\\|', simplify = T)[,1])
+  modules$layer <- as.numeric(str_trim(str_split(string = x$name, pattern = '\\|', simplify = T)[,2]))
   
-  cat(nrow(x),'state nodes','in',paste(max(modules$module),'modules'));cat('\n')
+  # cat(nrow(x),'state nodes','in',paste(max(modules$module),'modules'));cat('\n')
   
   # Rename modules because Infomap gives random names
+  print('Adding information on strains...')
   modules2 <- modules %>% 
     distinct(module,layer) %>% 
     arrange(module,layer)
@@ -1822,6 +1830,7 @@ infomap_readTreeFile <- function(PS, scenario, exp, run, cutoff_prob, folder='/m
   modules2$run <- run
   modules2$cutoff_prob <- cutoff_prob
   
+  print('Getting information on genes and alleles...')
   # Get the gene list for the repertoires
   if (on_Midway()){
     db <- dbConnect(SQLite(), dbname = paste('/scratch/midway2/pilosofs/PLOS_Biol/sqlite/','PS',PS,'_',scenario,'_E',exp,'_R',run,'.sqlite',sep=''))
@@ -1833,6 +1842,8 @@ infomap_readTreeFile <- function(PS, scenario, exp, run, cutoff_prob, folder='/m
   names(sampled_strains)[1] <- 'strain_id'
   sampled_alleles <- as.tibble(dbGetQuery(db, 'SELECT * FROM sampled_alleles'))
   dbDisconnect(db)
+  
+  print('Done!')
   return(list(modules=modules2,sampled_strains=sampled_strains,sampled_alleles=sampled_alleles))
 }
 

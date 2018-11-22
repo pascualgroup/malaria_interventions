@@ -34,13 +34,15 @@ cd $base_folder'/Results/'$PS'_'$scenario
 
 
 # Run R script
-Rscript $prog $PS $scenario '001' $cutoff_prob
+Rscript $prog $PS $scenario '001' $cutoff_prob 'make_networks'
 
 
 # Run Infomap
 infomap_name='PS'$PS'_'$scenario'_E001_R'$SLURM_ARRAY_TASK_ID'_'$cutoff_prob'_Infomap_multilayer'
 ./Infomap_v01926 $infomap_name'.txt' . -i multilayer -d -N 10 --rawdir --two-level --tree --expanded
 
+# Get infomap results
+Rscript $prog $PS $scenario '001' $cutoff_prob 'read_infomap_results'
 
 # remove files
 rm functions.R
