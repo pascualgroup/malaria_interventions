@@ -302,8 +302,24 @@ sampled_alleles$allele_locus <- paste(sampled_alleles$allele, sampled_alleles$lo
 sampled_alleles %<>% select(gene_id, allele_locus) %>% arrange(gene_id,allele_locus)
 sampled_strains %<>% left_join(sampled_alleles) %>% distinct(strain_id,allele_locus)
 
+
+
 y <- xtabs(~strain_id+allele_locus, sampled_strains)
 y <- matrix(y, nrow = nrow(y), ncol=ncol(y), dimnames = list(rownames(y),colnames(y)))
+
+# Make a file in format:
+# >Otu1
+# ATTTAAATTCCTTTTAGGATTAAT
+# >Otu2
+# TTCCGTGTAACCTAGAACTTTCAATTCTATAGTAGATTAT
+# Where Otu is the strain and ATGC are the 0 and 1 in alleles (say A is 0, G is 1).
+
+#Then classify it using: 
+#system("./usearch10.0.240_i86linux32 -cluster_fast Yellowstone_unique_no_singletons.fa -id 0.8 -centroids Yellowstone_otus.fa -uc Yellowstone_uc.txt -relabel Otu") #find clusters of seqs
+
+# Then cluster strains to OTUs using:
+#system('./usearch10.0.240_i86linux32 -otutab Yellowstone_all_spacers_renamed.fasta -db Yellowstone_otus.fa -otutabout Yellowstone_otutab.txt -id 0.8 -dbmatched Yellowstone_otus_with_sizes.fa -sizeout -notmatched Mutnovsky_notmatched.fa -sample_delim ";"') #build otu table
+
 otutab <- as.data.frame(y)
 otutab <- cbind(rownames(otutab), otutab)
 rownames(otutab) <- NULL
@@ -312,8 +328,6 @@ otutab[1:5,1:5]
 fwrite(otutab, 'otutab.txt', sep = '\t', quote = F)
 
 # Cluster Yellowstone using USEARCH
-system("./usearch10.0.240_i86linux32 -cluster_fast Yellowstone_unique_no_singletons.fa -id 0.8 -centroids Yellowstone_otus.fa -uc Yellowstone_uc.txt -relabel Otu") #find clusters of seqs
-system('./usearch10.0.240_i86linux32 -otutab Yellowstone_all_spacers_renamed.fasta -db Yellowstone_otus.fa -otutabout Yellowstone_otutab.txt -id 0.8 -dbmatched Yellowstone_otus_with_sizes.fa -sizeout -notmatched Mutnovsky_notmatched.fa -sample_delim ";"') #build otu table
 
 
 
