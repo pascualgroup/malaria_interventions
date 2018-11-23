@@ -1775,8 +1775,8 @@ build_infomap_objects <- function(network_object, write_to_infomap_file=T, infom
 infomap_readTreeFile <- function(PS, scenario, exp, run, cutoff_prob, folder='/media/Data/PLOS_Biol/Results/'){
   print ('Reading infomap file...')
   if (on_Midway()){
-    infomap_file <-       paste('/scratch/midway2/pilosofs/PLOS_Biol/Results/',PS,'_',scenario,'/PS',PS,'_',scenario,'_E',exp,'_R',run,'_',cutoff_prob,'_Infomap_multilayer_expanded.tree',sep='')
-    node_list <- read_csv(paste('/scratch/midway2/pilosofs/PLOS_Biol/Results/',PS,'_',scenario,'/PS',PS,'_',scenario,'_E',exp,'_R',run,'_',cutoff_prob,'_node_list.csv',sep=''), col_types = list(col_character(),col_character()))
+    infomap_file <-       paste('PS',PS,'_',scenario,'_E',exp,'_R',run,'_',cutoff_prob,'_Infomap_multilayer_expanded.tree',sep='')
+    node_list <- read_csv(paste('PS',PS,'_',scenario,'_E',exp,'_R',run,'_',cutoff_prob,'_node_list.csv',sep=''), col_types = list(col_character(),col_character()))
   } else {
     infomap_file <-       paste(folder,'/',PS,'_',scenario,'/PS',PS,'_',scenario,'_E',exp,'_R',run,'_',cutoff_prob,'_Infomap_multilayer_expanded.tree',sep='')
     node_list <- read_csv(paste(folder,'/',PS,'_',scenario,'/PS',PS,'_',scenario,'_E',exp,'_R',run,'_',cutoff_prob,'_node_list.csv',sep=''), col_types = list(col_character(),col_character()))

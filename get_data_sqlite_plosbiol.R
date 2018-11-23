@@ -21,7 +21,6 @@ exp_range <- sprintf('%0.3d', 1)
 run_range <- 1
 monitored_variables <- c('prevalence', 'meanMOI','n_circulating_strains', 'n_circulating_genes', 'n_alleles', 'n_total_bites')
 ps_cols <- c('#0A97B7','#B70A97','#97B70A')
-exp_labels=c('Control','2-yr','5-yr','10-yr')
 scenario_cols <- c('red','orange','blue')
 
 
@@ -147,13 +146,13 @@ basic_variable_G[[2]]
 # Compare between scenarios within a parameter space and experiment -------
 
 ## @knitr compare_scenarios_01
-x <- compare_scenarios(PS = '01', scenarios = c('S','N','G'), run_range = 1, cutoff_prob = 0.25)
+x <- compare_scenarios(PS = '04', scenarios = c('S','N','G'), run_range = 1, cutoff_prob = 0.25)
 x
 ## @knitr compare_scenarios_02
-x <- compare_scenarios(PS = '02', scenarios = c('S','N','G'), run_range = 1, cutoff_prob = 0.7)
+x <- compare_scenarios(PS = '05', scenarios = c('S','N','G'), run_range = 1, cutoff_prob = 0.7)
 x
 ## @knitr compare_scenarios_03
-x <- compare_scenarios(PS = '03', scenarios = c('S','N','G'), run_range = 1, cutoff_prob = 0.9)
+x <- compare_scenarios(PS = '06', scenarios = c('S','N','G'), run_range = 1, cutoff_prob = 0.9)
 x
 ## @knitr END
 
@@ -212,7 +211,7 @@ edges_G <- x
 ## @knitr Edge_weights_distributions_N
 edges_N_01 <- get_edge_disributions(PS = '01',scenario = 'N',exp = '001',1, 0.25, get_inter = F)
 edges_N_02 <- get_edge_disributions(PS = '02',scenario = 'N',exp = '001',1, 0.7, get_inter = F)
-edges_N_03 <- get_edge_disributions(PS = '03',scenario = 'N',exp = '001',1, 0.9, get_inter = F)
+# edges_N_03 <- get_edge_disributions(PS = '03',scenario = 'N',exp = '001',1, 0.9, get_inter = F)
 x <- rbind(edges_N_01,edges_N_02)
 x <- as.tibble(x)
 cutoff_df <- x %>% distinct(PS, cutoff_value, cutoff_prob)
@@ -235,17 +234,20 @@ edges_N <- x
 
 # Infomap -----------------------------------------------------------------
 
-PS <- design_basic[i,1]
-scenario <- design_basic[i,2]
-exp <- design_basic[i,3]
-run <- design_basic[i,4]
-cutoff_prob <- design_basic[i,5]
-design_basic <- expand.grid(PS=sprintf('%0.2d', 1:6),
+## @knitr Infomap_load
+design_basic <- expand.grid(PS=sprintf('%0.2d', 4:6),
                             scenario=c('S','N','G'), 
                             exp='001',
-                            run_range=1, 
+                            run_range=1,
+                            # cutoff=seq(0.2,0.95,0.05),
                             stringsAsFactors = F)
 design_basic$cutoff_prob <- rep(c(0.25,0.7,0.9),length(unique(design_basic$scenario))*length(unique(run_range)))
+
+# PS <- design_basic[i,1]
+# scenario <- design_basic[i,2]
+# exp <- design_basic[i,3]
+# run <- design_basic[i,4]
+# cutoff_prob <- design_basic[i,5]
 
 module_results <- c()
 for (i in 1:nrow(design_basic)){
@@ -260,11 +262,21 @@ for (i in 1:nrow(design_basic)){
   # write_csv(x$sampled_alleles, paste('/media/Data/PLOS_Biol/Results/',PS,'_',scenario,'/PS',PS,'_',scenario,'_E',exp,'_R',run,'_',cutoff_prob,'_sampled_alleles.csv',sep=''))
   file <- paste('/media/Data/PLOS_Biol/Results/',PS,'_',scenario,'/PS',PS,'_',scenario,'_E',exp,'_R',run,'_',cutoff_prob,'_modules.csv',sep='')
   if(file.exists(file)){
-    x <- read_csv(file)  
+    print(paste(PS,scenario,exp,run,cutoff_prob,sep=' | '))
+    x <- read_csv(file, col_types = 'iiccciccccd')  
     module_results <- rbind(module_results, x)
   }
 }
 
+
+my_labels <- as_labeller(c(`04` = 'Low',
+                           `05` = 'Medium',
+                           `06` = 'High',
+                           `S` = 'Selection',
+                           `G` = 'Generalized immunity',
+                           `N` = 'Complete neutrality'))
+
+## @knitr Infomap_module_example
 module_results %>% 
   distinct(module,layer,PS, scenario) %>% 
   mutate(scenario=factor(scenario, levels=c('S','N','G'))) %>% 
@@ -272,126 +284,49 @@ module_results %>%
   geom_point(size=2)+
   scale_color_manual(values = scenario_cols)+
   labs(y= 'module ID', x='Time (months)')+
-  facet_grid(PS~scenario, scales='free')
+  facet_grid(PS~scenario, scales='free', labeller = my_labels)+mytheme
 
 
-# Module persistence
+## @knitr Infomap_relative_persistence
+
+# Module and repertoire persistence
 module_persistence <- module_results %>% 
   mutate(scenario=factor(scenario, levels=c('S','N','G'))) %>% 
-  group_by(PS,scenario,module) %>% 
-  summarise(birth_layer=min(layer), death_layer=max(layer), persistence=death_layer-birth_layer+1)
-module_persistence %>% 
-  filter(PS %in% c('01','02','03')) %>% 
-  ggplot(aes(persistence, y=..count.., fill=scenario))+
-  geom_density()+
-  geom_rug(aes(x=persistence, y=0), position = position_jitter(height = 0))+
-  scale_fill_manual(values = scenario_cols)+
-  labs(x='Persistence (months)')+
-  facet_grid(PS~scenario, scales='free_y')
-
-# Strain persistence. For that need to cluster the strains
-PS <- '03'
-scenario <- 'S'
-modules <- read_csv(paste('/media/Data/PLOS_Biol/Results/',PS,'_',scenario,'/PS',PS,'_',scenario,'_E',exp,'_R',run,'_',cutoff_prob,'_modules.csv',sep=''))
-sampled_strains <- read_csv(paste('/media/Data/PLOS_Biol/Results/',PS,'_',scenario,'/PS',PS,'_',scenario,'_E',exp,'_R',run,'_',cutoff_prob,'_sampled_strains.csv',sep=''))
-sampled_alleles <- read_csv(paste('/media/Data/PLOS_Biol/Results/',PS,'_',scenario,'/PS',PS,'_',scenario,'_E',exp,'_R',run,'_',cutoff_prob,'_sampled_alleles.csv',sep=''))
-
-setequal(sampled_strains$strain_id, modules$strain_id)
-
-sampled_alleles$allele_locus <- paste(sampled_alleles$allele, sampled_alleles$locus,sep='_')
-sampled_alleles %<>% select(gene_id, allele_locus) %>% arrange(gene_id,allele_locus)
-sampled_strains %<>% left_join(sampled_alleles) %>% distinct(strain_id,allele_locus)
-
-
-
-y <- xtabs(~strain_id+allele_locus, sampled_strains)
-y <- matrix(y, nrow = nrow(y), ncol=ncol(y), dimnames = list(rownames(y),colnames(y)))
-
-# Make a file in format:
-# >Otu1
-# ATTTAAATTCCTTTTAGGATTAAT
-# >Otu2
-# TTCCGTGTAACCTAGAACTTTCAATTCTATAGTAGATTAT
-# Where Otu is the strain and ATGC are the 0 and 1 in alleles (say A is 0, G is 1).
-
-#Then classify it using: 
-#system("./usearch10.0.240_i86linux32 -cluster_fast Yellowstone_unique_no_singletons.fa -id 0.8 -centroids Yellowstone_otus.fa -uc Yellowstone_uc.txt -relabel Otu") #find clusters of seqs
-
-# Then cluster strains to OTUs using:
-#system('./usearch10.0.240_i86linux32 -otutab Yellowstone_all_spacers_renamed.fasta -db Yellowstone_otus.fa -otutabout Yellowstone_otutab.txt -id 0.8 -dbmatched Yellowstone_otus_with_sizes.fa -sizeout -notmatched Mutnovsky_notmatched.fa -sample_delim ";"') #build otu table
-
-otutab <- as.data.frame(y)
-otutab <- cbind(rownames(otutab), otutab)
-rownames(otutab) <- NULL
-names(otutab)[1] <- '#OTU ID'
-otutab[1:5,1:5]
-fwrite(otutab, 'otutab.txt', sep = '\t', quote = F)
-
-# Cluster Yellowstone using USEARCH
-
-
-
-
-
+  mutate(type='module') %>% 
+  group_by(PS,scenario,type,module) %>% 
+  summarise(birth_layer=min(layer), death_layer=max(layer), persistence=death_layer-birth_layer+1) %>% 
+  rename(id=module) %>% mutate(id=as.character(id))
 strain_persistence <- module_results %>% 
   mutate(scenario=factor(scenario, levels=c('S','N','G'))) %>% 
-  group_by(PS,scenario,strain_id) %>% 
-  summarise(birth_layer=min(layer), death_layer=max(layer), persistence=death_layer-birth_layer+1)
-strain_persistence %>% ggplot(aes(persistence, fill=scenario))+
-  geom_density()+
+  mutate(type='repertoire') %>% 
+  group_by(PS,scenario,type,strain_cluster) %>% 
+  summarise(birth_layer=min(layer), death_layer=max(layer), persistence=death_layer-birth_layer+1) %>% 
+  rename(id=strain_cluster)
+
+x <- module_persistence %>% 
+  bind_rows(strain_persistence) %>%
+  # filter(PS %in% c('01','02','03')) %>% 
+  mutate(relative_persistence=persistence/(300-birth_layer+1)) 
+x %>% 
+  ggplot()+
+  geom_density(data=subset(x, type=='module'), aes(relative_persistence, y=..scaled.., fill=scenario))+
+  geom_density(data=subset(x, type=='repertoire'), aes(relative_persistence, y=..scaled..),fill='gray',alpha=0.4)+
+  # geom_rug(aes(x=relative_persistence, y=0), position = position_jitter(height = 0))+
   scale_fill_manual(values = scenario_cols)+
-  labs(x='Persistence (months)')+
-  facet_grid(PS~scenario, scales='free_y')
+  labs(x='Relative persistence', y='Density (scaled)')+
+  facet_grid(PS~scenario, scales='free_y', labeller = my_labels)+mytheme
 
-# Compare curves firs GI and IS -------------------------------------------
+## @knitr Infomap_persistence
+x %>% 
+  ggplot()+
+  geom_density(data=subset(x, type=='module'), aes(persistence, y=..scaled.., fill=scenario))+
+  geom_density(data=subset(x, type=='repertoire'), aes(persistence, y=..scaled..),fill='gray',alpha=0.4)+
+  # geom_rug(aes(x=persistence, y=0), position = position_jitter(height = 0))+
+  scale_fill_manual(values = scenario_cols)+
+  labs(x='Absolute persistence (months)', y='Density (scaled)')+
+  facet_grid(PS~scenario, scales='free_y', labeller = my_labels)+mytheme
 
-# This part compares the fits of the duration curve of the selection and the generalized immunity.
-parameter_space <- '03'
-experiment <- '01'
-run <- 1
-
-sqlite_file <- paste('/home/shai/Documents/malaria_interventions_sqlite/','PS',parameter_space,'_S_E',experiment,'_R',run,'.sqlite',sep='')
-db <- dbConnect(SQLite(), dbname = sqlite_file)
-sampled_duration <- dbGetQuery(db, 'SELECT time, duration,infection_id FROM sampled_duration')
-
-setwd('/home/shai/Documents/malaria_interventions')
-fit <- set_generalized_immunity(parameter_space=parameter_space, run=run)[[1]]
-generalImmunityParams <- python.get('generalImmunityParams')
-a=generalImmunityParams[1]
-b=generalImmunityParams[2]
-c=generalImmunityParams[3]
-d=generalImmunityParams[4]
-
-p <- sampled_duration %>% ggplot(aes(infection_id, duration))+
-  geom_point()
-# Check fit
-x.fit <- 0:max(sampled_duration$infection_id)
-y.fit <- ((b*exp(-c*x.fit))/(d*x.fit+1)^d)+a
-fit <- data.frame(infection_id=x.fit, duration=y.fit)
-p <- p+geom_point(data=fit, color='red',size=3)
-
-
-sqlite_file <- paste('/home/shai/Documents/malaria_interventions_sqlite/','PS',parameter_space,'_G_E',experiment,'_R',run,'.sqlite',sep='')
-db <- dbConnect(SQLite(), dbname = sqlite_file)
-sampled_duration <- dbGetQuery(db, 'SELECT time, duration,infection_id FROM sampled_duration')
-generalized <- sampled_duration %>% group_by(infection_id) %>% summarise(meanDOI=mean(duration))
-fit_generalized <-  data.frame(infection_id=generalized$infection_id, duration=generalized$meanDOI)
-
-p <- p+geom_point(data=fit_generalized, color='blue',size=3)
-
-png('scenario_comparison_2.png',1800,1000)
-p+mytheme
-dev.off()
-
-# This compares the age distribution of infected hosts
-d <- rbind(PS03_S_01[[2]],PS03_G_01[[2]],PS03_N_01[[2]])
-png('scenario_comparison_3.png',1800,1000)
-d %>% ggplot(aes(x=host_age, fill=scenario))+geom_histogram() + 
-  labs(x='Infected host age (months)') + 
-  geom_vline(xintercept = 60) +
-  scale_fill_manual(values=c('blue','orange','red'))+
-  mytheme
-dev.off()
+## @knitr END
 
 
 
@@ -399,23 +334,3 @@ dev.off()
 
 
 
-
-
-
-# Calendar ----------------------------------------------------------------
-
-num_years <- 100
-months_in_year <- rep(c('Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'), each=30)
-calendar <- data.frame(running_day=seq(from = 1,to = 360*num_years,by=1),
-                       year_sim=rep(1:num_years, each=360),
-                       month_sim=rep(months_in_year,num_years),
-                       day_sim=rep(1:30,num_years))
-# calendar$layer <- ceiling((calendar$running_day-burnin)/30)
-# calendar$burnin <- 'No'
-# calendar$burnin[1:burnin] <- 'Yes'
-calendar <- as_tibble(calendar)
-calendar$layer <- .bincode(round(doi_S$time), breaks = seq(28815,39945,by = 30))
-calendar %>% 
-  filter(running_day>=28815 & running_day <=39945) %>% 
-  mutate(layer=.bincode(running_day, breaks = seq(28815,39945,by = 30))) %>% 
-  filter(layer==7)

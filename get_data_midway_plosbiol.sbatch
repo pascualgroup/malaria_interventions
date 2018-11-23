@@ -27,9 +27,9 @@ base_folder='/scratch/midway2/pilosofs/PLOS_Biol/' # Where all the source files 
 prog='get_data_Midway.R'
 cd $base_folder # Go to base folder
 mkdir -p $base_folder'/Results/'$PS'_'$scenario
-cp Infomap_v01926 $base_folder'/Results/'$PS'_'$scenario
-cp $prog $base_folder'/Results/'$PS'_'$scenario
-cp functions.R $base_folder'/Results/'$PS'_'$scenario
+cp -n Infomap_v01926 $base_folder'/Results/'$PS'_'$scenario
+cp -n $prog $base_folder'/Results/'$PS'_'$scenario
+cp -n functions.R $base_folder'/Results/'$PS'_'$scenario
 cd $base_folder'/Results/'$PS'_'$scenario
 
 
@@ -45,6 +45,6 @@ infomap_name='PS'$PS'_'$scenario'_E001_R'$SLURM_ARRAY_TASK_ID'_'$cutoff_prob'_In
 Rscript $prog $PS $scenario '001' $cutoff_prob 'read_infomap_results'
 
 # remove files
-rm functions.R
-rm $prog
-rm Infomap_v01926
+# rm functions.R
+# rm $prog
+# rm Infomap_v01926
