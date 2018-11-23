@@ -404,6 +404,7 @@ sbatch_arguments$time <- c('02:00:00','02:00:00','02:00:00','10:00:00','10:00:00
 # sbatch_arguments$time <- c(rep('01:00:00',4),rep('03:00:00',4),rep('06:00:00',5),
 #                            rep('04:00:00',4),rep('08:00:00',4),rep('12:00:00',5)) # For G
 
+
 ps_range <- sprintf('%0.2d', 4:6)
 for (scenario in c('S','N','G')){
   for (ps in ps_range){
@@ -421,6 +422,49 @@ for (scenario in c('S','N','G')){
   }
 }
 # for i in {27..39}; do sbatch 'PS'$i'_G_get_data_midway.sbatch'; done
+
+
+# Experiments for cutoff --------------------------------------------------
+
+cutoff_design <- expand.grid(PS=sprintf('%0.2d', 4:6),
+                             scenario=c('S','N','G'), 
+                             array='1',
+                             cutoff_prob=seq(0.2,0.95,0.05),
+                             stringsAsFactors = F)
+cutoff_design$mem_per_cpu <- 32000
+cutoff_design$time <- '36:00:00'
+cutoff_design$job_name <- paste(cutoff_design$PS, cutoff_design$scenario,'_',cutoff_design$cutoff_prob,sep='')
+cutoff_design$job_name <- gsub('\\.','',cutoff_design$job_name)
+
+# cutoff_design <- subset(cutoff_design, PS!='04' & scenario!='S')
+
+for (i in 1:nrow(cutoff_design)){
+  x <- readLines('~/Documents/malaria_interventions/get_data_midway_plosbiol.sbatch')
+  ps <- cutoff_design$PS[i]
+  scenario <- cutoff_design$scenario[i]
+  cutoff_prob <- cutoff_design$cutoff_prob[i]
+  x[2] <- paste('#SBATCH --job-name=',cutoff_design$job_name[i],sep='')
+  str_sub(x[3],16,18) <- cutoff_design$time[i]
+  str_sub(x[4],33,35) <- paste(ps,scenario,sep='')
+  str_sub(x[5],32,34) <- paste(ps,scenario,sep='')
+  str_sub(x[6],17,20) <- cutoff_design$array[i]
+  str_sub(x[9],23,25) <- cutoff_design$mem_per_cpu[i]
+  str_sub(x[19],5,7) <- ps
+  str_sub(x[20],11,13) <- scenario
+  str_sub(x[22],13,16) <- cutoff_prob
+  writeLines(x, paste('/media/Data/PLOS_Biol/Cutoff/','PS',ps,'_',scenario,'_',cutoff_prob,'_get_data_midway.sbatch',sep=''))
+}
+
+sink('/media/Data/PLOS_Biol/Cutoff/run_cutoff_experiments.sh')
+for (i in 1:nrow(cutoff_design)){
+  x <- readLines('~/Documents/malaria_interventions/get_data_midway_plosbiol.sbatch')
+  ps <- cutoff_design$PS[i]
+  scenario <- cutoff_design$scenario[i]
+  cutoff_prob <- cutoff_design$cutoff_prob[i]
+  cat('sbatch',paste('PS',ps,'_',scenario,'_',cutoff_prob,'_get_data_midway.sbatch',sep=''));cat('\n')
+}
+sink.reset()
+
 
 
 # General stuff -----------------------------------------------------------
