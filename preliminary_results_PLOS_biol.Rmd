@@ -59,7 +59,7 @@ In the complete neutrality, the number of circulating strains seems just too muc
 <<basic_variables_N>>
 ```
 
-### Complete generalized immunity 
+### Generalized immunity 
 
 ```{r basic_variables_G,  cache=TRUE, echo=FALSE, fig.width=16,fig.height=9,dpi=96,out.width="1920px",out.height="1080px"}
 <<basic_variables_G>>
@@ -104,19 +104,40 @@ Notice the order of magnitude difference in the number of repertoires
 <<compare_scenarios_03>>
 ```
 
-## 1.3 Edge weight values
+# 3. Edge weight values
 
 ### Selection
 ![](/media/Data/PLOS_Biol/Edge_weights_distributions_S.png)
 
+### Complete Neutrality
+For now cannot plot the high diversity because there are just too many edges (computer crashes)
+![](/media/Data/PLOS_Biol/Edge_weights_distributions_N.png)
+
+
 ### Generalized immunity
 ![](/media/Data/PLOS_Biol/Edge_weights_distributions_G.png)
 
-<!-- ```{r Edge_weights_distributions_S, cache=TRUE, echo=FALSE, fig.width=16,fig.height=9,dpi=96,out.width="1920px",out.height="1080px"} -->
-<!-- <<Edge_weights_distributions_S>> -->
-<!-- ``` -->
+# 4. Modularity
+This will be influenced by cutoff. For now I am using the cutoffs I used in the previous version: 0.25 (low), 0.7 (medium), 0.9 (high).
+```{r Infomap_load, echo=FALSE, fig.height=9, fig.width=16, message=FALSE, warning=FALSE, cache=TRUE, dpi=96, out.height="1080px", out.width="1920px"}
+<<Infomap_load>>
+```
 
-<!-- ### Complete neutrality -->
-<!-- ```{r Edge_weights_distributions_N, cache=TRUE, echo=FALSE, fig.width=16,fig.height=9,dpi=96,out.width="1920px",out.height="1080px"} -->
-<!-- <<Edge_weights_distributions_N>> -->
-<!-- ``` -->
+# 4.1 Example of modules
+```{r Infomap_module_example, cache=TRUE, echo=FALSE, fig.width=16,fig.height=9,dpi=96,out.width="1920px",out.height="1080px"}
+<<Infomap_module_example>>
+```
+
+# 4.2 Module and strain persistence
+
+## Relative persistence
+Persistence of repertories is after removing duplicates. Gray is repertoires.
+```{r Infomap_relative_persistence, cache=TRUE, echo=FALSE, fig.width=16,fig.height=9,dpi=96,out.width="1920px",out.height="1080px"}
+<<Infomap_relative_persistence>>
+```
+
+## Absolute persistence
+Persistence of repertories is after removing duplicates. Gray is repertoires.
+```{r Infomap_persistence, cache=TRUE, echo=FALSE, fig.width=16,fig.height=9,dpi=96,out.width="1920px",out.height="1080px"}
+<<Infomap_persistence>>
+```
