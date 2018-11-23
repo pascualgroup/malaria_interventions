@@ -268,6 +268,7 @@ for (i in 1:nrow(design_basic)){
   }
 }
 
+write_csv(module_results,'~/Dropbox/Qixin_Shai_Malaria/PLOS_Biol/modularity_results.csv')
 
 my_labels <- as_labeller(c(`04` = 'Low',
                            `05` = 'Medium',

@@ -445,8 +445,8 @@ for (i in 1:nrow(cutoff_design)){
   cutoff_prob <- cutoff_design$cutoff_prob[i]
   x[2] <- paste('#SBATCH --job-name=',cutoff_design$job_name[i],sep='')
   str_sub(x[3],16,18) <- cutoff_design$time[i]
-  str_sub(x[4],33,35) <- paste(ps,scenario,sep='')
-  str_sub(x[5],32,34) <- paste(ps,scenario,sep='')
+  x[4] <- paste('#SBATCH --output=slurm_output/',cutoff_design$job_name[i],'_%A_%a.out',sep='')
+  x[5] <- paste('#SBATCH --error=slurm_output/',cutoff_design$job_name[i],'_%A_%a.err',sep='')
   str_sub(x[6],17,20) <- cutoff_design$array[i]
   str_sub(x[9],23,25) <- cutoff_design$mem_per_cpu[i]
   str_sub(x[19],5,7) <- ps
