@@ -1,11 +1,6 @@
-library(tidyverse)
-library(magrittr)
-library(sqldf)
-library(rPython)
-library(googlesheets)
+source('~/GitHub/malaria_interventions/functions.R')
+prep.packages(c('tidyverse','magrittr','sqldf','rPython','googlesheets'))
 
-
-source('~/Documents/malaria_interventions/functions.R')
 
 # Create parameter and job files -------------------------------------------
 
@@ -21,12 +16,13 @@ design <- loadExperiments_GoogleSheets(local = F, workBookName = 'PLOS_Biol_desi
 
 # Create the reference experiments (checkpoint and control)
 ps_range <- sprintf('%0.2d', 4:6)
-exp_range <- sprintf('%0.3d', 0:1)
+exp_range <- sprintf('%0.3d', 1)
 run_range <- 2:3
-work_scenario <- 'G'
+work_scenario <- 'N'
 # Generate 000 and 001 experiments
-design_subset <- subset(design, PS %in% ps_range & scenario==work_scenario)
-generate_files(row_range = 1:nrow(design_subset), run_range = run_range, experimental_design = design_subset, 
+design_subset <- subset(design, PS %in% ps_range & scenario==work_scenario & exp %in% exp_range)
+generate_files(row_range = 1:nrow(design_subset), run_range = run_range, 
+               experimental_design = design_subset, 
                biting_rate_file = 'fixed_biting_rates_1.csv', 
                target_folder = '/media/Data/PLOS_Biol/parameter_files')
 
