@@ -1,10 +1,10 @@
-library(tidyverse)
-library(magrittr)
-library(sqldf)
-library(igraph)
-library(data.table)
-library(googlesheets)
-library(utils)
+library(tidyverse, quietly = T)
+library(magrittr, quietly = T)
+library(sqldf, quietly = T)
+library(igraph, quietly = T)
+library(data.table, quietly = T)
+library(googlesheets, quietly = T)
+library(utils, quietly = T)
 
 # Functions ---------------------------------------------------------------
 
