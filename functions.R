@@ -502,7 +502,13 @@ create_run <- function(design_ID, run, RANDOM_SEED, experimental_design, biting_
 # Midway), for several experiments and runs. It keeps the random seed for each
 # RUN across experiments AND PARAMETER SPACES the same. Also possible to provide
 # a random seed. row_range is the row numbers in the design data frame.
-generate_files <- function(row_range, run_range, random_seed=NULL, experimental_design, biting_rate_file='mosquito_population_seasonality.csv', params_GI=NULL,target_folder=NULL){
+generate_files <- function(row_range, run_range, random_seed=NULL, 
+                           experimental_design, 
+                           biting_rate_file='mosquito_population_seasonality.csv', 
+                           params_GI=NULL, 
+                           target_folder=NULL,
+                           only_sbatch=F){
+  
   if(is.null(target_folder)){target_folder <- getwd()}
   
   if (!is.null(biting_rate_file)){
@@ -525,45 +531,47 @@ generate_files <- function(row_range, run_range, random_seed=NULL, experimental_
   
   cases$param_file <- NA
   
-  for (idx in 1:nrow(cases)){
-    RANDOM_SEED <- cases$seed[idx]
-    RUN <- cases$run[idx]
-    design_ID <- cases$design_ID[idx]
-    # print(paste('Run: ',RUN,' | Row: ',design_ID,sep=''))
-    
-    # Create parameter file with main parameters. If the scenario is generalized
-    # immunity then the fit for some runs may have not convereged (functions
-    # 'create_run' and 'set_generalized_immunity'). Parameter files cannot be
-    # produced in these cases and so the function skips to the next case.
-    try_run <- create_run(design_ID, RUN, RANDOM_SEED, experimental_design, biting_rate_mathematica, params_GI=params_GI, target_folder = target_folder)
-    if (is.null(try_run)){
-      cases$file_created[idx] <- F
-      next
-    }
-    
-    # Set IRS
-    if (!is.na(experimental_design$IRS_START_TIMES[design_ID])){
-      IRS_scheme <- data.frame(IRS_START_TIME=str_split(experimental_design$IRS_START_TIMES[design_ID], ',')[[1]],
-                               IRS_input=str_split(experimental_design$IRS_input[design_ID], ',')[[1]],
-                               IRS_IMMIGRATION=str_split(experimental_design$IRS_IMMIGRATION[design_ID], ',')[[1]],
-                               POOLSIZE_BOUNCE_BACK_AFTER_INTERVENTION=experimental_design$POOLSIZE_BOUNCE_BACK_AFTER_INTERVENTION[design_ID],
-                               stringsAsFactors = F)
-      for (i in 1:nrow(IRS_scheme)){
-        set_IRS(design_ID = design_ID, 
-                run = RUN, 
-                IRS_START_TIME = IRS_scheme$IRS_START_TIME[i], 
-                IRS_IMMIGRATION = IRS_scheme$IRS_IMMIGRATION[i], 
-                IRS_input = IRS_scheme$IRS_input[i], 
-                POOLSIZE_BOUNCE_BACK_AFTER_INTERVENTION=IRS_scheme$POOLSIZE_BOUNCE_BACK_AFTER_INTERVENTION[i], 
-                experimental_design)
+  if (!only_sbatch){
+    for (idx in 1:nrow(cases)){
+      RANDOM_SEED <- cases$seed[idx]
+      RUN <- cases$run[idx]
+      design_ID <- cases$design_ID[idx]
+      # print(paste('Run: ',RUN,' | Row: ',design_ID,sep=''))
+      
+      # Create parameter file with main parameters. If the scenario is generalized
+      # immunity then the fit for some runs may have not convereged (functions
+      # 'create_run' and 'set_generalized_immunity'). Parameter files cannot be
+      # produced in these cases and so the function skips to the next case.
+      try_run <- create_run(design_ID, RUN, RANDOM_SEED, experimental_design, biting_rate_mathematica, params_GI=params_GI, target_folder = target_folder)
+      if (is.null(try_run)){
+        cases$file_created[idx] <- F
+        next
       }
+      
+      # Set IRS
+      if (!is.na(experimental_design$IRS_START_TIMES[design_ID])){
+        IRS_scheme <- data.frame(IRS_START_TIME=str_split(experimental_design$IRS_START_TIMES[design_ID], ',')[[1]],
+                                 IRS_input=str_split(experimental_design$IRS_input[design_ID], ',')[[1]],
+                                 IRS_IMMIGRATION=str_split(experimental_design$IRS_IMMIGRATION[design_ID], ',')[[1]],
+                                 POOLSIZE_BOUNCE_BACK_AFTER_INTERVENTION=experimental_design$POOLSIZE_BOUNCE_BACK_AFTER_INTERVENTION[design_ID],
+                                 stringsAsFactors = F)
+        for (i in 1:nrow(IRS_scheme)){
+          set_IRS(design_ID = design_ID, 
+                  run = RUN, 
+                  IRS_START_TIME = IRS_scheme$IRS_START_TIME[i], 
+                  IRS_IMMIGRATION = IRS_scheme$IRS_IMMIGRATION[i], 
+                  IRS_input = IRS_scheme$IRS_input[i], 
+                  POOLSIZE_BOUNCE_BACK_AFTER_INTERVENTION=IRS_scheme$POOLSIZE_BOUNCE_BACK_AFTER_INTERVENTION[i], 
+                  experimental_design)
+        }
+      }
+      # Set MDA
+      if (!is.na(experimental_design$MDA_START[design_ID])){
+        set_MDA(design_ID, RUN, experimental_design)
+      }
+      
+      cases$param_file[idx] <- paste('PS',experimental_design$PS[design_ID],'_',experimental_design$scenario[design_ID],'_E',experimental_design$exp[design_ID],'_R',RUN,sep='')
     }
-    # Set MDA
-    if (!is.na(experimental_design$MDA_START[design_ID])){
-      set_MDA(design_ID, RUN, experimental_design)
-    }
-    
-    cases$param_file[idx] <- paste('PS',experimental_design$PS[design_ID],'_',experimental_design$scenario[design_ID],'_E',experimental_design$exp[design_ID],'_R',RUN,sep='')
   }
   
   # Generate batch file for each experiment
