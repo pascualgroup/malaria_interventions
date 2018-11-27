@@ -20,9 +20,9 @@ parameter_files_path_global <- '/media/Data/PLOS_Biol/parameter_files'
 design <- loadExperiments_GoogleSheets(local = F, workBookName = 'PLOS_Biol_design', sheetID = 2) 
 
 # Create the reference experiments (checkpoint and control)
-ps_range <- sprintf('%0.2d', 1)
+ps_range <- sprintf('%0.2d', 4:6)
 exp_range <- sprintf('%0.3d', 0:1)
-run_range <- 1
+run_range <- 2:3
 work_scenario <- 'G'
 # Generate 000 and 001 experiments
 design_subset <- subset(design, PS %in% ps_range & scenario==work_scenario)
@@ -31,21 +31,14 @@ generate_files(row_range = 1:nrow(design_subset), run_range = run_range, experim
                target_folder = '/media/Data/PLOS_Biol/parameter_files')
 
 # # If checkpoints already exist, can create the reference experiments (control only)
-for (ps in ps_range){
-  print(ps)
-  design_control <- subset(design, PS==ps & scenario == work_scenario & exp=='001')
-  # clear_previous_files(parameter_space = ps, scenario = work_scenario, exclude_sqlite = F, exclude_CP = T, exclude_control = F, test = F)
-  seeds <- get_random_seed(PS = ps, scenario = work_scenario, run_range = run_range)
-  generate_files(row_range = 1, run_range = run_range, experimental_design = design_control, random_seed = seeds)
-}
+# for (ps in ps_range){
+#   print(ps)
+#   design_control <- subset(design, PS==ps & scenario == work_scenario & exp=='001')
+#   # clear_previous_files(parameter_space = ps, scenario = work_scenario, exclude_sqlite = F, exclude_CP = T, exclude_control = F, test = F)
+#   seeds <- get_random_seed(PS = ps, scenario = work_scenario, run_range = run_range)
+#   generate_files(row_range = 1, run_range = run_range, experimental_design = design_control, random_seed = seeds)
+# }
 
-# Create IRS experiments  
-for (ps in ps_range){
-  design_irs <- create_intervention_scheme_IRS(PS_benchmark = ps, scenario_benchmark = work_scenario, IRS_START_TIMES = '29160', immigration_range=c(0), length_range=c(720,1800,3600), coverage_range=0.9, poolsize_bounce = 'False', write_to_file = F, design_ref=design)
-  generate_files(row_range = 1:nrow(design_irs), run_range = run_range, 
-                 random_seed = get_random_seed(ps, work_scenario, run_range = run_range), 
-                 experimental_design=design_irs)
-}
 
 setwd('/media/Data/PLOS_Biol/parameter_files/')
 # ZIP all the PY and sbatch files
@@ -69,6 +62,7 @@ for (i in 1:length(files)){
   cat(files[i]);cat('\n')
 }
 sink.reset()
+
 # Create zip
 unlink('files_to_run.zip')
 system('zip files_to_run.zip -@ < files_to_run.txt')
@@ -103,19 +97,19 @@ for (ps in ps_range){
 sink.reset()
 
 # Zip files to reduce the clutter -----------------------------------------
-
+setwd('/media/Data/PLOS_Biol/parameter_files')
 system('rm *.sbatch')
 
-scenario_range <- c('G')
+scenario_range <- c('S','N','G')
 exp_range <- sprintf('%0.3d', 0:4)
-ps_range <- sprintf('%0.2d', 27:39)
+ps_range <- sprintf('%0.2d', 1:6)
 
 for (ps in ps_range){
   for (scenario in scenario_range){
     unlink('files_tmp.txt')
     sink('files_tmp.txt', append = T)
     # Add py files
-    files <- list.files(path = '~/Documents/malaria_interventions_data/', pattern = '.py', full.names = F) 
+    files <- list.files(path = '/media/Data/PLOS_Biol/parameter_files/', pattern = '.py', full.names = F) 
     files <- files[str_sub(files,3,4) %in% ps]
     files <- files[str_sub(files,6,6) %in% scenario]
     files <- files[str_sub(files,9,11) %in% exp_range]
@@ -426,12 +420,12 @@ for (scenario in c('S','N','G')){
 
 # Experiments for cutoff --------------------------------------------------
 
-cutoff_design <- expand.grid(PS=sprintf('%0.2d', 4:6),
-                             scenario=c('S','N','G'), 
+cutoff_design <- expand.grid(PS=sprintf('%0.2d', 6),
+                             scenario=c('N'), 
                              array='1',
-                             cutoff_prob=seq(0.2,0.95,0.05),
+                             cutoff_prob=seq(0.05,0.3,0.05),
                              stringsAsFactors = F)
-cutoff_design$mem_per_cpu <- 32000
+cutoff_design$mem_per_cpu <- 58000
 cutoff_design$time <- '36:00:00'
 cutoff_design$job_name <- paste(cutoff_design$PS, cutoff_design$scenario,'_',cutoff_design$cutoff_prob,sep='')
 cutoff_design$job_name <- gsub('\\.','',cutoff_design$job_name)

@@ -265,10 +265,12 @@ for (i in 1:nrow(design_basic)){
     print(paste(PS,scenario,exp,run,cutoff_prob,sep=' | '))
     x <- read_csv(file, col_types = 'iiccciccccd')  
     module_results <- rbind(module_results, x)
+  } else {
+    print(paste('File does not exist: ',file,sep=''))
   }
 }
 
-write_csv(module_results,'~/Dropbox/Qixin_Shai_Malaria/PLOS_Biol/modularity_results.csv')
+# write_csv(module_results,'~/Dropbox/Qixin_Shai_Malaria/PLOS_Biol/modularity_results.csv')
 
 my_labels <- as_labeller(c(`04` = 'Low',
                            `05` = 'Medium',
@@ -279,8 +281,8 @@ my_labels <- as_labeller(c(`04` = 'Low',
 
 ## @knitr Infomap_module_example
 module_results %>% 
-  distinct(module,layer,PS, scenario) %>% 
-  mutate(scenario=factor(scenario, levels=c('S','N','G'))) %>% 
+  distinct(module,layer,PS, scenario,cutoff_prob) %>% 
+  mutate(scenario=factor(scenario, levels=c('S','N','G'))) %>%
   ggplot(aes(x=layer, y=module, color=scenario))+
   geom_point(size=2)+
   scale_color_manual(values = scenario_cols)+
@@ -329,9 +331,205 @@ x %>%
 
 ## @knitr END
 
+# Modules per layer
+module_results %>% 
+  mutate(scenario=factor(scenario, levels=c('S','N','G'))) %>% 
+  group_by(PS, scenario, layer) %>% 
+  summarise(modules_per_layer=length(unique(module))) %>% 
+  ggplot(aes(x=layer, y=modules_per_layer, color=scenario))+
+  geom_point()+geom_line()+
+  facet_wrap(~PS, scales='free', labeller = my_labels)+
+  scale_color_manual(values=scenario_cols)+mytheme
+
+# Repertoires per module
+module_results %>% 
+  mutate(scenario=factor(scenario, levels=c('S','N','G'))) %>% 
+  group_by(PS, scenario, module) %>% 
+  summarise(repertoires_per_module=length(strain_cluster)) %>% 
+  # filter(module==1) %>% 
+  ggplot(aes(repertoires_per_module, fill=scenario))+
+  geom_density(alpha=0.5)+
+  facet_wrap(~PS, scales='free', labeller = my_labels)+
+  scale_fill_manual(values=scenario_cols)+mytheme
+  
 
 
+# Edge cutoff -------------------------------------------------------------
+
+# Get results
+design_cutoff <- expand.grid(PS=sprintf('%0.2d', 4:6),
+                            scenario=c('S','N','G'), 
+                            exp='001',
+                            run_range=1,
+                            cutoff_prob=seq(0.05,0.95,0.05),
+                            stringsAsFactors = F)
+results_cutoff <- c()
+for (i in 1:85){
+  PS <- design_cutoff[i,1]
+  scenario <- design_cutoff[i,2]
+  exp <- design_cutoff[i,3]
+  run <- design_cutoff[i,4]
+  cutoff_prob <- design_cutoff[i,5]
+  file <- paste('/media/Data/PLOS_Biol/Results/',PS,'_',scenario,'/PS',PS,'_',scenario,'_E',exp,'_R',run,'_',cutoff_prob,'_modules.csv',sep='')
+  if(file.exists(file)){
+    print(paste(PS,scenario,exp,run,cutoff_prob,sep=' | '))
+    x <- read_csv(file, col_types = 'iiccciccccd')  
+    results_cutoff <- rbind(results_cutoff, x)
+  } else {
+    print(paste('File does not exist: ',file,sep=''))
+  }
+}
+for (i in 86:nrow(design_cutoff)){
+  PS <- design_cutoff[i,1]
+  scenario <- design_cutoff[i,2]
+  exp <- design_cutoff[i,3]
+  run <- design_cutoff[i,4]
+  cutoff_prob <- design_cutoff[i,5]
+  file <- paste('/media/Data/PLOS_Biol/Results/',PS,'_',scenario,'/PS',PS,'_',scenario,'_E',exp,'_R',run,'_',cutoff_prob,'_modules.csv',sep='')
+  if(file.exists(file)){
+    print(paste(PS,scenario,exp,run,cutoff_prob,sep=' | '))
+    x <- read_csv(file, col_types = 'iiccciccccd')  
+    results_cutoff <- rbind(results_cutoff, x)
+  } else {
+    print(paste('File does not exist: ',file,sep=''))
+  }
+}
+results_cutoff %<>% mutate(scenario=factor(scenario, levels=c('S','N','G')))
+
+# Examples for modules
+results_cutoff %>% 
+  distinct(module,layer,PS, scenario,cutoff_prob) %>% 
+  filter(PS=='06') %>% 
+  ggplot(aes(x=layer, y=module, color=scenario))+
+  geom_point(size=2)+
+  scale_color_manual(values = scenario_cols)+
+  labs(y= 'module ID', x='Time (months)', title='Structure example')+
+  facet_grid(cutoff_prob~scenario, scales='free')+
+  mytheme
 
 
+# Module and repertoire persistence
+module_persistence <- results_cutoff %>% 
+  mutate(type='module') %>% 
+  group_by(PS,scenario,cutoff_prob,type,module) %>% 
+  summarise(birth_layer=min(layer), death_layer=max(layer), persistence=death_layer-birth_layer+1) %>% 
+  rename(id=module) %>% mutate(id=as.character(id)) %>% 
+  mutate(relative_persistence=persistence/(300-birth_layer+1)) 
+strain_persistence <- results_cutoff %>% 
+  mutate(type='repertoire') %>% 
+  group_by(PS,scenario,cutoff_prob,type,strain_cluster) %>% 
+  summarise(birth_layer=min(layer), death_layer=max(layer), persistence=death_layer-birth_layer+1) %>% 
+  rename(id=strain_cluster) %>% 
+  mutate(relative_persistence=persistence/(300-birth_layer+1)) 
+
+x <- module_persistence %>% 
+  bind_rows(strain_persistence) %>%
+  group_by(PS,scenario,cutoff_prob,type) %>% 
+  summarise(mean_persistence=mean(persistence),
+            median_persistence=median(persistence),
+            mean_relative_persistence=mean(relative_persistence),
+            median_relative_persistence=median(relative_persistence))
+
+# Plot mean and median persistence or relative_persistence
+x %>% 
+  filter(type=='module') %>% 
+  ggplot(aes(x=cutoff_prob, color=scenario))+
+  geom_point(aes(y=mean_persistence))+geom_line(aes(y=mean_persistence))+
+  geom_point(aes(y=median_persistence), shape=15)+geom_line(aes(y=median_persistence), linetype='dashed')+
+  facet_grid(PS~scenario, scales='free', labeller = my_labels)+
+  scale_x_continuous(breaks = seq(0.05,0.95,0.1))+
+  labs(x='Cut off %', y=' Mean or median persistence', title='MODULE persistence')+
+  scale_color_manual(values=scenario_cols)+mytheme
+
+x %>% 
+  filter(type=='module') %>% 
+  ggplot(aes(x=cutoff_prob, color=scenario))+
+  geom_point(aes(y=mean_relative_persistence))+geom_line(aes(y=mean_relative_persistence))+
+  geom_point(aes(y=median_relative_persistence), shape=15)+geom_line(aes(y=median_relative_persistence), linetype='dashed')+
+  facet_grid(PS~scenario, scales='free', labeller = my_labels)+
+  scale_x_continuous(breaks = seq(0.05,0.95,0.1))+
+  labs(x='Cut off %', y=' Mean or median relative persistence', title='MODULE relative persistence')+
+  scale_color_manual(values=scenario_cols)+mytheme
+
+x %>% 
+  filter(type=='repertoire') %>% 
+  ggplot(aes(x=cutoff_prob, color=scenario))+
+  geom_point(aes(y=mean_persistence))+geom_line(aes(y=mean_persistence))+
+  geom_point(aes(y=median_persistence), shape=15)+geom_line(aes(y=median_persistence), linetype='dashed')+
+  facet_grid(PS~scenario, scales='free', labeller = my_labels)+
+  scale_x_continuous(breaks = seq(0.05,0.95,0.1))+
+  labs(x='Cut off %', y=' Mean or median persistence', title='REPERTOIRE persistence')+
+  scale_color_manual(values=scenario_cols)+mytheme
+
+x %>% 
+  filter(type=='repertoire') %>% 
+  ggplot(aes(x=cutoff_prob, color=scenario))+
+  geom_point(aes(y=mean_relative_persistence))+geom_line(aes(y=mean_relative_persistence))+
+  geom_point(aes(y=median_relative_persistence), shape=15)+geom_line(aes(y=median_relative_persistence), linetype='dashed')+
+  facet_grid(PS~scenario, scales='free', labeller = my_labels)+
+  labs(x='Cut off %', y=' Mean or median relative persistence', title='REPERTOIRE relative persistence')+
+  scale_color_manual(values=scenario_cols)+mytheme
 
 
+# Modules per layer
+results_cutoff %>% 
+  group_by(PS, scenario, cutoff_prob, layer) %>% 
+  summarise(modules_per_layer=length(unique(module))) %>% 
+  group_by(PS, scenario, cutoff_prob) %>% 
+  summarise(mean_modules_per_layer=mean(modules_per_layer),
+            median_modules_per_layer=median(modules_per_layer)) %>% 
+  ggplot(aes(x=cutoff_prob, color=scenario))+
+  geom_point(aes(y=mean_modules_per_layer))+geom_line(aes(y=mean_modules_per_layer))+
+  geom_point(aes(y=median_modules_per_layer), shape=15)+geom_line(aes(y=median_modules_per_layer), linetype='dashed')+
+  facet_grid(PS~scenario, scales='free', labeller = my_labels)+
+  scale_x_continuous(breaks = seq(0.05,0.95,0.1))+
+  labs(x='Cut off %', y=' Mean or median modules per layer', title='Modules per layer')+
+  scale_color_manual(values=scenario_cols)+mytheme
+
+# Repertoires per module
+results_cutoff %>% 
+  group_by(PS, scenario, cutoff_prob, module) %>% 
+  summarise(repertoires_per_module=length(unique(strain_cluster))) %>% 
+  group_by(PS, scenario, cutoff_prob) %>% 
+  summarise(mean_repertoires_per_module=mean(repertoires_per_module),
+            median_repertoires_per_layer=median(repertoires_per_module)) %>% 
+  ggplot(aes(x=cutoff_prob, color=scenario))+
+  geom_point(aes(y=mean_repertoires_per_module))+geom_line(aes(y=mean_repertoires_per_module))+
+  geom_point(aes(y=median_repertoires_per_layer), shape=15)+geom_line(aes(y=median_repertoires_per_layer), linetype='dashed')+
+  facet_grid(PS~scenario, scales='free', labeller = my_labels)+
+  scale_x_continuous(breaks = seq(0.05,0.95,0.1))+
+  labs(x='Cut off %', y=' Mean or median modules per layer', title='Repertoires per module')+
+  scale_color_manual(values=scenario_cols)+mytheme
+
+# Calculate allelic diversity in a module
+design_basic <- expand.grid(PS=sprintf('%0.2d', 4:6),
+                            scenario=c('S','N','G'), 
+                            exp='001',
+                            run_range=1,
+                            stringsAsFactors = F)
+cutoff_prob <- 0.9
+for (i in 1:nrow(design_basic)){
+  PS <- design_basic[i,1]
+  scenario <- design_basic[i,2]
+  exp <- design_basic[i,3]
+  run <- design_basic[i,4]
+  file <- paste('/media/Data/PLOS_Biol/Results/',PS,'_',scenario,'/PS',PS,'_',scenario,'_E',exp,'_R',run,'_',cutoff_prob,'_sampled_strains.csv',sep='')
+  sampled_strains <- read_csv(file, col_types = 'ccc')
+  sampled_strains <-  sampled_strains[,-3]
+  tmp <- results_cutoff %>% filter(PS==design_basic[i,1],
+                                   scenario==design_basic[i,2],
+                                   run==design_basic[i,4])
+  print(all(sampled_strains$strain_id %in% tmp$strain_id))
+  tmp %<>% left_join(sampled_strains) %>% select(cutoff_prob,module,strain_id,allele_locus)
+  total_number_alleles <- tmp %>% 
+    group_by(cutoff_prob,module) %>% summarise(total_alleles=length(allele_locus))
+  number_unique_alleles <- tmp %>% 
+    group_by(cutoff_prob,module,allele_locus) %>%
+    tally() 
+  diversity_df <- number_unique_alleles %>% left_join(total_number_alleles) %>% mutate(p_i=n/total_alleles) %>% mutate(pilnpi=p_i*log(pi))
+  # diversity_df %>% group_by(cutoff_prob,module) %>% summarise(check=sum(p_i)) %>% group_by(check) %>% summarise(all_1=length(check))
+  diversity_df %<>%  group_by(cutoff_prob,module) %>% summarise(sumpi=-1*sum(pilnpi)) %>% left_join(total_number_alleles) %>% mutate(H_m=sumpi/log(total_alleles))
+  
+  
+  diversity_df %>% ggplot(aes(-1*H_m))+geom_density()+facet_wrap(~cutoff_prob)
+  
