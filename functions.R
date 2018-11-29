@@ -6,7 +6,14 @@ on_Midway <- function(){
     return(FALSE)
   }
 }
-  
+
+detect_locale <- function(){
+  require(stringr)
+  if (str_detect(Sys.info()[4],'midway2')){return('Midway')}
+  if (str_detect(Sys.info()[4],'Shais-MBP')){return('Mac')}
+  if (str_detect(Sys.info()[4],'lab')){return('Lab')}
+}
+
 prep.packages <- function(package.list) {
   loaded = package.list %in% .packages()
   if ( all(loaded) ) return(invisible())
@@ -375,12 +382,11 @@ create_run <- function(design_ID, run, RANDOM_SEED, experimental_design, biting_
   scenario <- experimental_design$scenario[design_ID]
   experiment <- experimental_design$exp[design_ID] # Use 000 for checkpoints and 001 for control
   base_name <- paste('PS',parameter_space,'_',scenario,'_E',experiment,'_R',run,sep='')
-  if (on_Midway()){
-    param_data <- get_parameter_reference('parameter_file_ref.py')
-  } else {
-    param_data <- get_parameter_reference('~/Documents/malaria_interventions/parameter_file_ref.py')
-  }
   
+  if (detect_locale()=='Midway'){param_data <- get_parameter_reference('parameter_file_ref.py')}
+  if (detect_locale()=='Mac'){param_data <- get_parameter_reference('~/GitHub/malaria_interventions/parameter_file_ref.py')}
+  if (detect_locale()=='Lab'){param_data <- get_parameter_reference('~/Documents/malaria_interventions/parameter_file_ref.py')}
+
   # General parameters
   param_data[param_data$param=='RANDOM_SEED',] <- set_parameter(param_data, 'RANDOM_SEED', RANDOM_SEED)
   T_END <- experimental_design$T_END[design_ID]
@@ -589,11 +595,9 @@ generate_files <- function(row_range, run_range, random_seed=NULL,
     }
     
     # Write the job file for the exepriment
-    if (on_Midway()){
-      job_lines <- readLines('job_file_ref.sbatch')
-    } else {
-      job_lines <- readLines('~/Documents/malaria_interventions/job_file_ref.sbatch')
-    }
+    if (detect_locale()=='Midway'){job_lines <- readLines('job_file_ref.sbatch')}
+    if (detect_locale()=='Mac'){job_lines <- readLines('~/GitHub/malaria_interventions/job_file_ref.sbatch')}
+    if (detect_locale()=='Lab'){job_lines <- readLines('~/Documents/malaria_interventions/job_file_ref.sbatch')}
     wall_time <-  experimental_design$wall_time[design_ID]
     mem_per_cpu <-  experimental_design$mem_per_cpu[design_ID]
     job_lines[2] <- paste('#SBATCH --job-name=',paste(parameter_space,scenario,'E',experiment,sep=''),sep='')
