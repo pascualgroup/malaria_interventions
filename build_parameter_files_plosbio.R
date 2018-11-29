@@ -1,12 +1,18 @@
-source('~/Documents/malaria_interventions/functions.R')
+source('~/GitHub/malaria_interventions/functions.R')
 prep.packages(c('tidyverse','magrittr','sqldf','rPython','googlesheets'))
 
 
 # Create parameter and job files -------------------------------------------
-
-setwd('/home/shai/Documents/malaria_interventions')
-sqlite_path_global <- '/media/Data/PLOS_Biol/sqlite_S'
-parameter_files_path_global <- '/media/Data/PLOS_Biol/parameter_files'
+if (detect_locale()=='Lab'){
+  setwd('/home/shai/Documents/malaria_interventions')
+  sqlite_path_global <- '/media/Data/PLOS_Biol/sqlite_S'
+  parameter_files_path_global <- '/media/Data/PLOS_Biol/parameter_files'
+}
+if (detect_locale()=='Mac'){
+  setwd('~/GitHub/malaria_interventions')
+  sqlite_path_global <- '~/GitHub/PLOS_Biol/sqlite_S'
+  parameter_files_path_global <- '~/GitHub/PLOS_Biol/parameter_files'
+}
 
 # Clear previous files if necessary
 # clear_previous_files(run = 6, exclude_sqlite = F, exclude_CP = F, exclude_control = F, test = T)
@@ -15,16 +21,16 @@ parameter_files_path_global <- '/media/Data/PLOS_Biol/parameter_files'
 design <- loadExperiments_GoogleSheets(local = F, workBookName = 'PLOS_Biol_design', sheetID = 2) 
 
 # Create the reference experiments (checkpoint and control)
-ps_range <- sprintf('%0.2d', 4:6)
+ps_range <- sprintf('%0.2d', 7:9)
 exp_range <- sprintf('%0.3d', 0:1)
-run_range <- 4:10
-work_scenario <- 'G'
+run_range <- 1
+work_scenario <- 'S'
 # Generate 000 and 001 experiments
 design_subset <- subset(design, PS %in% ps_range & scenario==work_scenario & exp %in% exp_range)
 generate_files(row_range = 1:nrow(design_subset), run_range = run_range, 
                experimental_design = design_subset, 
                biting_rate_file = 'fixed_biting_rates_1.csv', 
-               target_folder = '/media/Data/PLOS_Biol/parameter_files')
+               target_folder = parameter_files_path_global)
 
 # # If checkpoints already exist, can create the reference experiments (control only)
 # for (ps in ps_range){
@@ -36,12 +42,12 @@ generate_files(row_range = 1:nrow(design_subset), run_range = run_range,
 # }
 
 
-setwd('/media/Data/PLOS_Biol/parameter_files/')
+setwd(parameter_files_path_global)
 # ZIP all the PY and sbatch files
 unlink('files_to_run.txt')
 sink('files_to_run.txt', append = T)
 # Add sbatch files
-files <- list.files(path = '/media/Data/PLOS_Biol/parameter_files', pattern = 'sbatch', full.names = F) 
+files <- list.files(path = parameter_files_path_global, pattern = 'sbatch', full.names = F) 
 files <- files[str_detect(string = files, paste(work_scenario,'E',sep=''))]
 files <- files[str_sub(files,3,4) %in% ps_range]
 files <- files[str_sub(files,7,9) %in% exp_range]
@@ -49,7 +55,7 @@ for (i in 1:length(files)){
   cat(files[i]);cat('\n')
 }
 # Add py files
-files <- list.files(path = '/media/Data/PLOS_Biol/parameter_files', pattern = '.py', full.names = F) 
+files <- list.files(path = parameter_files_path_global, pattern = '.py', full.names = F) 
 files <- files[str_detect(string = files, paste('_',work_scenario,sep=''))]
 files <- files[str_sub(files,3,4) %in% ps_range]
 files <- files[str_sub(files,9,11) %in% exp_range]
@@ -419,9 +425,9 @@ for (scenario in c('S','N','G')){
 # Experiments for cutoff --------------------------------------------------
 
 cutoff_design <- expand.grid(PS=sprintf('%0.2d', 4:6),
-                             scenario=c('S','N','G'),
-                             cutoff_prob=seq(0.05,0.95,0.05),
-                             array='2-3',
+                             scenario=c('S','G','N'),
+                             cutoff_prob=seq(0.2,0.35,0.05),
+                             array='4-10',
                              stringsAsFactors = F)
 cutoff_design$job_name <- paste(cutoff_design$PS, cutoff_design$scenario,'_',cutoff_design$cutoff_prob,sep='')
 cutoff_design$job_name <- gsub('\\.','',cutoff_design$job_name)
@@ -432,14 +438,14 @@ for (i in 1:nrow(cutoff_design)){
   if(cutoff_design[i,'cutoff_prob']>0.8 & cutoff_design[i,'PS']!='06'){cutoff_design$mem_per_cpu[i] <- 16000}
 }
 
-cutoff_design$time <- '10:00:00'
+cutoff_design$time <- '15:00:00'
 for (i in 1:nrow(cutoff_design)){
   if(cutoff_design[i,'cutoff_prob']<0.35 & cutoff_design[i,'PS']=='06'){cutoff_design$time[i] <- '36:00:00'}
-  if(cutoff_design[i,'cutoff_prob']>0.8 & cutoff_design[i,'PS']!='06'){cutoff_design$time[i] <- '04:00:00'}
+  if(cutoff_design[i,'cutoff_prob']>0.8 & cutoff_design[i,'PS']!='06'){cutoff_design$time[i] <- '10:00:00'}
 }
 
 for (i in 1:nrow(cutoff_design)){
-  x <- readLines('~/Documents/malaria_interventions/get_data_midway_plosbiol.sbatch')
+  x <- readLines('~/GitHub/malaria_interventions/get_data_midway_plosbiol.sbatch')
   ps <- cutoff_design$PS[i]
   scenario <- cutoff_design$scenario[i]
   cutoff_prob <- cutoff_design$cutoff_prob[i]
@@ -452,12 +458,12 @@ for (i in 1:nrow(cutoff_design)){
   str_sub(x[19],5,7) <- ps
   str_sub(x[20],11,13) <- scenario
   str_sub(x[22],13,16) <- cutoff_prob
-  writeLines(x, paste('~/Documents/PLOS_Biol/Cutoff/','PS',ps,'_',scenario,'_',cutoff_prob,'_get_data_midway.sbatch',sep=''))
+  writeLines(x, paste('~/GitHub/PLOS_Biol/Cutoff/','PS',ps,'_',scenario,'_',cutoff_prob,'_get_data_midway.sbatch',sep=''))
 }
 
-sink('~/Documents/PLOS_Biol/Cutoff/run_cutoff_experiments.sh')
+sink('~/GitHub/PLOS_Biol/Cutoff/run_cutoff_experiments.sh')
 for (i in 1:nrow(cutoff_design)){
-  x <- readLines('~/Documents/malaria_interventions/get_data_midway_plosbiol.sbatch')
+  x <- readLines('~/GitHub/malaria_interventions/get_data_midway_plosbiol.sbatch')
   ps <- cutoff_design$PS[i]
   scenario <- cutoff_design$scenario[i]
   cutoff_prob <- cutoff_design$cutoff_prob[i]
