@@ -1,4 +1,4 @@
-source('~/GitHub/malaria_interventions/functions.R')
+source('~/Documents/malaria_interventions/functions.R')
 prep.packages(c('tidyverse','magrittr','sqldf','rPython','googlesheets'))
 
 
@@ -16,9 +16,9 @@ design <- loadExperiments_GoogleSheets(local = F, workBookName = 'PLOS_Biol_desi
 
 # Create the reference experiments (checkpoint and control)
 ps_range <- sprintf('%0.2d', 4:6)
-exp_range <- sprintf('%0.3d', 1)
-run_range <- 2:3
-work_scenario <- 'N'
+exp_range <- sprintf('%0.3d', 0:1)
+run_range <- 4:10
+work_scenario <- 'G'
 # Generate 000 and 001 experiments
 design_subset <- subset(design, PS %in% ps_range & scenario==work_scenario & exp %in% exp_range)
 generate_files(row_range = 1:nrow(design_subset), run_range = run_range, 
@@ -82,7 +82,9 @@ for (ps in ps_range){
   }
 }
 
+
 # Or, if checkpoints are already finished:
+setwd('/media/Data/PLOS_Biol/parameter_files')
 unlink('jobs_to_run.sh')
 sink('jobs_to_run.sh')
 for (ps in ps_range){
@@ -437,7 +439,7 @@ for (i in 1:nrow(cutoff_design)){
 }
 
 for (i in 1:nrow(cutoff_design)){
-  x <- readLines('~/GitHub/malaria_interventions/get_data_midway_plosbiol.sbatch')
+  x <- readLines('~/Documents/malaria_interventions/get_data_midway_plosbiol.sbatch')
   ps <- cutoff_design$PS[i]
   scenario <- cutoff_design$scenario[i]
   cutoff_prob <- cutoff_design$cutoff_prob[i]
@@ -450,12 +452,12 @@ for (i in 1:nrow(cutoff_design)){
   str_sub(x[19],5,7) <- ps
   str_sub(x[20],11,13) <- scenario
   str_sub(x[22],13,16) <- cutoff_prob
-  writeLines(x, paste('~/GitHub/PLOS_Biol/Cutoff/','PS',ps,'_',scenario,'_',cutoff_prob,'_get_data_midway.sbatch',sep=''))
+  writeLines(x, paste('~/Documents/PLOS_Biol/Cutoff/','PS',ps,'_',scenario,'_',cutoff_prob,'_get_data_midway.sbatch',sep=''))
 }
 
-sink('~/GitHub/PLOS_Biol/Cutoff/run_cutoff_experiments.sh')
+sink('~/Documents/PLOS_Biol/Cutoff/run_cutoff_experiments.sh')
 for (i in 1:nrow(cutoff_design)){
-  x <- readLines('~/GitHub/malaria_interventions/get_data_midway_plosbiol.sbatch')
+  x <- readLines('~/Documents/malaria_interventions/get_data_midway_plosbiol.sbatch')
   ps <- cutoff_design$PS[i]
   scenario <- cutoff_design$scenario[i]
   cutoff_prob <- cutoff_design$cutoff_prob[i]
