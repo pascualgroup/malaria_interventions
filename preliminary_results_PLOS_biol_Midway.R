@@ -60,7 +60,7 @@ get_results_for_cutoff <- function(cutoff_prob_seq=seq(0.05,0.95,0.05), scenario
   
   results_cutoff <- c()
   for (run in unique(design_cutoff$run_range)){
-    file <- paste('results_cutoff_',scenario,'_',run,'.csv',sep='')
+    file <- paste('results_cutoff_',scenario,'_R',run,'.csv',sep='')
     if(file.exists(file)){
       x <- read_csv(file, col_types = 'iicccicccid')
       results_cutoff <- rbind(results_cutoff, x)  
@@ -75,35 +75,35 @@ get_results_for_cutoff <- function(cutoff_prob_seq=seq(0.05,0.95,0.05), scenario
 
 
 calculate_module_diversity <- function(PS, scenario, exp, run, cutoff_prob){
-  file <- paste('Results/',PS,'_',scenario,'/PS',PS,'_',scenario,'_E',exp,'_R',run,'_',cutoff_prob,'_modules.csv',sep='')
-  if(file.exists(file)){
+  file_modules <- paste('Results/',PS,'_',scenario,'/PS',PS,'_',scenario,'_E',exp,'_R',run,'_',cutoff_prob,'_modules.csv',sep='')
+  file_strains <- paste('Results/',PS,'_',scenario,'/PS',PS,'_',scenario,'_E',exp,'_R',run,'_',cutoff_prob,'_sampled_strains.csv',sep='')
+  if(file.exists(file_modules) & file.exists(file_strains)){
     print(paste(PS,scenario,exp,run,cutoff_prob,sep=' | '))
-    modules <- read_csv(file, col_types = 'iiccciccccd')
+    modules <- read_csv(file_modules, col_types = 'iiccciccccd')
+
+    module_persistence <- modules %>% 
+      select(scenario, PS, run, cutoff_prob, layer, module) %>% 
+      group_by(scenario, PS,run,cutoff_prob,module) %>% 
+      summarise(birth_layer=min(layer), death_layer=max(layer), persistence=death_layer-birth_layer+1) %>% 
+      mutate(relative_persistence=persistence/(300-birth_layer+1))
+  
+    sampled_strains <- read_csv(file_strains, col_types = 'ccc')
+    sampled_strains <-  sampled_strains[,-3]
+    suppressMessages(modules %<>% select(scenario, PS, scenario, exp, run, cutoff_prob, module, strain_id) %>% left_join(sampled_strains))
+    allele_freq <- xtabs(~module+allele_locus, modules)
+    module_diversity <- vegan::diversity(allele_freq)/log(ncol(allele_freq))
+    
+   module_persistence$D <- module_diversity
+   module_persistence$statistic <- module_diversity*module_persistence$relative_persistence
+   return(module_persistence)
   } else {
-    print(paste('File does not exist: ',file,sep=''))
+    print(paste('One file does not exist:',file_modules,file_strains))
   }
-  
-  module_persistence <- modules %>% 
-    select(scenario, PS, run, cutoff_prob, layer, module) %>% 
-    group_by(scenario, PS,run,cutoff_prob,module) %>% 
-    summarise(birth_layer=min(layer), death_layer=max(layer), persistence=death_layer-birth_layer+1) %>% 
-    mutate(relative_persistence=persistence/(300-birth_layer+1))
-  
-  file <- paste('Results/',PS,'_',scenario,'/PS',PS,'_',scenario,'_E',exp,'_R',run,'_',cutoff_prob,'_sampled_strains.csv',sep='')
-  sampled_strains <- read_csv(file, col_types = 'ccc')
-  sampled_strains <-  sampled_strains[,-3]
-  suppressMessages(modules %<>% select(scenario, PS, scenario, exp, run, cutoff_prob, module, strain_id) %>% left_join(sampled_strains))
-  allele_freq <- xtabs(~module+allele_locus, modules)
-  module_diversity <- vegan::diversity(allele_freq)/log(ncol(allele_freq))
-  
-  module_persistence$D <- module_diversity
-  module_persistence$statistic <- module_diversity*module_persistence$relative_persistence
-  return(module_persistence)
 }
 
 
 # Edge weights and cutoffs -----------------------------------------------
-# 
+# print('Getting edge weight distributions...')
 # ## @knitr Edge_weights_distributions_S
 # edges_S_04 <- get_edge_disributions(PS = '04',scenario = 'S',exp = '001',1, 0.25)
 # edges_S_05 <- get_edge_disributions(PS = '05',scenario = 'S',exp = '001',1, 0.7)
@@ -165,9 +165,9 @@ calculate_module_diversity <- function(PS, scenario, exp, run, cutoff_prob){
 # 
 
 # Edge cutoff (SELECTION) --------------------------------------------------------
-
+print('Getting edge cutoffs for selection only (Boxplots)')
 # Get results
-results_cutoff <- get_results_for_cutoff(cutoff_prob_seq = seq(0.05,0.95,0.05), scenario = 'S', run_range = 1:3)
+results_cutoff <- get_results_for_cutoff(cutoff_prob_seq = seq(0.05,0.95,0.05), scenario = 'S', run_range = 1:10)
 write_csv(results_cutoff, 'Results/results_cutoff_S.csv')
 
 # Examples for modules
@@ -291,6 +291,7 @@ dev.off()
 
 
 # Edge cutoffs (all scenarios) --------------------------------------------
+print('Getting edge distributions for all scenarios...')
 my_labels <- as_labeller(c(`04` = 'Low',
                            `05` = 'Medium',
                            `06` = 'High',
@@ -298,10 +299,10 @@ my_labels <- as_labeller(c(`04` = 'Low',
                            `G` = 'Generalized immunity',
                            `N` = 'Complete neutrality'))
 
-results_cutoff <- get_results_for_cutoff(cutoff_prob_seq = seq(0.05,0.95,0.05), scenario = 'N', run_range = 1:3)
+results_cutoff <- get_results_for_cutoff(cutoff_prob_seq = seq(0.05,0.95,0.05), scenario = 'N', run_range = 1:10)
 write_csv(results_cutoff, 'Results/results_cutoff_N.csv')
 
-results_cutoff <- get_results_for_cutoff(cutoff_prob_seq = seq(0.05,0.95,0.05), scenario = 'G', run_range = 1:3)
+results_cutoff <- get_results_for_cutoff(cutoff_prob_seq = seq(0.05,0.95,0.05), scenario = 'G', run_range = 1:10)
 write_csv(results_cutoff, 'Results/results_cutoff_G.csv')
 
 
@@ -421,11 +422,11 @@ dev.off()
 
 
 # Calculate diversity -----------------------------------------------------
-
+print ('Calculating diversity and the statistic')
 design_cutoff <- expand.grid(PS=sprintf('%0.2d', 4:6),
                              scenario=c('S','N','G'), 
                              exp='001',
-                             run_range=1:3,
+                             run_range=1:10,
                              cutoff_prob=seq(0.05,0.95,0.05),
                              stringsAsFactors = F)
 statistic_results <- c()
@@ -459,7 +460,7 @@ dev.off()
 design_cutoff <- expand.grid(PS=sprintf('%0.2d', 4:6),
                              scenario=c('N'), 
                              exp='001',
-                             run_range=1:3,
+                             run_range=1:10,
                              cutoff_prob=seq(0.05,0.95,0.05),
                              stringsAsFactors = F)
 statistic_results <- c()
@@ -493,7 +494,7 @@ dev.off()
 design_cutoff <- expand.grid(PS=sprintf('%0.2d', 4:6),
                              scenario=c('G'), 
                              exp='001',
-                             run_range=1:3,
+                             run_range=1:10,
                              cutoff_prob=seq(0.05,0.95,0.05),
                              stringsAsFactors = F)
 statistic_results <- c()

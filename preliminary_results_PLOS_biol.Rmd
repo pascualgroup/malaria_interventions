@@ -110,12 +110,15 @@ Notice the order of magnitude difference in the number of repertoires
 ![](/media/Data/PLOS_Biol/Edge_weights_distributions_S.png)
 
 ### Complete Neutrality
-For now cannot plot the high diversity because there are just too many edges (computer crashes)
 ![](/media/Data/PLOS_Biol/Edge_weights_distributions_N.png)
-
 
 ### Generalized immunity
 ![](/media/Data/PLOS_Biol/Edge_weights_distributions_G.png)
+
+# 4. Cutoff
+Cutoff is based on the selection case, so we will look at it more closely. Then we will compare the behavior of the system across scenarios at different cutoffs.
+
+# Selection
 
 # 4. Modularity
 This will be influenced by cutoff. For now I am using the cutoffs I used in the previous version: 0.25 (low), 0.7 (medium), 0.9 (high).

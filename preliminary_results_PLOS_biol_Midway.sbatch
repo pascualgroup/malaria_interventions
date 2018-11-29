@@ -1,12 +1,12 @@
 #!/bin/bash
 #SBATCH --job-name=prelim
-#SBATCH --time=XXX
-#SBATCH --output=slurm_output/prelim%A_%a.out
-#SBATCH --error=slurm_output/prelim%A_%a.err
+#SBATCH --time=36:00:00
+#SBATCH --output=slurm_output/prelim_%A.out
+#SBATCH --error=slurm_output/prelim_%A.err
 ##SBATCH --array=1
 #SBATCH --tasks=1
 #SBATCH --cpus-per-task=1 
-#SBATCH --mem-per-cpu=XXX
+#SBATCH --mem-per-cpu=58000
 #SBATCH --partition=broadwl
 ##SBATCH --mail-type=END
 ##SBATCH --mail-user=pilosofs@uchicago.edu
