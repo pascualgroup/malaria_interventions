@@ -24,7 +24,7 @@ design <- loadExperiments_GoogleSheets(local = F, workBookName = 'PLOS_Biol_desi
 ps_range <- sprintf('%0.2d', 7:9)
 exp_range <- sprintf('%0.3d', 0:1)
 run_range <- 1
-work_scenario <- 'S'
+work_scenario <- 'G'
 # Generate 000 and 001 experiments
 design_subset <- subset(design, PS %in% ps_range & scenario==work_scenario & exp %in% exp_range)
 generate_files(row_range = 1:nrow(design_subset), run_range = run_range, 

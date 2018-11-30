@@ -339,10 +339,13 @@ results_cutoff_G %>%
 dev.off()
 
 
-# Joint the scenarios to one data frame
+# Join the scenarios to one data frame
 s <- read_csv('Results/results_cutoff_S.csv', col_types = 'iicccicccid')
+# s <- data.table::fread('Results/results_cutoff_S_R1.csv')
 n <- read_csv('Results/results_cutoff_N.csv', col_types = 'iicccicccid')
+# n <- data.table::fread('Results/results_cutoff_N_R1.csv')
 g <- read_csv('Results/results_cutoff_G.csv', col_types = 'iicccicccid')
+# g <- data.table::fread('Results/results_cutoff_G_R1.csv')
 
 results_cutoff <- rbind(s,n,g)
 results_cutoff %<>% mutate(scenario=factor(scenario, levels=c('S','N','G')))
@@ -361,7 +364,7 @@ strain_persistence <- results_cutoff %>%
   summarise(birth_layer=min(layer), death_layer=max(layer), persistence=death_layer-birth_layer+1) %>% 
   mutate(relative_persistence=persistence/(300-birth_layer+1)) %>% 
   mutate(type='Repertoire') %>% 
-  rename(id=strain_cluster)
+  rename(id=strain_cluster) %>% mutate(id=as.character(id))
 
 persistence_df <- module_persistence %>% bind_rows(strain_persistence) %>% 
   group_by(scenario, PS, cutoff_prob, type) %>% 
@@ -480,6 +483,9 @@ if (task=='within_module_diversity'){
     }
     write_csv(statistic_results, paste('Results/statistic_results_',scenario,'.csv',sep=''))
   
+    # statistic_results <- read_csv(paste('Results/statistic_results_',scenario,'.csv',sep=''))
+    
+    print(paste('Plotting statistic for scenario',scenario))
     png(paste('Results/statistic_results_',scenario,'.png',sep=''), width = 1920, height = 1080)
     statistic_results %>% 
       ggplot(aes(x=cutoff_prob, y=statistic, group=cutoff_prob, fill=PS))+
@@ -533,3 +539,39 @@ if (task=='within_module_diversity'){
   dev.off()
 
 }
+
+
+
+# Between-module diversity ------------------------------------------------
+# PS <- '05';scenario <- 'S';exp <- '001';run <- 2;cutoff_prob <- 0.7
+
+files_for_mFst <- function(PS, scenario, exp, run, cutoff_prob){
+  file_modules <- paste('Results/',PS,'_',scenario,'/PS',PS,'_',scenario,'_E',exp,'_R',run,'_',cutoff_prob,'_modules.csv',sep='')
+  file_strains <- paste('Results/',PS,'_',scenario,'/PS',PS,'_',scenario,'_E',exp,'_R',run,'_',cutoff_prob,'_sampled_strains.csv',sep='')
+  if(file.exists(file_modules) & file.exists(file_strains)){
+    print(paste(PS,scenario,exp,run,cutoff_prob,sep=' | '))
+    modules <- read_csv(file_modules, col_types = 'iiccciccccd')
+    module_list <- modules %>% 
+      filter(layer==300) %>% 
+      select(module, strain_id)
+    
+    sampled_strains <- read_csv(file_strains, col_types = 'ccc')
+    sampled_strains <-  sampled_strains[,-3]
+    sampled_strains %<>% filter(strain_id %in% module_list$strain_id)
+    
+    allele_freq <- xtabs(~strain_id+allele_locus, sampled_strains)
+    
+    print(all(rownames(allele_freq) %in% module_list$strain_id))
+    
+    write.csv(allele_freq, paste('mFst/PS',PS,'_',scenario,'_E',exp,'_R',run,'_',cutoff_prob,'_mFst_strains_alleles.csv',sep=''))
+    write.csv(module_list, paste('mFst/PS',PS,'_',scenario,'_E',exp,'_R',run,'_',cutoff_prob,'_mFst_strains_modules.csv',sep=''), row.names=F)
+    
+    return()
+  } else {
+    print(paste('One file does not exist:',file_modules,file_strains))
+  }
+}
+
+files_for_mFst(PS='06', scenario='S', exp='001', run=2, cutoff_prob=0.9)
+files_for_mFst(PS='06', scenario='N', exp='001', run=2, cutoff_prob=0.9)
+files_for_mFst(PS='06', scenario='G', exp='001', run=2, cutoff_prob=0.9)

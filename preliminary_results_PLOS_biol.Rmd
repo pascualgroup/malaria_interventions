@@ -8,7 +8,11 @@ output:
 ---
 
 ```{r setup, include=FALSE}
-knitr::opts_chunk$set(echo = TRUE)
+knitr::opts_chunk$set(
+	echo = FALSE,
+	message = FALSE,
+	warning = FALSE
+)
 knitr::opts_knit$set(root.dir = "/media/Data/PLOS_Biol/")
 knitr:::read_chunk('~/Documents/malaria_interventions/preliminary_results_PLOS_biol.R')
 ```
@@ -163,8 +167,22 @@ Relative persistence
 ## Repertoires in a module
 ![](/media/Data/PLOS_Biol/Results/repertoires_per_module_scenarios.png)
 
+## "Temporal diversity"
 
+All scenarios:
+![](/media/Data/PLOS_Biol/Results/statistic_scenarios.png)
 
+Compare this to the diversity (wihtout the temporal dimension):
+![](/media/Data/PLOS_Biol/Results/D_scenarios.png)
+
+### Selection
+![](/media/Data/PLOS_Biol/Results/statistic_results_S.png)
+
+### Neutral
+![](/media/Data/PLOS_Biol/Results/statistic_results_N.png)
+
+### Generalized
+![](/media/Data/PLOS_Biol/Results/statistic_results_G.png)
 <!-- # 4. Modularity -->
 <!-- This will be influenced by cutoff. For now I am using the cutoffs I used in the previous version: 0.25 (low), 0.7 (medium), 0.9 (high). -->
 <!-- ```{r Infomap_load, echo=FALSE, fig.height=9, fig.width=16, message=FALSE, warning=FALSE, cache=TRUE, dpi=96, out.height="1080px", out.width="1920px"} -->
