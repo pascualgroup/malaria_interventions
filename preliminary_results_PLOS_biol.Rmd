@@ -10,7 +10,7 @@ output:
 ```{r setup, include=FALSE}
 knitr::opts_chunk$set(echo = TRUE)
 knitr::opts_knit$set(root.dir = "/media/Data/PLOS_Biol/")
-knitr:::read_chunk('~/Documents/malaria_interventions/get_data_sqlite_plosbiol.R')
+knitr:::read_chunk('~/Documents/malaria_interventions/preliminary_results_PLOS_biol.R')
 ```
 
 ```{r LOAD PACKAGES, include=FALSE, echo=FALSE}
@@ -120,6 +120,7 @@ Cutoff is based on the selection case, so we will look at it more closely. Then 
 
 ### Examples for modules
 ![](/media/Data/PLOS_Biol/Results/module_examples_S.png)
+
 ### Persistence and relative persistence
 Persistence (months)
 ![](/media/Data/PLOS_Biol/Results/persistence_boxplots.png)

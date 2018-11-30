@@ -357,6 +357,9 @@ module_results %>%
 # Edge cutoff -------------------------------------------------------------
 #  !!! See updated code in preliminary_results_PLOS_biol_Midway
 
-
-# Module diversity --------------------------------------------------------
+# Within-module diversity --------------------------------------------------------
 #  !!! See updated code in preliminary_results_PLOS_biol_Midway
+
+# Between-module diversity --------------------------------------------------------
+#  !!! See updated code in preliminary_results_PLOS_biol_Midway
+

@@ -1,4 +1,4 @@
-source('~/GitHub/malaria_interventions/functions.R')
+source('~/Documents/malaria_interventions/functions.R')
 prep.packages(c('tidyverse','magrittr','sqldf','rPython','googlesheets'))
 
 
@@ -29,7 +29,7 @@ work_scenario <- 'S'
 design_subset <- subset(design, PS %in% ps_range & scenario==work_scenario & exp %in% exp_range)
 generate_files(row_range = 1:nrow(design_subset), run_range = run_range, 
                experimental_design = design_subset, 
-               biting_rate_file = 'fixed_biting_rates_1.csv', 
+               # biting_rate_file = 'fixed_biting_rates_1.csv', 
                target_folder = parameter_files_path_global)
 
 # # If checkpoints already exist, can create the reference experiments (control only)
