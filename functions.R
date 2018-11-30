@@ -11,7 +11,7 @@ detect_locale <- function(){
   require(stringr)
   if (str_detect(Sys.info()[4],'midway2')){return('Midway')}
   if (str_detect(Sys.info()[4],'Shais-MBP')){return('Mac')}
-  if (str_detect(Sys.info()[4],'lab')){return('Lab')}
+  if (str_detect(Sys.info()[4],'ee-pascual')){return('Lab')}
 }
 
 prep.packages <- function(package.list) {
