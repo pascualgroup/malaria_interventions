@@ -121,15 +121,15 @@ get_edge_disributions <- function(PS, scenario, exp, run, cutoff_prob, get_inter
 # Compare between parameter spaces within an experiment -------------------
 
 ## @knitr basic_variables_S
-basic_variable_S <- compare_ps(ps_range=c('04','05','06'), 'S', exp = '001', 1:10, cutoff_prob=c(0.25,0.7,0.9))
+basic_variable_S <- compare_ps(ps_range=c('04','05','06'), 'S', exp = '001', 1:10, cutoff_prob=c(0.9,0.9,0.9))
 basic_variable_S[[1]]
 
 ## @knitr basic_variables_N
-basic_variable_N <- compare_ps(ps_range=c('04','05','06'), 'N', exp = '001', 1:10, cutoff_prob=c(0.25,0.7,0.9))
+basic_variable_N <- compare_ps(ps_range=c('04','05','06'), 'N', exp = '001', 1:10, cutoff_prob=c(0.9,0.9,0.9))
 basic_variable_N[[1]]
 
 ## @knitr basic_variables_G
-basic_variable_G <- compare_ps(ps_range=c('04','05','06'), 'G', exp = '001', 1:10, cutoff_prob=c(0.25,0.7,0.9))
+basic_variable_G <- compare_ps(ps_range=c('04','05','06'), 'G', exp = '001', 1:10, cutoff_prob=c(0.9,0.9,0.9))
 basic_variable_G[[1]]
 
 ## @knitr EIR_S
@@ -146,13 +146,13 @@ basic_variable_G[[2]]
 # Compare between scenarios within a parameter space and experiment -------
 
 ## @knitr compare_scenarios_01
-x <- compare_scenarios(PS = '04', scenarios = c('S','N','G'), run_range = 1, cutoff_prob = 0.25)
+x <- compare_scenarios(PS = '04', scenarios = c('S','N','G'), run_range = 1:10, cutoff_prob = 0.9)
 x
 ## @knitr compare_scenarios_02
-x <- compare_scenarios(PS = '05', scenarios = c('S','N','G'), run_range = 1, cutoff_prob = 0.7)
+x <- compare_scenarios(PS = '05', scenarios = c('S','N','G'), run_range = 1:10, cutoff_prob = 0.9)
 x
 ## @knitr compare_scenarios_03
-x <- compare_scenarios(PS = '06', scenarios = c('S','N','G'), run_range = 1, cutoff_prob = 0.9)
+x <- compare_scenarios(PS = '06', scenarios = c('S','N','G'), run_range = 1:10, cutoff_prob = 0.9)
 x
 ## @knitr END
 

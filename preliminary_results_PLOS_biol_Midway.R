@@ -55,7 +55,7 @@ get_results_for_cutoff <- function(cutoff_prob_seq=seq(0.05,0.95,0.05), scenario
         print(paste('File does not exist: ',file,sep=''))
       }
     }
-    write_csv(results_cutoff, paste('results_cutoff_',scenario,'_',run,'.csv',sep=''))
+    write_csv(results_cutoff, paste('results_cutoff_',scenario,'_R',run,'.csv',sep=''))
   }
   
   results_cutoff <- c()
@@ -171,7 +171,7 @@ results_cutoff <- get_results_for_cutoff(cutoff_prob_seq = seq(0.05,0.95,0.05), 
 write_csv(results_cutoff, 'Results/results_cutoff_S.csv')
 
 # Examples for modules
-png('Results/module_examples.png', width = 1920, height = 1080)
+png('Results/module_examples_S.png', width = 1920, height = 1080)
 results_cutoff %>% 
   filter(run==2) %>%
   distinct(module,layer, PS, cutoff_prob) %>% 
@@ -251,7 +251,7 @@ results_cutoff %>%
 dev.off()
 
 # Reps per module
-png('Results/Repertoires_per_module.png', width = 1920, height = 1080)
+png('Results/Repertoires_per_module_boxplots.png', width = 1920, height = 1080)
 results_cutoff %>% 
   group_by(PS, scenario, run, cutoff_prob, module) %>% 
   summarise(repertoires_per_module=length(unique(strain_cluster))) %>% 
@@ -299,13 +299,41 @@ my_labels <- as_labeller(c(`04` = 'Low',
                            `G` = 'Generalized immunity',
                            `N` = 'Complete neutrality'))
 
-results_cutoff <- get_results_for_cutoff(cutoff_prob_seq = seq(0.05,0.95,0.05), scenario = 'N', run_range = 1:10)
-write_csv(results_cutoff, 'Results/results_cutoff_N.csv')
+results_cutoff_N <- get_results_for_cutoff(cutoff_prob_seq = seq(0.05,0.95,0.05), scenario = 'N', run_range = 1:10)
+write_csv(results_cutoff_N, 'Results/results_cutoff_N.csv')
+png('Results/module_examples_N.png', width = 1920, height = 1080)
+results_cutoff_N %>% 
+  filter(run==2) %>%
+  distinct(module,layer, PS, cutoff_prob) %>% 
+  # filter(scenario=='S') %>% 
+  ggplot(aes(x=layer, y=module, group=PS, color=PS))+
+  geom_point(size=1)+
+  scale_color_manual(values = ps_cols)+
+  scale_x_continuous(breaks = seq(0,300,50))+
+  labs(y= 'module ID', x='Time (months)', title='Structure example')+
+  facet_grid(cutoff_prob~PS, scales='free')+
+  mytheme
+dev.off()
 
-results_cutoff <- get_results_for_cutoff(cutoff_prob_seq = seq(0.05,0.95,0.05), scenario = 'G', run_range = 1:10)
-write_csv(results_cutoff, 'Results/results_cutoff_G.csv')
+
+results_cutoff_G <- get_results_for_cutoff(cutoff_prob_seq = seq(0.05,0.95,0.05), scenario = 'G', run_range = 1:10)
+write_csv(results_cutoff_G, 'Results/results_cutoff_G.csv')
+png('Results/module_examples_G.png', width = 1920, height = 1080)
+results_cutoff_G %>% 
+  filter(run==2) %>%
+  distinct(module,layer, PS, cutoff_prob) %>% 
+  # filter(scenario=='S') %>% 
+  ggplot(aes(x=layer, y=module, group=PS, color=PS))+
+  geom_point(size=1)+
+  scale_color_manual(values = ps_cols)+
+  scale_x_continuous(breaks = seq(0,300,50))+
+  labs(y= 'module ID', x='Time (months)', title='Structure example')+
+  facet_grid(cutoff_prob~PS, scales='free')+
+  mytheme
+dev.off()
 
 
+# Joint the scenarios to one data frame
 s <- read_csv('Results/results_cutoff_S.csv', col_types = 'iicccicccid')
 n <- read_csv('Results/results_cutoff_N.csv', col_types = 'iicccicccid')
 g <- read_csv('Results/results_cutoff_G.csv', col_types = 'iicccicccid')
