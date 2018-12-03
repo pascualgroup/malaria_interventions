@@ -1,5 +1,6 @@
 # Initialize --------------------------------------------------------------
 source('functions.R')
+# prep.packages(c('sqldf','tidyverse','magrittr','igraph','data.table'))
 library(sqldf, quietly = T)
 library(tidyverse, quietly = T)
 library(magrittr, quietly = T)

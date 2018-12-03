@@ -1747,14 +1747,21 @@ build_infomap_objects <- function(network_object, write_to_infomap_file=T, infom
   nodeList <- data.frame(nodeID=1:length(nodeLabel), nodeLabel)
   
   # Create intralayer edge lists.
+  print('Creating intralayer edge lists')
   layers <- 1:length(intralayer_matrices)
   infomap_intralayer <- lapply(layers, function (x) matrix_to_infomap_intralayer(x, nodeList = nodeList, network_object = network_object))
+  print(head(infomap_intralayer[[300]]))
+  print('Creating a DF of intralayer edges')
   infomap_intralayer <- do.call("rbind", infomap_intralayer)
+  print(head(infomap_intralayer))
   
   # Create interlayer edge lists.
+  print('Creating interlayer edge lists')
   layers <- layers[-length(layers)]
   infomap_interlayer <- lapply(layers, function (x) matrix_to_infomap_interlayer(x, nodeList = nodeList, network_object = network_object))
+  print('Creating a DF of interlayer edges')
   infomap_interlayer <- do.call("rbind", infomap_interlayer)
+  print(head(infomap_interlayer))
   
   if (write_to_infomap_file){
     ## Write file for infomap
