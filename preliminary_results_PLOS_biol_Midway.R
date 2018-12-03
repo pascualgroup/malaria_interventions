@@ -544,33 +544,83 @@ if (task=='within_module_diversity'){
 
 # Between-module diversity ------------------------------------------------
 # PS <- '05';scenario <- 'S';exp <- '001';run <- 2;cutoff_prob <- 0.7
-
-files_for_mFst <- function(PS, scenario, exp, run, cutoff_prob){
+get_mFst_data <- function(PS, scenario, exp, run, cutoff_prob){
   file_modules <- paste('Results/',PS,'_',scenario,'/PS',PS,'_',scenario,'_E',exp,'_R',run,'_',cutoff_prob,'_modules.csv',sep='')
   file_strains <- paste('Results/',PS,'_',scenario,'/PS',PS,'_',scenario,'_E',exp,'_R',run,'_',cutoff_prob,'_sampled_strains.csv',sep='')
   if(file.exists(file_modules) & file.exists(file_strains)){
     print(paste(PS,scenario,exp,run,cutoff_prob,sep=' | '))
     modules <- read_csv(file_modules, col_types = 'iiccciccccd')
     module_list <- modules %>% 
-      filter(layer==300) %>% 
-      select(module, strain_id)
+      select(layer, module, strain_id)
     
     sampled_strains <- read_csv(file_strains, col_types = 'ccc')
     sampled_strains <-  sampled_strains[,-3]
-    sampled_strains %<>% filter(strain_id %in% module_list$strain_id)
     
-    allele_freq <- xtabs(~strain_id+allele_locus, sampled_strains)
-    
-    print(all(rownames(allele_freq) %in% module_list$strain_id))
-    
-    write.csv(allele_freq, paste('mFst/PS',PS,'_',scenario,'_E',exp,'_R',run,'_',cutoff_prob,'_mFst_strains_alleles.csv',sep=''))
-    write.csv(module_list, paste('mFst/PS',PS,'_',scenario,'_E',exp,'_R',run,'_',cutoff_prob,'_mFst_strains_modules.csv',sep=''), row.names=F)
-    
-    return()
+    return(list(module_list=module_list,sampled_strains=sampled_strains))
   } else {
     print(paste('One file does not exist:',file_modules,file_strains))
   }
 }
+
+mFst_layer <- function(mFst_data, layer_to_calculate){
+  module_list <- mFst_data$module_list %>% 
+    filter(layer==layer_to_calculate) %>% 
+    select(module, strain_id)
+  
+  sampled_strains <- mFst_data$sampled_strains %>%
+    filter(strain_id %in% module_list$strain_id)
+  
+  allele_freq <- xtabs(~strain_id+allele_locus, sampled_strains)
+  
+  print(all(rownames(allele_freq) %in% module_list$strain_id))
+  
+  # write.csv(allele_freq, paste('mFst/PS',PS,'_',scenario,'_E',exp,'_R',run,'_',cutoff_prob,'_mFst_strains_alleles.csv',sep=''))
+  # write.csv(module_list, paste('mFst/PS',PS,'_',scenario,'_E',exp,'_R',run,'_',cutoff_prob,'_mFst_strains_modules.csv',sep=''), row.names=F)
+  
+  # Calculate the mFst
+  module_list = left_join(module_list,sampled_strains, by=c("strain_id" = "X"))
+  #calculate matrix of pairwise Fst
+  FstMat<-communityDistances(module_list, dis = F)
+  # #mean or standard deviation
+  # meanFst<-mean(FstMat,na.rm=T)
+  # sdFst<-sd(FstMat,na.rm=T)
+  # 
+  result <- tibble(layer=layer,Fst=as.vector(FstMat))
+  return(result)
+}
+
+
+if (task=='between_module_diversity'){
+  print ('Calculating mFst')
+  
+  for (scenario in c('S','N','G')){
+    design_cutoff <- expand.grid(PS=sprintf('%0.2d', 4:6),
+                                 scenario=scenario, 
+                                 exp='001',
+                                 run_range=1:10,
+                                 cutoff_prob=seq(0.3,0.95,0.05),
+                                 stringsAsFactors = F)
+    for (i in 1:nrow(design_cutoff)){
+      PS <- design_cutoff[i,1]
+      scenario <- design_cutoff[i,2]
+      exp <- design_cutoff[i,3]
+      run <- design_cutoff[i,4]
+      cutoff_prob <- design_cutoff[i,5]
+      mFst_data <- get_mFst_data(PS, scenario, exp, run, cutoff_prob)
+      for (i in 100:200){
+        
+      }
+      statistic_results <- rbind(statistic_results, x)
+      # print(paste(object.size(statistic_results), nrow(statistic_results)))
+    }
+    write_csv(statistic_results, paste('Results/statistic_results_',scenario,'.csv',sep=''))
+    
+    
+      
+      
+
+
+
 
 files_for_mFst(PS='06', scenario='S', exp='001', run=2, cutoff_prob=0.9)
 files_for_mFst(PS='06', scenario='N', exp='001', run=2, cutoff_prob=0.9)

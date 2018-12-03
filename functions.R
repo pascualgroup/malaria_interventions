@@ -1859,3 +1859,55 @@ infomap_readTreeFile <- function(PS, scenario, exp, run, cutoff_prob, folder='/m
   return(list(modules=modules2,sampled_strains=sampled_strains,sampled_alleles=sampled_alleles))
 }
 
+##module FST calculation
+#moduleStrain table:
+#first column, module_id;second column, strain_id;rest of the columns, allele status
+communityDistances<-function(moduleStrain, dis = F){
+  mat<-overlapAlleleAdj(moduleStrain[,-(1:2)])
+  if (dis == F) {
+    #note that here, weight should be the distance between edges
+    #if input g is similarity matrix, then this should be reverted
+    mat<-1-mat
+  }
+  memberMap<-as.factor(moduleStrain$module)
+  comNumber<-length(levels(memberMap))
+  if (comNumber<2){
+    print("no sub communities detected")
+    return(matrix(NA,comNumber,comNumber))
+  }
+  comSize<-as.vector(table(memberMap))
+  withinDiv<-c()
+  outMat<-matrix(NA,comNumber,comNumber)
+  indList<-list()
+  #first calculate all within diversities
+  for (i in 1:comNumber) {
+    indOut<-which(memberMap==levels(memberMap)[i],arr.ind=T)
+    indList[[i]]<-indOut
+    if (comSize[i]>1) {
+      focalMat<-mat[indOut,indOut]
+      piWithin = sum(focalMat[upper.tri(focalMat)])+
+        sum(focalMat[lower.tri(focalMat)])
+      withinDiv<-c(withinDiv,piWithin)
+    }else{
+      withinDiv<-c(withinDiv,NA)
+    }
+  }
+  ##then calculate all between diversities
+  for (i in 1:(comNumber-1)) {
+    if (comSize[i]==1) {
+      next
+    }
+    for (j in (i+1):comNumber) {
+      if (comSize[j]==1) {
+        next
+      }
+      piBetween = (sum(mat[indList[[i]],indList[[j]]])+sum(
+        mat[indList[[j]],indList[[i]]]))/2/comSize[i]/comSize[j]
+      #print(piBetween)
+      outMat[i,j]<-1-(withinDiv[i]+withinDiv[j])/
+        (comSize[i]*(comSize[i]-1)+comSize[j]*(comSize[j]-1))/piBetween
+      
+    }
+  }
+  return(outMat)
+}
