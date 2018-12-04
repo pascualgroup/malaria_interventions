@@ -366,30 +366,65 @@ module_results %>%
 
 # Seasonality -------------------------------------------------------------
 
+cases <- expand.grid(ps=c('09','10'), scenario='S', exp='001', run=1)
+cases$cutoff_prob <- 0.85
+ps_comparison <- c()
+for (i in 1:nrow(cases)){
+  print(paste('PS: ',cases$ps[i],' | Scenario: ',cases$scenario[i],' | exp: ',cases$exp[i], ' | run: ',cases$run[i],sep=''))
+  tmp <- get_data(parameter_space = cases$ps[i], scenario = cases$scenario[i], experiment = cases$exp[i], run = cases$run[i], cutoff_prob = cases$cutoff_prob[i], use_sqlite = F, tables_to_get = 'summary_general')[[1]]
+  ps_comparison <- rbind(ps_comparison, tmp)
+}
+
+time_range <- c(28800,max(ps_comparison$time))
+
+ps_comparison %>%
+  select(-year, -month, -n_infected) %>% 
+  filter(time>time_range[1]&time<time_range[2]) %>%
+  gather(variable, value, -pop_id, -time, -exp, -PS, -scenario, -run) %>% 
+  group_by(pop_id, time, exp, PS, scenario, variable) %>%
+  summarise(value_mean=mean(value), value_sd=sd(value)) %>% # Need to average across runs
+  filter(variable %in% monitored_variables) %>%
+  ggplot(aes(x=time, y=value_mean, color=PS))+
+  geom_line()+
+  scale_x_continuous(breaks=pretty(x=subset(ps_comparison, time>time_range[1]&time<time_range[2])$time,n=5))+
+  facet_wrap(~variable, scales='free')+
+  mytheme
+
+# EIR
+ps_comparison %>% 
+  ggplot(aes(x=month, y=EIR, color=PS))+
+  geom_boxplot()+
+  stat_summary(aes(group=PS), fun.y=mean, geom="line", size=1)+
+  # facet_wrap(~PS)+
+  scale_y_continuous(breaks=seq(0,20,2))+
+  mytheme
+
+
+
+
 # This repeats the diversity and epi comparisons, but with seasonality
 
 ## @knitr basic_variables_S_seasonality
-basic_variable_S <- compare_ps(ps_range=c('07','08','09'), 'S', exp = '001', 1:10, cutoff_prob=c(0.9,0.9,0.9))
+basic_variable_S <- compare_ps(ps_range=c('09','10'), 'S', exp = '001', 1:10, cutoff_prob=c(0,0.85))
 basic_variable_S[[1]]
 
-## @knitr basic_variables_N_seasonality
-basic_variable_N <- compare_ps(ps_range=c('07','08','09'), 'N', exp = '001', 1:10, cutoff_prob=c(0.9,0.9,0.9))
-basic_variable_N[[1]]
-
 ## @knitr basic_variables_G_seasonality
-basic_variable_G <- compare_ps(ps_range=c('07','08','09'), 'G', exp = '001', 1:10, cutoff_prob=c(0.9,0.9,0.9))
+basic_variable_G <- compare_ps(ps_range=c('07','08','09'), 'G', exp = '001', 1:10, cutoff_prob=c(0.3,0.6,0.85))
 basic_variable_G[[1]]
+
+## @knitr basic_variables_N_seasonality
+basic_variable_N <- compare_ps(ps_range=c('07','08','09'), 'N', exp = '001', 1:10, cutoff_prob=c(0.3,0.6,0.85))
+basic_variable_N[[1]]
 
 ## @knitr EIR_S_seasonality
 basic_variable_S[[2]]
-
-## @knitr EIR_N_seasonality
-basic_variable_N[[2]]
 
 ## @knitr EIR_G_seasonality
 basic_variable_G[[2]]
 ## @knitr END
 
+## @knitr EIR_N_seasonality
+basic_variable_N[[2]]
 
 
 ## @knitr compare_scenarios_01_seasonality

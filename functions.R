@@ -1870,6 +1870,8 @@ infomap_readTreeFile <- function(PS, scenario, exp, run, cutoff_prob, folder='/m
 #moduleStrain table:
 #first column, module_id;second column, strain_id;rest of the columns, allele status
 communityDistances<-function(moduleStrain, dis = F){
+  # mat <- moduleStrain[,-(1:2)]
+  # mat <- matrix(moduleStrain[,-(1:2)], nrow=nrow(moduleStrain), ncol=ncol() dimnames=list(moduleStrain$strain_id, colnames(moduleStrain[,-(1:2)])))
   mat<-overlapAlleleAdj(moduleStrain[,-(1:2)])
   if (dis == F) {
     #note that here, weight should be the distance between edges

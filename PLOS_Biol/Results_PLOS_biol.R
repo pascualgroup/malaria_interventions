@@ -28,7 +28,8 @@ my_labels <- as_labeller(c(`04` = 'Low',
 
 # Fig. 2 ------------------------------------------------------------------
 # Figure has 3 scenarios in high diversity, showing the following:
-# Module examples, Relative persistence, Temporal Diversity, mFst, Number of repertoires per module
+# Module examples, Relative persistence, Temporal Diversity, mFst.
+# Number of repertoires per module is not so useful.
 
 PS <- '06'; cutoff_prob <- 0.85 # These are fixed becaues the figure is for high diversity
 experiments <- expand.grid(run=1:10,scenario=c('S','N','G'),stringsAsFactors = F)
@@ -79,9 +80,9 @@ strain_persistence <- module_results %>%
   mutate(type='Repertoire') %>% 
   rename(id=strain_cluster) %>% mutate(id=as.character(id))
 
-persistence_df <- module_persistence %>%  bind_rows(strain_persistence)
+persistence_df <- module_persistence %>% bind_rows(strain_persistence)
 persistence_df$scenario <- factor(persistence_df$scenario, levels=c('S','N','G'))
-  
+
 persistence_df %>% 
   ggplot()+
   geom_density(data=subset(persistence_df, type=='Module'), aes(relative_persistence, y=..scaled.., fill=scenario))+
@@ -98,28 +99,42 @@ persistence_df %>%
   labs(y='Relative persistence')+
   facet_grid(~scenario, scales='free_y', labeller = my_labels)+mytheme
 
-# Repertoires per module
-module_results %>% 
-  mutate(scenario=factor(scenario, levels=c('S','N','G'))) %>% 
-  group_by(scenario, run, module) %>% 
-  summarise(repertoires_per_module=length(unique(strain_cluster))) %>% 
-  select(scenario, run, repertoires_per_module) %>% 
-  ggplot(aes(x=scenario, y=repertoires_per_module, fill=scenario))+
-  geom_boxplot()+
-  scale_fill_manual(values=scenario_cols)+mytheme
+# Statistical analysis for differences in persistence
+persistence_df %>% 
+  group_by(scenario, type) %>% 
+  summarise(mean_relative_persistence=mean(relative_persistence),
+            sd_relative_persistence=sd(relative_persistence),
+            median_relative_persistence=median(relative_persistence))
 
-x=module_results %>%
-  filter(scenario=='S') %>%
-  group_by(run, module) %>%
-  summarise(repertoires_per_module=length(unique(strain_cluster))) %>%
-  select(run,repertoires_per_module)
-y=module_results %>%
-  filter(scenario=='N') %>%
-  group_by(run, module) %>%
-  summarise(repertoires_per_module=length(unique(strain_cluster))) %>%
-  select(run,repertoires_per_module)
-t.test(x$repertoires_per_module,y$repertoires_per_module)
-wilcox.test(x$repertoires_per_module,y$repertoires_per_module)
+for (scen in c('S','G','N')){
+  print(scen)
+  module_pers <- subset(persistence_df, type=='Module' & scenario==scen)
+  rep_pers <- subset(persistence_df, type=='Repertoire' & scenario==scen)
+  print(wilcox.test(module_pers$relative_persistence, rep_pers$relative_persistence))
+}
+
+# Repertoires per module
+# module_results %>% 
+#   mutate(scenario=factor(scenario, levels=c('S','N','G'))) %>% 
+#   group_by(scenario, run, module) %>% 
+#   summarise(repertoires_per_module=length(unique(strain_cluster))) %>% 
+#   select(scenario, run, repertoires_per_module) %>% 
+#   ggplot(aes(x=scenario, y=repertoires_per_module, fill=scenario))+
+#   geom_boxplot()+
+#   scale_fill_manual(values=scenario_cols)+mytheme
+# 
+# x=module_results %>%
+#   filter(scenario=='S') %>%
+#   group_by(run, module) %>%
+#   summarise(repertoires_per_module=length(unique(strain_cluster))) %>%
+#   select(run,repertoires_per_module)
+# y=module_results %>%
+#   filter(scenario=='N') %>%
+#   group_by(run, module) %>%
+#   summarise(repertoires_per_module=length(unique(strain_cluster))) %>%
+#   select(run,repertoires_per_module)
+# t.test(x$repertoires_per_module,y$repertoires_per_module)
+# wilcox.test(x$repertoires_per_module,y$repertoires_per_module)
 
 # Temporal diversity
 module_results_T <- c()
@@ -145,22 +160,4 @@ module_results_T %>%
   labs(y='Temporal diversity')+mytheme
 
 # mFst
-# module_results_T <- c()
-# for (i in 1:nrow(experiments)){
-#   x <- calculate_module_diversity(PS = PS,scenario = experiments$scenario[i],exp = exp, run = experiments$run[i], cutoff_prob = cutoff_prob)
-#   module_results_T <- rbind(module_results_T, x)
-# }
-# 
-# for (l in sample(1:300,25,replace = F)){
-#   # print(l)
-#   x <- mFst_layer(mFst_data, l)
-#   mFst_results_inner <- rbind(mFst_results_inner, x)
-# }
-# if (nrow(mFst_results_inner)!=0){
-#   mFst_results_inner$PS <- PS
-#   mFst_results_inner$scenario <- scenario
-#   mFst_results_inner$run <- run
-#   mFst_results_inner$cutoff_prob <- cutoff_prob
-#   mFst_results <- rbind(mFst_results, mFst_results_inner)
-# }
-# }
+
