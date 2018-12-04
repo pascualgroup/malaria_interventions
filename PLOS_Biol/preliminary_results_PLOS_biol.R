@@ -395,7 +395,7 @@ ps_comparison %>%
   ggplot(aes(x=month, y=EIR, color=PS))+
   geom_boxplot()+
   stat_summary(aes(group=PS), fun.y=mean, geom="line", size=1)+
-  # facet_wrap(~PS)+
+  facet_wrap(~PS)+
   scale_y_continuous(breaks=seq(0,20,2))+
   mytheme
 

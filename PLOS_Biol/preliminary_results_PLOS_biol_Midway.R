@@ -135,12 +135,15 @@ calculate_mFst <- function(PS, scenario, exp, run, cutoff_prob){
     sampled_strains %<>%
       filter(strain_id %in% module_list$strain_id)
     
+    print(setequal(sampled_strains$strain_id, module_list$strain_id))
+    
     allele_freq <- xtabs(~strain_id+allele_locus, sampled_strains)
     
-    # print(all(rownames(allele_freq) %in% module_list$strain_id))
+    print(setequal(rownames(allele_freq), module_list$strain_id))
     
-    # write.csv(allele_freq, paste('mFst/PS',PS,'_',scenario,'_E',exp,'_R',run,'_',cutoff_prob,'_mFst_strains_alleles.csv',sep=''))
-    # write.csv(module_list, paste('mFst/PS',PS,'_',scenario,'_E',exp,'_R',run,'_',cutoff_prob,'_mFst_strains_modules.csv',sep=''), row.names=F)
+    write.csv(allele_freq, paste('~/Dropbox/Qixin_Shai_Malaria/PLOS_Biol/mFst/PS',PS,'_',scenario,'_E',exp,'_R',run,'_',cutoff_prob,'_mFst_strains_alleles_matrix.csv',sep=''))
+    write.csv(sampled_strains, paste('~/Dropbox/Qixin_Shai_Malaria/PLOS_Biol/mFst/PS',PS,'_',scenario,'_E',exp,'_R',run,'_',cutoff_prob,'_mFst_strains_alleles_list.csv',sep=''))
+    write.csv(module_list, paste('~/Dropbox/Qixin_Shai_Malaria/PLOS_Biol/mFst/PS',PS,'_',scenario,'_E',exp,'_R',run,'_',cutoff_prob,'_mFst_strains_modules.csv',sep=''), row.names=F)
     
     allele_freq_mat <- matrix(allele_freq, nrow=nrow(allele_freq), ncol=ncol(allele_freq), dimnames = list(rownames(allele_freq), colnames(allele_freq)))
     allele_freq_df <- as.data.frame(allele_freq_mat)

@@ -8,7 +8,7 @@ from scipy.optimize import curve_fit
 def func(x,a,b,c,d):
 	return b*np.exp(-c*x)/((d*x+1)**d)+a
 	
-path="/media/Data/PLOS_Biol/sqlite_S/PS09_S_E001_R1.sqlite"
+path="/media/Data/PLOS_Biol/sqlite_S/PS06_S_E001_R50.sqlite"
 con = lite.connect(path)
 with con:
 		cur = con.cursor()

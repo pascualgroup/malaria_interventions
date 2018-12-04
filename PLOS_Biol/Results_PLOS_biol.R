@@ -32,16 +32,18 @@ my_labels <- as_labeller(c(`04` = 'Low',
 # Number of repertoires per module is not so useful.
 
 PS <- '06'; cutoff_prob <- 0.85 # These are fixed becaues the figure is for high diversity
-experiments <- expand.grid(run=1:10,scenario=c('S','N','G'),stringsAsFactors = F)
+experiments <- expand.grid(run=1:50,scenario=c('S','N','G'),stringsAsFactors = F)
 
 get_modularity_results <- function(PS,scenario,run,cutoff_prob,folder='/media/Data/PLOS_Biol/'){
   file <- paste(folder,'Results/',PS,'_',scenario,'/PS',PS,'_',scenario,'_E',exp,'_R',run,'_',cutoff_prob,'_modules.csv',sep='')
   if(file.exists(file)){
     print(paste(PS,scenario,exp,run,cutoff_prob,sep=' | '))
-    x <- read_csv(file, col_types = 'iiccciccccd')  
+    # x <- read_csv(file, col_types = 'iiccciccccd')  
+    x <- fread(file, colClasses = 'iiccciccccd')  
     return(x)
   } else {
     print(paste('File does not exist: ',file,sep=''))
+    return()
   }
 }
 
@@ -50,6 +52,9 @@ for (i in 1:nrow(experiments)){
   x <- get_modularity_results(PS,experiments$scenario[i],experiments$run[i],cutoff_prob)
   module_results <- rbind(module_results,x)
 }
+module_results <- as.tibble(module_results)
+
+
 
 # Module examples
 # Can only be done for 1 run! So select a nice run :)

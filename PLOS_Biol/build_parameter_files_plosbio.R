@@ -21,7 +21,7 @@ if (detect_locale()=='Mac'){
 design <- loadExperiments_GoogleSheets(local = F, workBookName = 'PLOS_Biol_design', sheetID = 2) 
 
 # Create the reference experiments (checkpoint and control)
-ps_range <- sprintf('%0.2d', 10)
+ps_range <- sprintf('%0.2d', 11)
 exp_range <- sprintf('%0.3d', 0:1)
 run_range <- 1
 work_scenario <- 'S'
@@ -106,7 +106,7 @@ system('rm *.sbatch')
 
 scenario_range <- c('S','N','G')
 exp_range <- sprintf('%0.3d', 0:4)
-ps_range <- sprintf('%0.2d', 10)
+ps_range <- sprintf('%0.2d', 4:6)
 
 for (ps in ps_range){
   for (scenario in scenario_range){
@@ -263,21 +263,14 @@ sink.reset()
 
 # Generate sbatch files to extract data -----------------------------------
 sbatch_arguments <- expand.grid(PS=sprintf('%0.2d', 4:6),
-                                scen=c('S','N','G'), 
+                                scen='N', 
                                 array='11-50', 
                                 stringsAsFactors = F)
-sbatch_arguments$cutoff_prob <- rep(c(0.3,0.6,0.85),3)
-sbatch_arguments$mem_per_cpu <- rep(c(16000,24000,32000),3)
-sbatch_arguments$time <- rep(c('10:00:00','15:00:00','36:00:00'),3)
-# sbatch_arguments$mem_per_cpu <- c(rep(4000,2),rep(8000,2),rep(12000,3),rep(16000,2),rep(32000,4),
-#                                   rep(8000,2),rep(16000,2),rep(32000,8),64000)
-# sbatch_arguments$time <- c(rep('01:00:00',4),rep('03:00:00',4),rep('06:00:00',5),
-#                            rep('04:00:00',4),rep('08:00:00',4),rep('12:00:00',5)) # For G
-
-
-ps_range <- unique(sbatch_arguments$PS)
-for (scenario in c('S','N','G')){
-  for (ps in ps_range){
+sbatch_arguments$cutoff_prob <- c(0.3,0.6,0.85)
+sbatch_arguments$mem_per_cpu <- c(6000,8000,16000)
+sbatch_arguments$time <- c('02:00:00','03:00:00','06:00:00')
+for (scenario in unique(sbatch_arguments$scen)){
+  for (ps in unique(sbatch_arguments$PS)){
     x <- readLines('~/Documents/malaria_interventions/PLOS_Biol/get_data_midway_plosbiol.sbatch')
     str_sub(x[2],22,24) <- paste(ps,scenario,sep='')
     str_sub(x[3],16,18) <- subset(sbatch_arguments, PS==ps & scen==scenario)$time
@@ -297,7 +290,7 @@ for (i in 1:nrow(sbatch_arguments)){
   ps <- sbatch_arguments$PS[i]
   scenario <- sbatch_arguments$scen[i]
   cutoff_prob <- sbatch_arguments$cutoff_prob[i]
-  cat('sbatch -d afterok:54700519 ',paste('PS',ps,'_',scenario,'_',cutoff_prob,'_get_data_midway.sbatch',sep=''));cat('\n')
+  cat('sbatch -d afterok:54788634 ',paste('PS',ps,'_',scenario,'_',cutoff_prob,'_get_data_midway.sbatch',sep=''));cat('\n')
 }
 sink.reset()
 
