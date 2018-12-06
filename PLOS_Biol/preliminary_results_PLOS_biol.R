@@ -366,12 +366,12 @@ module_results %>%
 
 # Seasonality -------------------------------------------------------------
 
-cases <- expand.grid(ps=c('09','10'), scenario='S', exp='001', run=1)
+cases <- expand.grid(ps=c('11','12','13'), scenario='S', exp='001', run=1)
 cases$cutoff_prob <- 0.85
 ps_comparison <- c()
 for (i in 1:nrow(cases)){
   print(paste('PS: ',cases$ps[i],' | Scenario: ',cases$scenario[i],' | exp: ',cases$exp[i], ' | run: ',cases$run[i],sep=''))
-  tmp <- get_data(parameter_space = cases$ps[i], scenario = cases$scenario[i], experiment = cases$exp[i], run = cases$run[i], cutoff_prob = cases$cutoff_prob[i], use_sqlite = F, tables_to_get = 'summary_general')[[1]]
+  tmp <- get_data(parameter_space = cases$ps[i], scenario = cases$scenario[i], experiment = cases$exp[i], run = cases$run[i], cutoff_prob = cases$cutoff_prob[i], use_sqlite = T, tables_to_get = 'summary_general')[[1]]
   ps_comparison <- rbind(ps_comparison, tmp)
 }
 
