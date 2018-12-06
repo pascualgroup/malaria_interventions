@@ -1265,6 +1265,75 @@ createTemporalNetwork <- function(ps, scenario, exp, run, cutoff_prob=0.9, cutof
 
 # Get network data --------------------------------------------------------
 
+
+get_edge_disributions <- function(PS, scenario, exp, run, cutoff_prob, get_inter=T){
+  x <- readLines(paste('Results/',PS,'_',scenario,'/PS',PS,'_',scenario,'_E',exp,'_R',run,'_',cutoff_prob,'_network_info.csv',sep=''))
+  cutoff_value <- as.numeric(x[6])
+  intra <- fread(paste('Results/',PS,'_',scenario,'/PS',PS,'_',scenario,'_E',exp,'_R',run,'_',cutoff_prob,'_intralayer_no_cutoff.csv',sep=''))  
+  if (get_inter){
+    inter <- fread(paste('Results/',PS,'_',scenario,'/PS',PS,'_',scenario,'_E',exp,'_R',run,'_',cutoff_prob,'_interlayer_no_cutoff.csv',sep=''))  
+    x <- rbind(intra,inter)
+  } else {
+    x <- intra
+  }
+  x$PS=PS
+  x$scenario=scenario
+  x$exp=exp
+  x$run=run
+  x$cutoff_value=cutoff_value
+  x$cutoff_prob=cutoff_prob
+  # p <- as.tibble(x) %>% ggplot(aes(value))+geom_density()+geom_vline(xintercept = cutoff_value, color='red')+
+  #   labs(title = paste('Cut-off quantile:',cutoff_prob,'Cut-off value:',cutoff_value))
+  return(x)
+}
+
+
+get_results_for_cutoff <- function(cutoff_prob_seq=seq(0.05,0.95,0.05), scenario='S', run_range=1:10){
+  design_cutoff <- expand.grid(PS=sprintf('%0.2d', 4:6),
+                               scenario=scenario, 
+                               exp='001',
+                               run_range=run_range,
+                               cutoff_prob=cutoff_prob_seq,
+                               stringsAsFactors = F)
+  for (run in unique(design_cutoff$run_range)){
+    results_cutoff <- c()
+    design_cutoff_run <- subset(design_cutoff, run_range==run)
+    print(design_cutoff_run)
+    for (i in 1:nrow(design_cutoff_run)){
+      PS <- design_cutoff_run[i,1]
+      scenario <- design_cutoff_run[i,2]
+      exp <- design_cutoff_run[i,3]
+      # run <- design_cutoff_run[i,4]
+      cutoff_prob <- design_cutoff_run[i,5]
+      file <- paste('Results/',PS,'_',scenario,'/PS',PS,'_',scenario,'_E',exp,'_R',run,'_',cutoff_prob,'_modules.csv',sep='')
+      if(file.exists(file)){
+        print(paste(PS,scenario,exp,run,cutoff_prob,sep=' | '))
+        x <- read_csv(file, col_types = 'iiccciccccd')  
+        results_cutoff <- rbind(results_cutoff, x)
+      } else {
+        print(paste('File does not exist: ',file,sep=''))
+      }
+    }
+    write_csv(results_cutoff, paste('Results/results_cutoff_',scenario,'_R',run,'.csv',sep=''))
+  }
+  
+  results_cutoff <- c()
+  for (run in unique(design_cutoff$run_range)){
+    file <- paste('Results/results_cutoff_',scenario,'_R',run,'.csv',sep='')
+    if(file.exists(file)){
+      x <- read_csv(file, col_types = 'iicccicccid')
+      results_cutoff <- rbind(results_cutoff, x)  
+    } else {
+      print(paste('File does not exist: ',file,sep=''))
+    }
+  }
+  results_cutoff <- as.tibble(results_cutoff)
+  return(results_cutoff)
+}
+
+
+
+
 # This function builds the network object from the result files produced on Midway
 get_network_structure <- function(ps, scenario, exp, run, cutoff_prob, layers_to_include, parse_interlayer=T, plotit=F, folder='/media/Data/'){
   require(utils)

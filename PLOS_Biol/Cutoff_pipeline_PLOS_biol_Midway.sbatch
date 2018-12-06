@@ -19,8 +19,7 @@ module load gcc/6.1
 base_folder='/scratch/midway2/pilosofs/PLOS_Biol/' # Where all the source files are and where the experiment folders will be created
 
 cd $base_folder # Go to base folder
-Rscript preliminary_results_PLOS_biol_Midway.R 'edge_weight_distributions'
-Rscript preliminary_results_PLOS_biol_Midway.R 'sensitivity_cutoff_selection'
-Rscript preliminary_results_PLOS_biol_Midway.R 'sensitivity_cutoff_all_scenarios'
-Rscript preliminary_results_PLOS_biol_Midway.R 'within_module_diversity'
-Rscript preliminary_results_PLOS_biol_Midway.R 'between_module_diversity'
+Rscript Cutoff_pipeline_PLOS_biol_Midway.R 'edge_weight_distributions'
+Rscript Cutoff_pipeline_PLOS_biol_Midway.R 'sensitivity_cutoff_selection'
+Rscript Cutoff_pipeline_PLOS_biol_Midway.R 'sensitivity_cutoff_all_scenarios'
+Rscript Cutoff_pipeline_PLOS_biol_Midway.R 'within_module_diversity'
