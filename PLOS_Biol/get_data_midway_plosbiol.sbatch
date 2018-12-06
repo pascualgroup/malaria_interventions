@@ -34,15 +34,27 @@ cd $base_folder'/Results/'$PS'_'$scenario
 
 
 # Run R script
+echo Starting script make_networks
+echo =============================================================
 Rscript $prog $PS $scenario '001' $cutoff_prob 'make_networks'
 
 
 # Run Infomap
+echo Running Infomap
+echo =============================================================
 infomap_name='PS'$PS'_'$scenario'_E001_R'$SLURM_ARRAY_TASK_ID'_'$cutoff_prob'_Infomap_multilayer'
 ./Infomap_v01926 $infomap_name'.txt' . -i multilayer -d -N 10 --rawdir --two-level --tree --expanded
 
 # Get infomap results
+echo Starting script read_infomap_results
+echo =============================================================
 Rscript $prog $PS $scenario '001' $cutoff_prob 'read_infomap_results'
+
+# Calculte module diversity and mFst
+echo Starting script module_diversity
+echo =============================================================
+Rscript $prog $PS $scenario '001' $cutoff_prob 'module_diversity'
+
 
 # remove files
 # rm functions.R

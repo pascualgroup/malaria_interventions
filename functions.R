@@ -1866,57 +1866,180 @@ infomap_readTreeFile <- function(PS, scenario, exp, run, cutoff_prob, folder='/m
   return(list(modules=modules2,sampled_strains=sampled_strains,sampled_alleles=sampled_alleles))
 }
 
-##module FST calculation
-#moduleStrain table:
-#first column, module_id;second column, strain_id;rest of the columns, allele status
-communityDistances<-function(moduleStrain, dis = F){
-  # mat <- moduleStrain[,-(1:2)]
-  # mat <- matrix(moduleStrain[,-(1:2)], nrow=nrow(moduleStrain), ncol=ncol() dimnames=list(moduleStrain$strain_id, colnames(moduleStrain[,-(1:2)])))
-  mat<-overlapAlleleAdj(moduleStrain[,-(1:2)])
-  if (dis == F) {
-    #note that here, weight should be the distance between edges
-    #if input g is similarity matrix, then this should be reverted
-    mat<-1-mat
+
+
+# Module diversity --------------------------------------------------------
+calculate_module_diversity <- function(PS, scenario, exp, run, cutoff_prob){
+  if (on_Midway()){
+    file_modules <- paste('PS',PS,'_',scenario,'_E',exp,'_R',run,'_',cutoff_prob,'_modules.csv',sep='')
+    file_strains <- paste('PS',PS,'_',scenario,'_E',exp,'_R',run,'_',cutoff_prob,'_sampled_strains.csv',sep='')
+  } else {
+    file_modules <- paste('Results/',PS,'_',scenario,'/PS',PS,'_',scenario,'_E',exp,'_R',run,'_',cutoff_prob,'_modules.csv',sep='')
+    file_strains <- paste('Results/',PS,'_',scenario,'/PS',PS,'_',scenario,'_E',exp,'_R',run,'_',cutoff_prob,'_sampled_strains.csv',sep='')  
   }
-  memberMap<-as.factor(moduleStrain$module)
-  comNumber<-length(levels(memberMap))
-  if (comNumber<2){
+  
+  if(file.exists(file_modules) & file.exists(file_strains)){
+    print(paste(PS,scenario,exp,run,cutoff_prob,sep=' | '))
+    modules <- read_csv(file_modules, col_types = 'iiccciccccd')
+    
+    module_persistence <- modules %>% 
+      select(scenario, PS, run, cutoff_prob, layer, module) %>% 
+      group_by(scenario, PS,run,cutoff_prob,module) %>% 
+      summarise(birth_layer=min(layer), death_layer=max(layer), persistence=death_layer-birth_layer+1) %>% 
+      mutate(relative_persistence=persistence/(300-birth_layer+1))
+    
+    sampled_strains <- read_csv(file_strains, col_types = 'ccc')
+    sampled_strains <-  sampled_strains[,-3]
+    suppressMessages(modules %<>% select(scenario, PS, scenario, exp, run, cutoff_prob, module, strain_id) %>% left_join(sampled_strains))
+    allele_freq <- xtabs(~module+allele_locus, modules)
+    module_diversity <- vegan::diversity(allele_freq)/log(ncol(allele_freq))
+    
+    module_persistence$D <- module_diversity
+    module_persistence$statistic <- module_diversity*module_persistence$relative_persistence
+    return(module_persistence)
+  } else {
+    print(paste('One file does not exist:',file_modules,file_strains))
+  }
+}
+
+pairFST<-function(totalSt, totalAllele, pop1 = x, pop2 = y){
+  
+  subLoc<-totalSt%>%filter(module %in% c(pop1, pop2))
+  subLoc<-t(subLoc[,-1])
+  subAllele<-totalAllele%>%filter(module %in% c(pop1, pop2))
+  
+  subAllele<-t(subAllele[,-1])
+  
+  
+  #get total number of copy of genes per locus, a vector of dimension, number of locus
+  indPLocus<-rowSums(subLoc)
+  #get number of populations per locus, a vector of dimension, number of locus
+  popPLocus<-rep(2, length(indPLocus))
+  nc<- (indPLocus - apply(subLoc^2, 1, sum, na.rm = TRUE)/indPLocus)/(popPLocus - 1)
+  #expand it to each allele, replicate the values
+  indPAllele <- rep(indPLocus, 2)
+  ncPAllele<-rep(nc, 2)
+  indPAllelePop<-rbind(subLoc,subLoc)
+  #calculate allele frequency per pop
+  mhom<-subAllele
+  p<-mhom/indPAllelePop
+  #calculate allele frequency across pop
+  pb<-rowSums(mhom)/rowSums(indPAllelePop)
+  
+  SSG<-rep(0,length(indPLocus))
+  
+  dum<-indPAllelePop * (p - 2 * p^2) + mhom
+  SSi <- rowSums(dum, na.rm = TRUE) #per allele, sum across location level
+  dum1 <- indPAllelePop * (sweep(p, 1, pb))^2
+  SSP <- 2 * rowSums(dum1, na.rm = TRUE)
+  #how many populations per allele
+  popPAllele <- rep(2, length(indPAllele))
+  
+  MSG <- SSG/indPAllele
+  MSP <- SSP/(popPAllele - 1)#population effect
+  MSI <- SSi/(indPAllele - popPAllele)#individual effect
+  sigw <- MSG
+  sigb <- 0.5 * (MSI - MSG)
+  siga <- 1/2/ncPAllele * (MSP - MSI)#across each allele
+  Fxy <- function(x) x[1]/sum(x, na.rm = TRUE)
+  
+  tsiga <- sum(siga, na.rm = TRUE)
+  tsigb <- sum(sigb, na.rm = TRUE)
+  tsigw <- sum(sigw, na.rm = TRUE)
+  tFST <- Fxy(c(tsiga, tsigb, tsigw))
+  return(tFST)
+}
+
+pairFSTMat<-function(dat,maxModule = 100){
+  print("starting FST calculation")
+  dat<-arrange(dat, module)
+  totalSt<- dat %>%group_by(module)%>%
+    summarise_all(length)
+  al1<-dat %>%group_by(module)%>%
+    summarise_all(sum)
+  al0<-totalSt-al1
+  totalAllele<-cbind(al1,al0[,-1])
+  colnames(totalAllele)[-1]<-paste('al', c(1:(ncol(totalAllele)-1)),sep="")
+  
+  moduleList<-unique(dat$module)
+  moduleNumber<-length(moduleList)
+  print(paste("total number of modules are", moduleNumber))
+  if (moduleNumber<2){
     print("no sub communities detected")
     return(matrix(NA,comNumber,comNumber))
   }
-  comSize<-as.vector(table(memberMap))
-  withinDiv<-c()
-  outMat<-matrix(NA,comNumber,comNumber)
-  indList<-list()
-  #first calculate all within diversities
-  for (i in 1:comNumber) {
-    indOut<-which(memberMap==levels(memberMap)[i],arr.ind=T)
-    indList[[i]]<-indOut
-    if (comSize[i]>1) {
-      focalMat<-mat[indOut,indOut]
-      piWithin = sum(focalMat[upper.tri(focalMat)])+
-        sum(focalMat[lower.tri(focalMat)])
-      withinDiv<-c(withinDiv,piWithin)
-    }else{
-      withinDiv<-c(withinDiv,NA)
-    }
+  moduleSize<-as.vector(table(dat$module))
+  moduleList<-moduleList[moduleSize>=5]
+  moduleSize<-moduleSize[moduleSize>=5]
+  print(paste("total number of modules having larger than 5 strains are", length(moduleList)))
+  if (length(moduleSize)>maxModule){
+    moduleList <- sort(sample(moduleList,maxModule))
+    print(moduleList)
   }
-  ##then calculate all between diversities
-  for (i in 1:(comNumber-1)) {
-    if (comSize[i]==1) {
-      next
-    }
-    for (j in (i+1):comNumber) {
-      if (comSize[j]==1) {
-        next
-      }
-      piBetween = (sum(mat[indList[[i]],indList[[j]]])+sum(
-        mat[indList[[j]],indList[[i]]]))/2/comSize[i]/comSize[j]
-      #print(piBetween)
-      outMat[i,j]<-1-(withinDiv[i]+withinDiv[j])/
-        (comSize[i]*(comSize[i]-1)+comSize[j]*(comSize[j]-1))/piBetween
-      
+  moduleNumber<-length(moduleList)
+  
+  outMat<-matrix(NA,moduleNumber,moduleNumber)
+  for (i in 1:(moduleNumber-1)){
+    for (j in (i+1):moduleNumber){
+      outMat[i,j]<-outMat[j,i]<-pairFST(totalSt, totalAllele, pop1 = moduleList[i], pop2 = moduleList[j])
     }
   }
   return(outMat)
 }
+
+calculate_mFst <- function(PS, scenario, exp, run, cutoff_prob, maxModule=100){
+  if (on_Midway()){
+    file_modules <- paste('PS',PS,'_',scenario,'_E',exp,'_R',run,'_',cutoff_prob,'_modules.csv',sep='')
+    file_strains <- paste('PS',PS,'_',scenario,'_E',exp,'_R',run,'_',cutoff_prob,'_sampled_strains.csv',sep='')
+  } else {
+    file_modules <- paste('Results/',PS,'_',scenario,'/PS',PS,'_',scenario,'_E',exp,'_R',run,'_',cutoff_prob,'_modules.csv',sep='')
+    file_strains <- paste('Results/',PS,'_',scenario,'/PS',PS,'_',scenario,'_E',exp,'_R',run,'_',cutoff_prob,'_sampled_strains.csv',sep='')  
+  }
+  if(file.exists(file_modules) & file.exists(file_strains)){
+    print(paste(PS,scenario,exp,run,cutoff_prob,sep=' | '))
+    modules <- read_csv(file_modules, col_types = 'iiccciccccd')
+    
+    # modules_in_last_layer <- modules %>% filter(layer>290) %>% select(module)
+    # modules_in_last_layer <- unique(modules_in_last_layer$module)
+    # 
+    module_list <- modules %>% 
+      # filter(module%in%modules_in_last_layer) %>% 
+      select(module, strain_id)
+    
+    sampled_strains <- read_csv(file_strains, col_types = 'ccc')
+    sampled_strains <-  sampled_strains[,-3]
+    sampled_strains %<>%
+      filter(strain_id %in% module_list$strain_id)
+    
+    # print(setequal(sampled_strains$strain_id, module_list$strain_id))
+    
+    allele_freq <- xtabs(~strain_id+allele_locus, sampled_strains)
+    
+    # print(setequal(rownames(allele_freq), module_list$strain_id))
+    
+    # write.csv(allele_freq, paste('~/Dropbox/Qixin_Shai_Malaria/PLOS_Biol/mFst/PS',PS,'_',scenario,'_E',exp,'_R',run,'_',cutoff_prob,'_mFst_strains_alleles_matrix.csv',sep=''))
+    # write.csv(sampled_strains, paste('~/Dropbox/Qixin_Shai_Malaria/PLOS_Biol/mFst/PS',PS,'_',scenario,'_E',exp,'_R',run,'_',cutoff_prob,'_mFst_strains_alleles_list.csv',sep=''))
+    # write.csv(module_list, paste('~/Dropbox/Qixin_Shai_Malaria/PLOS_Biol/mFst/PS',PS,'_',scenario,'_E',exp,'_R',run,'_',cutoff_prob,'_mFst_strains_modules.csv',sep=''), row.names=F)
+    
+    allele_freq_mat <- matrix(allele_freq, nrow=nrow(allele_freq), ncol=ncol(allele_freq), dimnames = list(rownames(allele_freq), colnames(allele_freq)))
+    allele_freq_df <- as.data.frame(allele_freq_mat)
+    allele_freq_df$strain_id <- rownames(allele_freq_mat)
+    
+    # Calculate the mFst
+    module_list = suppressMessages(left_join(module_list,allele_freq_df))
+    
+    
+    FstMat<-pairFSTMat(module_list[,-2], maxModule = maxModule)
+    
+    
+    # Results
+    x <- FstMat[upper.tri(FstMat)]
+    result <- tibble(PS, scenario, exp, run, cutoff_prob, mFst=x)
+    return(result)
+  } else {
+    print(paste('One file does not exist:',file_modules,file_strains,'--returning NULL.'))
+    return(NULL)
+  }
+}
+
+

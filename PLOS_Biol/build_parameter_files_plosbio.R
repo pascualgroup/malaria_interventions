@@ -21,7 +21,7 @@ if (detect_locale()=='Mac'){
 design <- loadExperiments_GoogleSheets(local = F, workBookName = 'PLOS_Biol_design', sheetID = 2) 
 
 # Create the reference experiments (checkpoint and control)
-ps_range <- sprintf('%0.2d', 11)
+ps_range <- sprintf('%0.2d', 14)
 exp_range <- sprintf('%0.3d', 0:1)
 run_range <- 1
 work_scenario <- 'S'
@@ -105,8 +105,8 @@ setwd('/media/Data/PLOS_Biol/parameter_files')
 system('rm *.sbatch')
 
 scenario_range <- c('S','N','G')
-exp_range <- sprintf('%0.3d', 0:4)
-ps_range <- sprintf('%0.2d', 4:6)
+exp_range <- sprintf('%0.3d', 0:1)
+ps_range <- sprintf('%0.2d', 12:14)
 
 for (ps in ps_range){
   for (scenario in scenario_range){
@@ -263,12 +263,23 @@ sink.reset()
 
 # Generate sbatch files to extract data -----------------------------------
 sbatch_arguments <- expand.grid(PS=sprintf('%0.2d', 4:6),
-                                scen='N', 
-                                array='11-50', 
+                                scen=c('S','N','G'),
+                                array='6-50', 
                                 stringsAsFactors = F)
-sbatch_arguments$cutoff_prob <- c(0.3,0.6,0.85)
-sbatch_arguments$mem_per_cpu <- c(6000,8000,16000)
-sbatch_arguments$time <- c('02:00:00','03:00:00','06:00:00')
+sbatch_arguments$cutoff_prob <- rep(c(0.3,0.6,0.85),3)
+sbatch_arguments$mem_per_cpu <- rep(c(6000,12000,32000),3)
+sbatch_arguments$time <- rep(c('04:00:00','05:00:00','10:00:00'),3)
+
+sbatch_arguments <- subset(sbatch_arguments, scen=='G'&PS=='06')
+
+sbatch_arguments <- expand.grid(PS=sprintf('%0.2d', 11:12),
+                                scen=c('S'),
+                                array='1', 
+                                stringsAsFactors = F)
+sbatch_arguments$cutoff_prob <- 0.85
+sbatch_arguments$mem_per_cpu <- 32000
+sbatch_arguments$time <- '10:00:00'
+
 for (scenario in unique(sbatch_arguments$scen)){
   for (ps in unique(sbatch_arguments$PS)){
     x <- readLines('~/Documents/malaria_interventions/PLOS_Biol/get_data_midway_plosbiol.sbatch')
@@ -290,7 +301,7 @@ for (i in 1:nrow(sbatch_arguments)){
   ps <- sbatch_arguments$PS[i]
   scenario <- sbatch_arguments$scen[i]
   cutoff_prob <- sbatch_arguments$cutoff_prob[i]
-  cat('sbatch -d afterok:54788634 ',paste('PS',ps,'_',scenario,'_',cutoff_prob,'_get_data_midway.sbatch',sep=''));cat('\n')
+  cat('sbatch ',paste('PS',ps,'_',scenario,'_',cutoff_prob,'_get_data_midway.sbatch',sep=''));cat('\n')
 }
 sink.reset()
 
@@ -308,3 +319,50 @@ biting_range <- seq(0.4,0.5,0.05) # Main analysis is 0.5
 naive_doi_range <- 1/(seq(180,540,60)/60) # Main analysis is 1/6
 sensitivity_params <- expand.grid(N_GENES_INITIAL=diversity_range, BITING_RATE_MEAN=biting_range, TRANSITION_RATE_NOT_IMMUNE=naive_doi_range)
 nrow(sensitivity_params)
+
+
+#  Verify result file on Midway -------------------------------------------
+
+
+# check for sqlite files
+for i in '04' '05' '06'
+do
+ls sqlite/PS$i*_S_* -lv | wc -l
+ls sqlite/PS$i*_N_* -lv | wc -l
+ls sqlite/PS$i*_G_* -lv | wc -l
+done
+
+# Check for result files
+for i in 'sampled_alleles' 'sampled_infections' 'sampled_strains' 'summary_general' 'network_info' 'layer_summary' 'node_list' 'Infomap_multilayer' 'Infomap_multilayer_expanded' 'modules' 'strain_sequences' 'unique_repertoires' 'temporal_diversity' 'mFst' 
+do
+echo $i
+# ls Results/04_S/*_0.3_$i* -lv | wc -l
+# ls Results/04_N/*_0.3_$i* -lv | wc -l
+# ls Results/04_G/*_0.3_$i* -lv | wc -l
+# ls Results/05_S/*_0.6_$i* -lv | wc -l
+# ls Results/05_N/*_0.6_$i* -lv | wc -l
+# ls Results/05_G/*_0.6_$i* -lv | wc -l
+# ls Results/06_S/*_0.85_$i* -lv | wc -l
+ls Results/06_N/*_0.85_$i* -lv | wc -l
+# ls Results/06_G/*_0.85_$i* -lv | wc -l
+done
+
+# move result files to one folder
+for i in 'S' 'G' 'N'
+do
+cd '/scratch/midway2/pilosofs/PLOS_Biol/Results/04_'$i
+mv *_0.3_* ../cutoff_to_use/
+cd '/scratch/midway2/pilosofs/PLOS_Biol/Results/05_'$i
+mv *_0.6_* ../cutoff_to_use/
+cd '/scratch/midway2/pilosofs/PLOS_Biol/Results/06_'$i
+mv *_0.85_* ../cutoff_to_use/
+done
+
+# Check the cutoff folders for the files
+for i in 'Infomap_multilayer' 'Infomap_multilayer_expanded' 'layer_summary' 'mFst' 'modules' 'network_info' 'node_list' 'sampled_alleles' 'sampled_infections' 'sampled_strains' 'strain_sequences' 'summary_general' 'temporal_diversity' 'unique_repertoires'
+do
+echo $i
+  ls PS06_S*$i* -lv | wc -l
+  ls PS06_G*$i* -lv | wc -l
+  ls PS06_N*$i* -lv | wc -l
+done

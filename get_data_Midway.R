@@ -18,9 +18,12 @@ job_exp <- as.character(args[3])
 # job_run <- 1
 job_run <- as.numeric(Sys.getenv('SLURM_ARRAY_TASK_ID'))
 cutoff_prob <- as.numeric(args[4])
-task <- as.character(args[5]) # Can be: make_networks or read_infomap_results
+task <- as.character(args[5]) # Can be: make_networks | read_infomap_results
 
 base_name <- paste('PS',job_ps,'_',job_scenario,'_E',job_exp,'_R',job_run,'_',cutoff_prob,sep='')
+
+print(base_name)
+print(task)
 
 if (task=='make_networks'){
   
@@ -130,3 +133,14 @@ if (task=='read_infomap_results'){
   print('Done!')
 } # End task read_infomap_results
 
+
+if (task=='module_diversity'){
+  print('Calculating module temporal diversity & mFst')
+  # Module temporal diversity
+  x <- calculate_module_diversity(job_ps,job_scenario,job_exp,job_run,cutoff_prob)
+  write_csv(x, paste(base_name,'_temporal_diversity.csv',sep=''))
+  
+  #mFst
+  x <- calculate_mFst(job_ps,job_scenario,job_exp,job_run,cutoff_prob, maxModule = 75)
+  write_csv(x, paste(base_name,'_mFst.csv',sep=''))
+}
