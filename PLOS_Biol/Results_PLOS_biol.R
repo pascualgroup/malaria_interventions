@@ -5,64 +5,29 @@ library(igraph, quietly = T)
 library(data.table, quietly = T)
 library(googlesheets, quietly = T)
 library(utils, quietly = T)
+library(cowplot)
+library(grid)
+library(gridExtra)
 
 # Functions ---------------------------------------------------------------
 
-## @knitr FUNCTIONS
 source('~/Documents/malaria_interventions/functions.R')
-
-get_modularity_results <- function(PS,scenario,run,cutoff_prob,folder='/media/Data/PLOS_Biol/Results/cutoff_to_use/'){
-  file <- paste(folder,'PS',PS,'_',scenario,'_E',exp,'_R',run,'_',cutoff_prob,'_modules.csv',sep='')
-  if(file.exists(file)){
-    print(paste(PS,scenario,exp,run,cutoff_prob,sep=' | '))
-    # x <- read_csv(file, col_types = 'iicccicccid')  
-    x <- fread(file, colClasses=c('integer','integer','character','character','character','integer','character','character','character','integer','double'))
-    return(x)
-  } else {
-    print(paste('File does not exist: ',file,sep=''))
-    return()
-  }
-}
-
-get_temporal_diversity <- function(PS,scenario,run,cutoff_prob,folder='/media/Data/PLOS_Biol/Results/cutoff_to_use/'){
-  file <- paste(folder,'PS',PS,'_',scenario,'_E',exp,'_R',run,'_',cutoff_prob,'_temporal_diversity.csv',sep='')
-  if(file.exists(file)){
-    print(paste(PS,scenario,exp,run,cutoff_prob,sep=' | '))
-    x <- fread(file, colClasses=c('character','character','integer','double','integer','integer','integer','integer','double','double','double'))
-    return(x)
-  } else {
-    print(paste('File does not exist: ',file,sep=''))
-    return()
-  }
-}
-
-get_mFst <- function(PS,scenario,run,cutoff_prob,folder='/media/Data/PLOS_Biol/Results/cutoff_to_use/'){
-  file <- paste(folder,'PS',PS,'_',scenario,'_E',exp,'_R',run,'_',cutoff_prob,'_mFst.csv',sep='')
-  if(file.exists(file)){
-    print(paste(PS,scenario,exp,run,cutoff_prob,sep=' | '))
-    x <- fread(file, colClasses=c('character','character','character','integer','double','double'))
-    return(x)
-  } else {
-    print(paste('File does not exist: ',file,sep=''))
-    return()
-  }
-}
-
-
-## @knitr INITIALIZE
 
 # Initialize important variables ------------------------------------------
 setwd('/media/Data/PLOS_Biol/')
 
 exp <- '001'
 
-scenario_cols <- c('red','orange','blue') # Order is: S, N, G
-my_labels <- as_labeller(c(`04` = 'Low',
+scenario_cols <- c('red','blue','orange') # Order is: S, N, G
+ps_cols <- c('#0A97B7','#B70A97','#97B70A')
+gg_labels <- as_labeller(c(`04` = 'Low',
                            `05` = 'Medium',
                            `06` = 'High',
                            `S` = 'Selection',
                            `G` = 'Generalized immunity',
-                           `N` = 'Complete neutrality'))
+                           `N` = 'Complete neutrality',
+                           `Module` = 'Module',
+                           `Repertoire` = 'Repertoire'))
 
 all_experiments <- expand.grid(PS=sprintf('%0.2d', 4:6),
                            scenario=c('S','N','G'), 
@@ -85,14 +50,16 @@ files <- tibble(file=files_list,
 files$PS <- sprintf('%0.2d', files$PS)
 files$type <- str_remove_all(files$type,'_NA')
 
-files %>% filter(PS=='06', scenario=='G') %>% group_by(PS,scenario,cutoff_prob) %>% count(type) %>% print(n=20)
+files %>% filter(PS=='06') %>% group_by(PS,scenario,cutoff_prob) %>% count(type) %>% print(n=20)
 
 # Fig. 2 ------------------------------------------------------------------
 # Figure has 3 scenarios in high diversity, showing the following:
 # Module examples, Relative persistence, Temporal Diversity, mFst.
 # Number of repertoires per module is not so useful.
 
-experiments <- subset(all_experiments, PS=='06')
+PS_for_figure <- '06'
+
+experiments <- subset(all_experiments, PS==PS_for_figure)
 
 module_results <- c()
 for (i in 1:nrow(experiments)){
@@ -103,21 +70,32 @@ for (i in 1:nrow(experiments)){
   x <- get_modularity_results(PS,scenario,run,cutoff_prob)
   module_results <- rbind(module_results,x)
 }
-module_results <- as.tibble(module_results) %>% mutate(scenario=factor(scenario, levels=c('S','N','G')))
-write_csv(module_results, '/media/Data/PLOS_Biol/Results/module_results.csv')
+write_csv(module_results, paste('/media/Data/PLOS_Biol/Results/module_results_',PS_for_figure,'.csv',sep=''))
+module_results$scenario <- factor(module_results$scenario, levels=c('S','G','N'))
+module_results$strain_cluster <- as.integer(module_results$strain_cluster)
 
-
-
-# Module examples
-# Can only be done for 1 run! So select a nice run :)
+# Module examples Can only be plotted for one specific run There may be gaps in
+# the layers for a given module because modules are based on sampled
+# layer-repertoire tuples, and repertoires may not be sampled in every layer in the ABM.
+# So there are two options to plot: one that shows the gaps, and one that does not.
 module_results %>% 
-  filter(run==2) %>%
+  filter(run==1) %>%
   distinct(module, layer, PS, scenario) %>% 
   ggplot(aes(x=layer, y=module, color=scenario))+
   geom_point(size=2)+
   scale_color_manual(values = scenario_cols)+
   labs(y= 'module ID', x='Time (months)')+
-  facet_wrap(~scenario, scales='free', labeller = my_labels)+mytheme
+  facet_wrap(~scenario, scales='free', labeller = gg_labels)+mytheme
+
+module_results %>% 
+  filter(run==1) %>%
+  distinct(module, layer, PS, scenario) %>% 
+  group_by(scenario,module) %>% summarise(birth_layer=min(layer),death_layer=max(layer)+1) %>% 
+  ggplot(aes(xmin=birth_layer, xmax=death_layer, ymin=module, ymax=module, color=scenario))+
+  geom_rect(size=2)+
+  scale_color_manual(values = scenario_cols)+
+  labs(y= 'module ID', x='Time (months)')+
+  facet_wrap(~scenario, scales='free', labeller = gg_labels)+manuscript_theme
 
 # Relative persistence
 module_persistence <- module_results %>% 
@@ -137,7 +115,8 @@ strain_persistence <- module_results %>%
   rename(id=strain_cluster) %>% mutate(id=as.character(id))
 
 persistence_df <- module_persistence %>% bind_rows(strain_persistence)
-persistence_df$scenario <- factor(persistence_df$scenario, levels=c('S','N','G'))
+persistence_df$scenario <- factor(persistence_df$scenario, levels=c('S','G','N'))
+write_csv(persistence_df, paste('/media/Data/PLOS_Biol/Results/persistence_df_',PS_for_figure,'.csv',sep=''))
 
 persistence_df %>% 
   ggplot()+
@@ -146,14 +125,14 @@ persistence_df %>%
   # geom_rug(aes(x=relative_persistence, y=0, color=scenario), position = position_jitter(height = 0))+
   scale_fill_manual(values = scenario_cols)+
   labs(x='Relative persistence', y='Density')+
-  facet_wrap(~scenario, scales='free_y', labeller = my_labels)+mytheme
+  facet_wrap(~scenario, scales='free_y', labeller = gg_labels)+mytheme
 
 persistence_df %>% 
   ggplot()+
   geom_boxplot(aes(x=type, y=relative_persistence, fill=scenario), notch=F)+
   scale_fill_manual(values = scenario_cols)+
   labs(y='Relative persistence')+
-  facet_grid(~scenario, scales='free_y', labeller = my_labels)+mytheme
+  facet_grid(~scenario, scales='free_y', labeller = gg_labels)+mytheme
 
 # Statistical analysis for differences in persistence
 persistence_df %>% 
@@ -192,6 +171,16 @@ for (scen in c('S','G','N')){
 # t.test(x$repertoires_per_module,y$repertoires_per_module)
 # wilcox.test(x$repertoires_per_module,y$repertoires_per_module)
 
+# Create the figure
+
+module_results <- fread(paste('/media/Data/PLOS_Biol/Results/module_results_',PS_for_figure,'.csv',sep=''), colClasses = list(integer=c(1,2,3,4,6,10),character=c(5,7,8,9),double=11))
+module_results <- as.tibble(module_results)
+module_results$scenario <- factor(module_results$scenario, levels=c('S','G','N'))
+module_results$strain_cluster <- as.integer(module_results$strain_cluster)
+
+persistence_df <- read_csv(paste('/media/Data/PLOS_Biol/Results/persistence_df_',PS_for_figure,'.csv',sep=''))
+persistence_df$scenario <- factor(persistence_df$scenario, levels=c('S','G','N'))
+
 # Temporal diversity
 temporal_diversity <- c()
 for (i in 1:nrow(experiments)){
@@ -202,22 +191,20 @@ for (i in 1:nrow(experiments)){
   x <- get_temporal_diversity(PS,scenario,run,cutoff_prob)
   temporal_diversity <- rbind(temporal_diversity,x)
 }
-temporal_diversity <- as.tibble(temporal_diversity) %>% mutate(scenario=factor(scenario, levels=c('S','N','G')))
-
-
-temporal_diversity %>% 
-  ggplot()+
-  geom_density(aes(statistic, fill=scenario), alpha=0.3)+
-  # geom_rug(aes(x=statistic, y=0, color=scenario), position = position_jitter(height = 0))+
-  scale_fill_manual(values = scenario_cols)+
-  scale_color_manual(values = scenario_cols)+
-  labs(x='Temporal diversity', y='Density')+mytheme
-temporal_diversity %>% 
-  ggplot()+
-  geom_boxplot(aes(x=scenario, y=statistic, fill=scenario))+
-  scale_fill_manual(values = scenario_cols)+
-  labs(y='Temporal diversity')+mytheme
-
+temporal_diversity <- as.tibble(temporal_diversity) %>% mutate(scenario=factor(scenario, levels=c('S','G','N')))
+# temporal_diversity %>% 
+#   ggplot()+
+#   geom_density(aes(statistic, fill=scenario))+
+#   # geom_rug(aes(x=statistic, y=0, color=scenario), position = position_jitter(height = 0))+
+#   scale_fill_manual(values = scenario_cols)+
+#   scale_color_manual(values = scenario_cols)+
+#   facet_wrap(~scenario, scales='free_y', labeller = gg_labels)+
+#   labs(x='Temporal diversity', y='Density')+mytheme
+# temporal_diversity %>% 
+#   ggplot()+
+#   geom_boxplot(aes(x=scenario, y=statistic, fill=scenario))+
+#   scale_fill_manual(values = scenario_cols)+
+#   labs(y='Temporal diversity')+mytheme
 
 # mFst
 mFst <- c()
@@ -229,87 +216,141 @@ for (i in 1:nrow(experiments)){
   x <- get_mFst(PS,scenario,run,cutoff_prob)
   mFst <- rbind(mFst,x)
 }
-mFst <- as.tibble(mFst) %>% mutate(scenario=factor(scenario, levels=c('S','N','G')))
+mFst <- as.tibble(mFst) %>% mutate(scenario=factor(scenario, levels=c('S','G','N')))
+# mFst %>% 
+#   filter(scenario!='N') %>%
+#   ggplot()+
+#   geom_density(aes(mFst, fill=scenario), alpha=0.3)+
+#   scale_fill_manual(values = scenario_cols)+
+#   scale_color_manual(values = scenario_cols)+
+#   labs(x='mFst', y='Density')+
+#   mytheme
+# mFst %>% 
+#   ggplot()+
+#   geom_boxplot(aes(x=scenario, y=mFst, fill=scenario))+
+#   scale_fill_manual(values = scenario_cols)+
+#   labs(y='mFst')+mytheme
 
 
-mFst %>% 
-  filter(scenario!='N') %>% 
+panel_A <- module_results %>% 
+  filter(run==1) %>%
+  filter(scenario=='S') %>% 
+  distinct(module, layer) %>% 
+  group_by(module) %>% summarise(birth_layer=min(layer),death_layer=max(layer)+1) %>% 
+  ggplot(aes(xmin=birth_layer, xmax=death_layer, ymin=module, ymax=module))+
+  geom_rect(size=2, color=scenario_cols[1])+
+  manuscript_theme+theme(axis.title = element_blank())
+panel_B <- module_results %>% 
+  filter(run==1) %>%
+  filter(scenario=='G') %>% 
+  distinct(module, layer) %>% 
+  group_by(module) %>% summarise(birth_layer=min(layer),death_layer=max(layer)+1) %>% 
+  ggplot(aes(xmin=birth_layer, xmax=death_layer, ymin=module, ymax=module))+
+  geom_rect(size=2, color=scenario_cols[2])+
+  manuscript_theme+theme(axis.title = element_blank())
+panel_C <- module_results %>% 
+  filter(run==1) %>%
+  filter(scenario=='N') %>% 
+  distinct(module, layer) %>% 
+  group_by(module) %>% summarise(birth_layer=min(layer),death_layer=max(layer)+1) %>% 
+  ggplot(aes(xmin=birth_layer, xmax=death_layer, ymin=module, ymax=module))+
+  geom_rect(size=2, color=scenario_cols[3])+
+  manuscript_theme+theme(axis.title = element_blank())
+Fig <- plot_grid(panel_A,panel_B,panel_C, labels=c('A','B','C'), ncol=3, align='vh', label_size = 18, scale=0.95)
+y.grob <- textGrob("Module ID", gp=gpar(fontface="bold", col="black", fontsize=16), rot=90)
+x.grob <- textGrob("Time (months)", gp=gpar(fontface="bold", col="black", fontsize=16), vjust = -0.8)
+Fig_2ABC <- grid.arrange(arrangeGrob(Fig, left = y.grob, bottom = x.grob))
+
+
+panel_D <- persistence_df %>%
   ggplot()+
-  geom_density(aes(mFst, fill=scenario), alpha=0.3)+
-  scale_fill_manual(values = scenario_cols)+
-  scale_color_manual(values = scenario_cols)+
-  labs(x='mFst', y='Density')+
-  mytheme
-mFst %>% 
+  geom_density(data=subset(persistence_df, type=='Repertoire' & scenario=='S'), aes(relative_persistence),fill='gray')+
+  geom_density(data=subset(persistence_df, type=='Module' & scenario=='S'), aes(relative_persistence), fill=scenario_cols[1])+
+  manuscript_theme+theme(axis.title = element_blank())
+panel_E <- persistence_df %>%
   ggplot()+
-  geom_boxplot(aes(x=scenario, y=mFst, fill=scenario))+
-  scale_fill_manual(values = scenario_cols)+
-  labs(y='Temporal diversity')+mytheme
+  geom_density(data=subset(persistence_df, type=='Repertoire' & scenario=='G'), aes(relative_persistence),fill='gray')+
+  geom_density(data=subset(persistence_df, type=='Module' & scenario=='G'), aes(relative_persistence), fill=scenario_cols[2])+
+  manuscript_theme+theme(axis.title = element_blank())
+panel_F <- persistence_df %>%
+  ggplot()+
+  geom_density(data=subset(persistence_df, type=='Repertoire' & scenario=='N'), aes(relative_persistence),fill='gray')+
+  geom_density(data=subset(persistence_df, type=='Module' & scenario=='N'), aes(relative_persistence), fill=scenario_cols[3])+
+  manuscript_theme+theme(axis.title = element_blank())
+Fig <- plot_grid(panel_D,panel_E,panel_F, labels=c('D','E','F'), ncol=3, align='vh', label_size = 18, scale=0.95)
+y.grob <- textGrob("Density", gp=gpar(fontface="bold", col="black", fontsize=16), rot=90)
+x.grob <- textGrob("Relative persistence", gp=gpar(fontface="bold", col="black", fontsize=16), vjust = -0.8)
+Fig_2DEF <- grid.arrange(arrangeGrob(Fig, left = y.grob, bottom = x.grob))
+
+
+panel_G <- temporal_diversity %>% 
+  filter(scenario=='S') %>% 
+  ggplot()+
+  geom_density(aes(statistic), fill=scenario_cols[1])+
+  manuscript_theme+theme(axis.title = element_blank())
+panel_H <- temporal_diversity %>% 
+  filter(scenario=='G') %>% 
+  ggplot()+
+  geom_density(aes(statistic), fill=scenario_cols[2])+
+  manuscript_theme+theme(axis.title = element_blank())
+panel_I <- temporal_diversity %>% 
+  filter(scenario=='N') %>% 
+  ggplot()+
+  geom_density(aes(statistic), fill=scenario_cols[3])+
+  manuscript_theme+theme(axis.title = element_blank())
+Fig <- plot_grid(panel_G,panel_H,panel_I, labels=c('G','H','I'), ncol=3, align='vh', label_size = 18, scale=0.95)
+y.grob <- textGrob("Density", gp=gpar(fontface="bold", col="black", fontsize=16), rot=90)
+x.grob <- textGrob("Temporal diversity", gp=gpar(fontface="bold", col="black", fontsize=16), vjust = -0.8)
+Fig_2GHI <- grid.arrange(arrangeGrob(Fig, left = y.grob, bottom = x.grob))
 
 
 
-# Cutoff plots ------------------------------------------------------------
+panel_J <- mFst  %>% 
+  filter(scenario=='S') %>% 
+  ggplot()+
+  geom_density(aes(mFst), fill=scenario_cols[1])+
+  manuscript_theme+theme(axis.title = element_blank())
+panel_K <- mFst %>% 
+  filter(scenario=='G') %>% 
+  ggplot()+
+  geom_density(aes(mFst), fill=scenario_cols[2])+
+  manuscript_theme+theme(axis.title = element_blank())
+panel_L <- mFst %>% 
+  filter(scenario=='N') %>% 
+  ggplot()+
+  geom_density(aes(mFst), fill=scenario_cols[3])+
+  manuscript_theme+theme(axis.title = element_blank())
+Fig <- plot_grid(panel_J,panel_K,panel_L, labels=c('J','K','L'), ncol=3, align='vh', label_size = 18, scale=0.95)
+y.grob <- textGrob("Density", gp=gpar(fontface="bold", col="black", fontsize=16), rot=90)
+x.grob <- textGrob("mFst", gp=gpar(fontface="bold", col="black", fontsize=16), vjust = -0.8)
+Fig_2JKL <- grid.arrange(arrangeGrob(Fig, left = y.grob, bottom = x.grob))
 
-# Sensitivity analysis for selection
-results_cutoff <- read_csv(results_cutoff, 'Results/results_cutoff_S.csv')
+plot_grid(Fig_2ABC,Fig_2DEF,Fig_2GHI,Fig_2JKL, nrow=4, align='vh')
 
-## Examples for modules
-png('Results/module_examples_S.png', width = 1920, height = 1080)
-results_cutoff %>% 
-  filter(run==2) %>%
-  distinct(module,layer, PS, cutoff_prob) %>% 
-  # filter(scenario=='S') %>% 
-  ggplot(aes(x=layer, y=module, group=PS, color=PS))+
-  geom_point(size=1)+
-  scale_color_manual(values = ps_cols)+
-  scale_x_continuous(breaks = seq(0,300,50))+
-  labs(y= 'module ID', x='Time (months)', title='Structure example')+
-  facet_grid(cutoff_prob~PS, scales='free')+
-  mytheme
-dev.off()
 
-## Module and repertoire persistence
-module_persistence <- results_cutoff %>% 
-  select(PS, run, cutoff_prob, layer, module) %>% 
-  group_by(PS,run,cutoff_prob,module) %>% 
-  summarise(birth_layer=min(layer), death_layer=max(layer), persistence=death_layer-birth_layer+1) %>% 
-  mutate(relative_persistence=persistence/(300-birth_layer+1)) %>% 
-  mutate(type='Module') %>% 
-  rename(id=module) %>% mutate(id=as.character(id))
 
-strain_persistence <- results_cutoff %>% 
-  select(PS, run, cutoff_prob, layer, strain_cluster) %>% 
-  group_by(PS,run,cutoff_prob,strain_cluster) %>% 
-  summarise(birth_layer=min(layer), death_layer=max(layer), persistence=death_layer-birth_layer+1) %>% 
-  mutate(relative_persistence=persistence/(300-birth_layer+1)) %>% 
-  mutate(type='Repertoire') %>% 
-  rename(id=strain_cluster)
+# Cutoff plots (Selection) ------------------------------------------------
 
-persistence_df <- module_persistence %>% bind_rows(strain_persistence) 
+results_cutoff <- fread('/media/Data/PLOS_Biol/Results/results_cutoff_S.csv', 
+                        colClasses = list(integer=c(1,2,3,4,6,10),
+                                          character=c(5,7,8,9),
+                                          double=11))
+results_cutoff <- as.tibble(results_cutoff)
 
-png('Results/persistence_boxplots.png', width = 1920, height = 1080)
-persistence_df %>% 
-  ggplot(aes(x=cutoff_prob, y=persistence, group=cutoff_prob, fill=PS))+
-  geom_boxplot(outlier.shape = NA)+
-  stat_summary(fun.y=mean, color="red", geom="point", 
-               shape=18, size=3,show.legend = FALSE)+
-  facet_grid(PS~type, scales='free', labeller = gg_labels)+
-  scale_x_continuous(breaks = seq(0.05,0.95,0.1))+
-  labs(x='Cut off', y=' Persistence')+
-  scale_fill_manual(values=ps_cols)+mytheme
-dev.off()
-
-png('Results/relative_persistence_boxplots.png', width = 1920, height = 1080)
-persistence_df %>% 
-  ggplot(aes(x=cutoff_prob, y=relative_persistence, group=cutoff_prob, fill=PS))+
-  geom_boxplot(outlier.shape = NA)+
-  stat_summary(fun.y=mean, color="red", geom="point", 
-               shape=18, size=3,show.legend = FALSE)+  
-  facet_grid(PS~type, scales='free', labeller = gg_labels)+
-  scale_x_continuous(breaks = seq(0.05,0.95,0.1))+
-  labs(x='Cut off', y=' Relative persistence')+
-  scale_fill_manual(values=ps_cols)+mytheme
-dev.off()
+# ## Examples for modules
+# png('Results/module_examples_S.png', width = 1920, height = 1080)
+# results_cutoff %>% 
+#   filter(run==2) %>%
+#   distinct(module,layer, PS, cutoff_prob) %>% 
+#   # filter(scenario=='S') %>% 
+#   ggplot(aes(x=layer, y=module, group=PS, color=PS))+
+#   geom_point(size=1)+
+#   scale_color_manual(values = ps_cols)+
+#   scale_x_continuous(breaks = seq(0,300,50))+
+#   labs(y= 'module ID', x='Time (months)', title='Structure example')+
+#   facet_grid(cutoff_prob~PS, scales='free')+
+#   mytheme
+# dev.off()
 
 ## Modules per layer
 png('Results/modules_per_layer_boxplots.png', width = 1920, height = 1080)
@@ -342,7 +383,67 @@ results_cutoff %>%
   scale_fill_manual(values=ps_cols)+mytheme
 dev.off()
 
-# All scenarios
+## Module and repertoire persistence
+module_persistence_cutoff <- results_cutoff %>% 
+  select(PS, run, cutoff_prob, layer, module) %>% 
+  group_by(PS,run,cutoff_prob,module) %>% 
+  summarise(birth_layer=min(layer), death_layer=max(layer), persistence=death_layer-birth_layer+1) %>% 
+  mutate(relative_persistence=persistence/(300-birth_layer+1)) %>% 
+  mutate(type='Module') %>% 
+  rename(id=module) %>% mutate(id=as.character(id))
+
+strain_persistence_cutoff <- results_cutoff %>% 
+  select(PS, run, cutoff_prob, layer, strain_cluster) %>% 
+  group_by(PS,run,cutoff_prob,strain_cluster) %>% 
+  summarise(birth_layer=min(layer), death_layer=max(layer), persistence=death_layer-birth_layer+1) %>% 
+  mutate(relative_persistence=persistence/(300-birth_layer+1)) %>% 
+  mutate(type='Repertoire') %>% 
+  rename(id=strain_cluster) %>% mutate(id=as.character(id))
+
+persistence_df_cutoff <- module_persistence_cutoff %>% bind_rows(strain_persistence_cutoff) 
+write_csv(persistence_df_cutoff, '/media/Data/PLOS_Biol/Results/persistence_df_cutoff_S.csv')
+
+persistence_df_cutoff <- read_csv('/media/Data/PLOS_Biol/Results/persistence_df_cutoff_S.csv')
+
+# png('Results/persistence_boxplots_S.png', width = 1920, height = 1080)
+# persistence_df_cutoff %>% 
+#   ggplot(aes(x=cutoff_prob, y=persistence, group=cutoff_prob, fill=PS))+
+#   geom_boxplot(outlier.shape = NA)+
+#   stat_summary(fun.y=mean, color="red", geom="point", 
+#                shape=18, size=3,show.legend = FALSE)+
+#   facet_grid(PS~type, scales='free', labeller = gg_labels)+
+#   scale_x_continuous(breaks = seq(0.05,0.95,0.1))+
+#   labs(x='Cut off', y=' Persistence')+
+#   scale_fill_manual(values=ps_cols)+mytheme
+# dev.off()
+
+png('Results/relative_persistence_boxplots_S.png', width = 1920, height = 1080)
+persistence_df_cutoff %>% 
+  ggplot(aes(x=cutoff_prob, y=relative_persistence, group=cutoff_prob, fill=PS))+
+  geom_boxplot(outlier.shape = NA)+
+  stat_summary(fun.y=mean, color="red", geom="point", 
+               shape=18, size=3,show.legend = FALSE)+  
+  facet_grid(PS~type, scales='free', labeller = gg_labels)+
+  scale_x_continuous(breaks = seq(0.05,0.95,0.1))+
+  labs(x='Cut off', y=' Relative persistence')+
+  scale_fill_manual(values=ps_cols)+mytheme
+dev.off()
+
+
+# Temporal diveristy
+statistic_results <- read_csv('/media/Data/PLOS_Biol/Results/statistic_results_S.csv', col_types = 'ccidiiiiddd')
+statistic_results %>% 
+  ggplot(aes(x=cutoff_prob, y=statistic, group=cutoff_prob, fill=PS))+
+  geom_boxplot()+
+  stat_summary(fun.y=mean, color="red", geom="point", 
+               shape=18, size=3,show.legend = FALSE)+  
+  facet_grid(~PS, scales='free', labeller = gg_labels)+
+  scale_x_continuous(breaks = seq(0.05,0.95,0.1))+
+  labs(x='Cut off', y='Temporal diversity')+
+  scale_fill_manual(values=ps_cols)+mytheme
+
+
+# Cutoff plots (all scenarios) --------------------------------------------
 
 results_cutoff_N <- read_csv(results_cutoff_N, 'Results/results_cutoff_N.csv')
 png('Results/module_examples_N.png', width = 1920, height = 1080)

@@ -696,6 +696,26 @@ mytheme <- theme_bw() + theme(
   strip.text = element_text(size = 19)
 )
 
+
+manuscript_theme <- theme_bw() + theme(
+  legend.title  = element_text(colour = "black", size=17),
+  legend.position = "none",
+  #	legend.direction = "horizontal",
+  legend.key = element_blank(),
+  legend.text  = element_text(colour = "black", size=17),
+  panel.background = element_blank(),
+  # panel.grid.major = element_blank(),
+  panel.grid.minor = element_blank(),
+  axis.text = element_text(color='black', family="Helvetica", size=14),
+  axis.title = element_text(color='black', family="Helvetica", size=14),
+  strip.text.x = element_blank(),
+  strip.text.y = element_blank(),
+  panel.border = element_rect(colour = "black", size=1.3),
+  axis.ticks = element_line(size = 1.3),
+  strip.background = element_rect( fill = "transparent", size = 1.3, colour = "black"  ),
+  strip.text = element_text(size = 19)
+)
+
 gg_color_hue <- function(n, hue_min = 10, hue_max = 280, l = 62, c = 100) {
   hues = seq(hue_min, hue_max, length=n+1)
   hcl(h=hues, l=l, c=c)[1:n]
@@ -1864,14 +1884,14 @@ build_infomap_objects <- function(network_object, write_to_infomap_file=T, infom
 
 
 
-infomap_readTreeFile <- function(PS, scenario, exp, run, cutoff_prob, folder='/media/Data/PLOS_Biol/Results/'){
+infomap_readTreeFile <- function(PS, scenario, exp, run, cutoff_prob, folder='/media/Data/PLOS_Biol/Results/cutoff_to_use/'){
   print ('Reading infomap file...')
   if (on_Midway()){
     infomap_file <-       paste('PS',PS,'_',scenario,'_E',exp,'_R',run,'_',cutoff_prob,'_Infomap_multilayer_expanded.tree',sep='')
     node_list <- read_csv(paste('PS',PS,'_',scenario,'_E',exp,'_R',run,'_',cutoff_prob,'_node_list.csv',sep=''), col_types = list(col_character(),col_character()))
   } else {
-    infomap_file <-       paste(folder,'/',PS,'_',scenario,'/PS',PS,'_',scenario,'_E',exp,'_R',run,'_',cutoff_prob,'_Infomap_multilayer_expanded.tree',sep='')
-    node_list <- read_csv(paste(folder,'/',PS,'_',scenario,'/PS',PS,'_',scenario,'_E',exp,'_R',run,'_',cutoff_prob,'_node_list.csv',sep=''), col_types = list(col_character(),col_character()))
+    infomap_file <-       paste(folder,'/PS',PS,'_',scenario,'_E',exp,'_R',run,'_',cutoff_prob,'_Infomap_multilayer_expanded.tree',sep='')
+    node_list <- read_csv(paste(folder,'/PS',PS,'_',scenario,'_E',exp,'_R',run,'_',cutoff_prob,'_node_list.csv',sep=''), col_types = list(col_character(),col_character()))
   }
   lines <- readLines(infomap_file)
   cat(lines[1]);cat('\n')
@@ -1892,10 +1912,11 @@ infomap_readTreeFile <- function(PS, scenario, exp, run, cutoff_prob, folder='/m
   print('Creating module data frame...')
   modules$module <- as.numeric(str_split(string = modules$path, pattern = ':', simplify = T)[,1])
   modules$nodeID <- str_trim(str_split(string = x$name, pattern = '\\|', simplify = T)[,1])
-  modules$layer <- as.numeric(str_trim(str_split(string = x$name, pattern = '\\|', simplify = T)[,2]))
+  modules$layer <- as.numeric(str_trim(str_split(string = x$name, pattern = '\\|', simplify = T)[,2])) # can also use x$layer
   
-  # cat(nrow(x),'state nodes','in',paste(max(modules$module),'modules'));cat('\n')
   
+  # modules %>% filter(module==1) %>%  ggplot(aes(x=layer,y=module))+geom_point()
+
   # Rename modules because Infomap gives random names
   print('Adding information on strains...')
   modules2 <- modules %>% 
@@ -1909,6 +1930,8 @@ infomap_readTreeFile <- function(PS, scenario, exp, run, cutoff_prob, folder='/m
   modules2 %<>% select(-module, -path)
   names(modules2)[2] <- 'module'
   modules2 %<>% arrange(module, layer, nodeID)
+  
+  # modules2 %>% ggplot(aes(x=layer,y=module))+geom_point()
   
   # Change node IDs to repertoire names
   modules2 %<>% left_join(node_list) %>% 
@@ -1941,7 +1964,7 @@ infomap_readTreeFile <- function(PS, scenario, exp, run, cutoff_prob, folder='/m
 
 
 
-# Module diversity --------------------------------------------------------
+# Analysis of modules------------------------------------------------------
 calculate_module_diversity <- function(PS, scenario, exp, run, cutoff_prob){
   if (on_Midway()){
     file_modules <- paste('PS',PS,'_',scenario,'_E',exp,'_R',run,'_',cutoff_prob,'_modules.csv',sep='')
@@ -2115,4 +2138,41 @@ calculate_mFst <- function(PS, scenario, exp, run, cutoff_prob, maxModule=100){
   }
 }
 
+
+get_modularity_results <- function(PS,scenario,run,cutoff_prob,folder='/media/Data/PLOS_Biol/Results/cutoff_to_use/'){
+  file <- paste(folder,'PS',PS,'_',scenario,'_E',exp,'_R',run,'_',cutoff_prob,'_modules.csv',sep='')
+  if(file.exists(file)){
+    print(paste(PS,scenario,exp,run,cutoff_prob,sep=' | '))
+    # x <- read_csv(file, col_types = 'iicccicccid')  
+    x <- fread(file, colClasses=c('integer','integer','character','character','character','integer','character','character','character','integer','double'))
+    return(x)
+  } else {
+    print(paste('File does not exist: ',file,sep=''))
+    return()
+  }
+}
+
+get_temporal_diversity <- function(PS,scenario,run,cutoff_prob,folder='/media/Data/PLOS_Biol/Results/cutoff_to_use/'){
+  file <- paste(folder,'PS',PS,'_',scenario,'_E',exp,'_R',run,'_',cutoff_prob,'_temporal_diversity.csv',sep='')
+  if(file.exists(file)){
+    print(paste(PS,scenario,exp,run,cutoff_prob,sep=' | '))
+    x <- fread(file, colClasses=c('character','character','integer','double','integer','integer','integer','integer','double','double','double'))
+    return(x)
+  } else {
+    print(paste('File does not exist: ',file,sep=''))
+    return()
+  }
+}
+
+get_mFst <- function(PS,scenario,run,cutoff_prob,folder='/media/Data/PLOS_Biol/Results/cutoff_to_use/'){
+  file <- paste(folder,'PS',PS,'_',scenario,'_E',exp,'_R',run,'_',cutoff_prob,'_mFst.csv',sep='')
+  if(file.exists(file)){
+    print(paste(PS,scenario,exp,run,cutoff_prob,sep=' | '))
+    x <- fread(file, colClasses=c('character','character','character','integer','double','double'))
+    return(x)
+  } else {
+    print(paste('File does not exist: ',file,sep=''))
+    return()
+  }
+}
 

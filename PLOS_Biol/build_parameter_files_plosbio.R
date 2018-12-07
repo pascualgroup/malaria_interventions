@@ -21,7 +21,7 @@ if (detect_locale()=='Mac'){
 design <- loadExperiments_GoogleSheets(local = F, workBookName = 'PLOS_Biol_design', sheetID = 2) 
 
 # Create the reference experiments (checkpoint and control)
-ps_range <- sprintf('%0.2d', 14)
+ps_range <- sprintf('%0.2d', 16:21)
 exp_range <- sprintf('%0.3d', 0:1)
 run_range <- 1
 work_scenario <- 'S'
@@ -81,6 +81,7 @@ cat("rm job_ids.txt; sacct -u pilosofs --format=jobid,jobname --starttime 2018-0
 jobids <- read.table('job_ids.txt', header = F, skip=2) 
 jobids <- na.omit(unique(parse_number(jobids$V1))) # 1 job id per PS
 length(jobids)==length(ps_range)
+exp_range='001'
 ## Copy the output of the following loop and paste in Midway
 for (ps in ps_range){
   for (e in exp_range){
@@ -106,7 +107,7 @@ system('rm *.sbatch')
 
 scenario_range <- c('S','N','G')
 exp_range <- sprintf('%0.3d', 0:1)
-ps_range <- sprintf('%0.2d', 12:14)
+ps_range <- sprintf('%0.2d', 12:15)
 
 for (ps in ps_range){
   for (scenario in scenario_range){
@@ -307,7 +308,7 @@ sink.reset()
 
 
 
-# Generate files for sensitivity analysis ---------------------------------
+# Generate files for analysis of empirical data ---------------------------------
 
 # Generate 100 simulations per scenario in high diversity with variation across 3 parameters:
 # 1. Diversity (vary between 10000 and 20000)
@@ -315,10 +316,13 @@ sink.reset()
 # 3. Naive duration of infection (range 6-18 months)
 
 diversity_range <- seq(10000,16000,1000) # Main analysis is 12000
-biting_range <- seq(0.4,0.5,0.05) # Main analysis is 0.5
-naive_doi_range <- 1/(seq(180,540,60)/60) # Main analysis is 1/6
+biting_range <- seq(0.00035,0.0005,0.00005) # Main analysis is 0.00040
+# naive_doi_range <- 1/(seq(180,540,60)/60) # Main analysis is 1/6
 sensitivity_params <- expand.grid(N_GENES_INITIAL=diversity_range, BITING_RATE_MEAN=biting_range, TRANSITION_RATE_NOT_IMMUNE=naive_doi_range)
 nrow(sensitivity_params)
+
+design <- loadExperiments_GoogleSheets(local = F, workBookName = 'PLOS_Biol_design', sheetID = 2) 
+sensitivity_params$PS <- str_pad(1:nrow(sensitivity_params),width = 3, side = 'left', pad = '0')
 
 
 #  Verify result file on Midway -------------------------------------------
