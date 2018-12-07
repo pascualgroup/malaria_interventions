@@ -21,7 +21,7 @@ if (detect_locale()=='Mac'){
 design <- loadExperiments_GoogleSheets(local = F, workBookName = 'PLOS_Biol_design', sheetID = 2) 
 
 # Create the reference experiments (checkpoint and control)
-ps_range <- sprintf('%0.2d', 16:21)
+ps_range <- sprintf('%0.2d', 100:183)
 exp_range <- sprintf('%0.3d', 0:1)
 run_range <- 1
 work_scenario <- 'S'
@@ -49,17 +49,17 @@ sink('files_to_run.txt', append = T)
 # Add sbatch files
 files <- list.files(path = parameter_files_path_global, pattern = 'sbatch', full.names = F) 
 files <- files[str_detect(string = files, paste(work_scenario,'E',sep=''))]
-files <- files[str_sub(files,3,4) %in% ps_range]
-files <- files[str_sub(files,7,9) %in% exp_range]
+files <- files[str_sub(files,3,5) %in% ps_range]
+files <- files[str_sub(files,8,10) %in% exp_range]
 for (i in 1:length(files)){
   cat(files[i]);cat('\n')
 }
 # Add py files
 files <- list.files(path = parameter_files_path_global, pattern = '.py', full.names = F) 
 files <- files[str_detect(string = files, paste('_',work_scenario,sep=''))]
-files <- files[str_sub(files,3,4) %in% ps_range]
-files <- files[str_sub(files,9,11) %in% exp_range]
-files <- files[parse_number(str_sub(files,14,15)) %in% run_range]
+files <- files[str_sub(files,3,5) %in% ps_range]
+files <- files[str_sub(files,10,12) %in% exp_range]
+files <- files[parse_number(str_sub(files,14,17)) %in% run_range]
 for (i in 1:length(files)){
   cat(files[i]);cat('\n')
 }
@@ -76,7 +76,7 @@ paste("for i in ",paste(ps_range,collapse=' '),"; do sbatch 'PS'$i'",work_scenar
 
 # Then run control and interventions
 ## Run in Midway terminal:
-cat("rm job_ids.txt; sacct -u pilosofs --format=jobid,jobname --starttime 2018-08-07T14:48:00 --name=");cat(paste(paste(ps_range,work_scenario,'E000',sep=''),collapse = ','));cat(" >> 'job_ids.txt'")
+cat("rm job_ids.txt; sacct -u pilosofs --format=jobid,jobname --starttime 2018-12-07T16:13:00 --name=");cat(paste(paste(ps_range,work_scenario,'E000',sep=''),collapse = ','));cat(" >> 'job_ids.txt'")
 ## Copy file from Midway and run:
 jobids <- read.table('job_ids.txt', header = F, skip=2) 
 jobids <- na.omit(unique(parse_number(jobids$V1))) # 1 job id per PS
@@ -107,7 +107,7 @@ system('rm *.sbatch')
 
 scenario_range <- c('S','N','G')
 exp_range <- sprintf('%0.3d', 0:1)
-ps_range <- sprintf('%0.2d', 12:15)
+ps_range <- sprintf('%0.2d', 100:183)
 
 for (ps in ps_range){
   for (scenario in scenario_range){
@@ -115,9 +115,9 @@ for (ps in ps_range){
     sink('files_tmp.txt', append = T)
     # Add py files
     files <- list.files(path = '/media/Data/PLOS_Biol/parameter_files/', pattern = '.py', full.names = F) 
-    files <- files[str_sub(files,3,4) %in% ps]
-    files <- files[str_sub(files,6,6) %in% scenario]
-    files <- files[str_sub(files,9,11) %in% exp_range]
+    files <- files[str_sub(files,3,5) %in% ps]
+    files <- files[str_sub(files,7,7) %in% scenario]
+    files <- files[str_sub(files,10,12) %in% exp_range]
     for (i in 1:length(files)){
       cat(files[i]);cat('\n')
     }
@@ -273,13 +273,13 @@ sbatch_arguments$time <- rep(c('04:00:00','05:00:00','10:00:00'),3)
 
 sbatch_arguments <- subset(sbatch_arguments, scen=='G'&PS=='06')
 
-sbatch_arguments <- expand.grid(PS=sprintf('%0.2d', 11:12),
+sbatch_arguments <- expand.grid(PS=sprintf('%0.2d', 100:183),
                                 scen=c('S'),
                                 array='1', 
                                 stringsAsFactors = F)
 sbatch_arguments$cutoff_prob <- 0.85
 sbatch_arguments$mem_per_cpu <- 32000
-sbatch_arguments$time <- '10:00:00'
+sbatch_arguments$time <- '12:00:00'
 
 for (scenario in unique(sbatch_arguments$scen)){
   for (ps in unique(sbatch_arguments$PS)){
@@ -308,7 +308,7 @@ sink.reset()
 
 
 
-# Generate files for analysis of empirical data ---------------------------------
+# Generate files for sensitivity analysis of main results ---------------------------------
 
 # Generate 100 simulations per scenario in high diversity with variation across 3 parameters:
 # 1. Diversity (vary between 10000 and 20000)
@@ -316,14 +316,31 @@ sink.reset()
 # 3. Naive duration of infection (range 6-18 months)
 
 diversity_range <- seq(10000,16000,1000) # Main analysis is 12000
-biting_range <- seq(0.00035,0.0005,0.00005) # Main analysis is 0.00040
-# naive_doi_range <- 1/(seq(180,540,60)/60) # Main analysis is 1/6
+biting_range <- seq(0.3,0.5,0.1) # Main analysis is 0.00040
+naive_doi_range <- 1/(seq(180,540,120)/60) # Main analysis is 1/6
 sensitivity_params <- expand.grid(N_GENES_INITIAL=diversity_range, BITING_RATE_MEAN=biting_range, TRANSITION_RATE_NOT_IMMUNE=naive_doi_range)
+sensitivity_params <- as.tibble(sensitivity_params)
 nrow(sensitivity_params)
+sensitivity_params$PS <- str_pad((1:nrow(sensitivity_params))+99,width = 3, side = 'left', pad = '0')
 
 design <- loadExperiments_GoogleSheets(local = F, workBookName = 'PLOS_Biol_design', sheetID = 2) 
-sensitivity_params$PS <- str_pad(1:nrow(sensitivity_params),width = 3, side = 'left', pad = '0')
+design_seed_000 <- subset(design, PS=='06' & scenario=='S' & exp=='000')
+design_seed_000 %<>% slice(rep(1:n(), each = nrow(sensitivity_params)))
+design_seed_000$PS <- sensitivity_params$PS
+design_seed_000$N_GENES_INITIAL <- sensitivity_params$N_GENES_INITIAL
+design_seed_000$BITING_RATE_MEAN <- sensitivity_params$BITING_RATE_MEAN
+design_seed_000$TRANSITION_RATE_NOT_IMMUNE <- sensitivity_params$TRANSITION_RATE_NOT_IMMUNE
 
+design_seed_001 <- subset(design, PS=='06' & scenario=='S' & exp=='001')
+design_seed_001 %<>% slice(rep(1:n(), each = nrow(sensitivity_params)))
+design_seed_001$PS <- sensitivity_params$PS
+design_seed_001$N_GENES_INITIAL <- sensitivity_params$N_GENES_INITIAL
+design_seed_001$BITING_RATE_MEAN <- sensitivity_params$BITING_RATE_MEAN
+design_seed_001$TRANSITION_RATE_NOT_IMMUNE <- sensitivity_params$TRANSITION_RATE_NOT_IMMUNE
+
+design <- design_seed_000 %>% bind_rows(design_seed_001)
+design$mem_per_cpu <- 32000
+design$wall_time <- '20:00:00'
 
 #  Verify result file on Midway -------------------------------------------
 
