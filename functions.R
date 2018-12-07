@@ -10,7 +10,7 @@ on_Midway <- function(){
 detect_locale <- function(){
   require(stringr)
   if (str_detect(Sys.info()[4],'midway2')){return('Midway')}
-  if (str_detect(Sys.info()[4],'Shais-MBP')){return('Mac')}
+  if (str_detect(Sys.info()[4],'Shais-')){return('Mac')}
   if (str_detect(Sys.info()[4],'ee-pascual')){return('Lab')}
 }
 
@@ -775,14 +775,18 @@ get_data <- function(parameter_space, scenario, experiment, run, cutoff_prob=0.9
   # Initialize
   if (use_sqlite){
     base_name <- paste('PS',parameter_space,'_',scenario,'_E',experiment,'_R',run,sep='')
-    if (on_Midway()){
+    
+    if (detect_locale()=='Midway'){
       sqlite_file <- paste('/scratch/midway2/pilosofs/PLOS_Biol/sqlite/',base_name,'.sqlite',sep='')
-      print(sqlite_file)
-      print(file.exists(sqlite_file))
-    } else {
+    }
+    if (detect_locale()=='Mac'){
+      sqlite_file <- paste('~/GitHub/PLOS_Biol/sqlite/',base_name,'.sqlite',sep='')
+    }
+    if (detect_locale()=='Lab'){
       sqlite_file <- paste('/media/Data/PLOS_Biol/sqlite_',scenario,'/',base_name,'.sqlite',sep='')
     }
-    
+    print(sqlite_file)
+    print(file.exists(sqlite_file))
     if (!file.exists(sqlite_file)) {
       print (paste(sqlite_file, ' does not exist, ignoring and returning NULL'))
       return(NULL)

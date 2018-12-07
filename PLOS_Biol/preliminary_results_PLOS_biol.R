@@ -366,7 +366,7 @@ module_results %>%
 
 # Seasonality -------------------------------------------------------------
 
-cases <- expand.grid(ps=c('11','12','13'), scenario='S', exp='001', run=1)
+cases <- expand.grid(ps=c('12','13','14'), scenario='S', exp='001', run=1)
 cases$cutoff_prob <- 0.85
 ps_comparison <- c()
 for (i in 1:nrow(cases)){

@@ -104,7 +104,7 @@ for (i in 1:nrow(experiments)){
   module_results <- rbind(module_results,x)
 }
 module_results <- as.tibble(module_results) %>% mutate(scenario=factor(scenario, levels=c('S','N','G')))
-
+write_csv(module_results, '/media/Data/PLOS_Biol/Results/module_results.csv')
 
 
 
