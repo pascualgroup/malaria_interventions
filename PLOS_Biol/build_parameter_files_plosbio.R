@@ -21,7 +21,7 @@ if (detect_locale()=='Mac'){
 design <- loadExperiments_GoogleSheets(local = F, workBookName = 'PLOS_Biol_design', sheetID = 2) 
 
 # Create the reference experiments (checkpoint and control)
-ps_range <- sprintf('%0.2d', 100:183)
+ps_range <- sprintf('%03d', 20:21)
 exp_range <- sprintf('%0.3d', 0:1)
 run_range <- 1
 work_scenario <- 'S'
@@ -107,7 +107,7 @@ system('rm *.sbatch')
 
 scenario_range <- c('S','N','G')
 exp_range <- sprintf('%0.3d', 0:1)
-ps_range <- sprintf('%0.2d', 100:183)
+ps_range <- sprintf('%0.3d', 16:21)
 
 for (ps in ps_range){
   for (scenario in scenario_range){
@@ -146,7 +146,7 @@ files_sqlite <- tibble(file_sqlite=files,
                        CP=sapply(str_split(files,'_'),function (x) str_detect(x[5],'CP')),
                        size=round(file.size(files)/1024^2,2)
 )
-files_sqlite$PS <- sprintf('%0.2d', files_sqlite$PS)
+files_sqlite$PS <- sprintf('%0.3d', files_sqlite$PS)
 
 subset(files_sqlite, size<1)
 
@@ -205,7 +205,7 @@ files_py <- tibble(file_py=files$Name,
                    size=round(files$Length,2),
                    date=files$Date
 )
-files_py$PS <- sprintf('%0.2d', files_py$PS)
+files_py$PS <- sprintf('%0.3d', files_py$PS)
 
 files_py %<>% filter(as.numeric(PS)>=27) %>% mutate(scenario=factor(scenario, levels=c('S','N','G'))) %>% arrange(scenario, PS, experiment, run)
 files_py %>% filter(as.numeric(PS)>=27) %>% group_by(PS,scenario,experiment) %>% summarise(runs_count=length(run))
@@ -214,7 +214,7 @@ files_py %>% filter(scenario=='G') %>% filter(as.numeric(PS)>=27) %>% distinct(P
 
 # Experiments for cutoff --------------------------------------------------
 
-cutoff_design <- expand.grid(PS=sprintf('%0.2d', 4:6),
+cutoff_design <- expand.grid(PS=sprintf('%0.3d', 4:6),
                              scenario=c('S','G','N'),
                              cutoff_prob=seq(0.2,9,0.05),
                              array='4-10',
@@ -263,7 +263,7 @@ sink.reset()
 
 
 # Generate sbatch files to extract data -----------------------------------
-sbatch_arguments <- expand.grid(PS=sprintf('%0.2d', 4:6),
+sbatch_arguments <- expand.grid(PS=sprintf('%0.3d', 4:6),
                                 scen=c('S','N','G'),
                                 array='6-50', 
                                 stringsAsFactors = F)
@@ -273,13 +273,13 @@ sbatch_arguments$time <- rep(c('04:00:00','05:00:00','10:00:00'),3)
 
 sbatch_arguments <- subset(sbatch_arguments, scen=='G'&PS=='06')
 
-sbatch_arguments <- expand.grid(PS=sprintf('%0.2d', 100:183),
+sbatch_arguments <- expand.grid(PS=sprintf('%0.3d', 101:183),
                                 scen=c('S'),
                                 array='1', 
                                 stringsAsFactors = F)
 sbatch_arguments$cutoff_prob <- 0.85
 sbatch_arguments$mem_per_cpu <- 32000
-sbatch_arguments$time <- '12:00:00'
+sbatch_arguments$time <- '08:00:00'
 
 for (scenario in unique(sbatch_arguments$scen)){
   for (ps in unique(sbatch_arguments$PS)){
@@ -387,3 +387,29 @@ echo $i
   ls PS06_G*$i* -lv | wc -l
   ls PS06_N*$i* -lv | wc -l
 done
+
+
+# Rename files and folders from 2-digit to 3-digit PS ---------------------------------
+file_list <- list.files('/media/Data/PLOS_Biol/parameter_files/test', full.names = T, recursive = T, include.dirs = F)
+for (f in file_list){
+  folder <- str_sub(f,1,max(str_locate_all(f, '/')[[1]]))
+  file_name <- str_sub(f,max(str_locate_all(f, '/')[[1]])+1,str_length(f))
+  pos <- max(str_locate(file_name,'_'))
+  pos_min <- ifelse(str_detect(file_name,'PS'),3,1)
+  str_sub(file_name,pos_min,pos-1) <- str_pad(str_sub(file_name,pos_min,pos-1),3,'left','0')
+  new_name <- paste(folder,file_name,sep='')
+  file.rename(f,new_name)
+}
+
+file_list <- list.dirs('/media/Data/PLOS_Biol/parameter_files/test', full.names = T, recursive = T)
+file_list <- file_list[2:length(file_list)]
+for (f in file_list){
+  folder <- str_sub(f,1,max(str_locate_all(f, '/')[[1]]))
+  file_name <- str_sub(f,max(str_locate_all(f, '/')[[1]])+1,str_length(f))
+  pos <- max(str_locate(file_name,'_'))
+  pos_min <- ifelse(str_detect(file_name,'PS'),3,1)
+  str_sub(file_name,pos_min,pos-1) <- str_pad(str_sub(file_name,pos_min,pos-1),3,'left','0')
+  new_name <- paste(folder,file_name,sep='')
+  system(paste('mv ',f,new_name))
+}
+

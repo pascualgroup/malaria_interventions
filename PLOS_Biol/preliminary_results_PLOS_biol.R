@@ -366,14 +366,24 @@ module_results %>%
 
 # Seasonality -------------------------------------------------------------
 
-cases <- expand.grid(ps=c('13','14','15'), scenario='S', exp='001', run=1)
+cases <- expand.grid(ps=c('14','16','18'), scenario='S', exp='001', run=1)
 cases$cutoff_prob <- 0.85
 ps_comparison <- c()
 for (i in 1:nrow(cases)){
   print(paste('PS: ',cases$ps[i],' | Scenario: ',cases$scenario[i],' | exp: ',cases$exp[i], ' | run: ',cases$run[i],sep=''))
   tmp <- get_data(parameter_space = cases$ps[i], scenario = cases$scenario[i], experiment = cases$exp[i], run = cases$run[i], cutoff_prob = cases$cutoff_prob[i], use_sqlite = T, tables_to_get = 'summary_general')[[1]]
+  
   ps_comparison <- rbind(ps_comparison, tmp)
 }
+
+# EIR
+ps_comparison %>% 
+  ggplot(aes(x=month, y=EIR, color=PS))+
+  geom_boxplot()+
+  stat_summary(aes(group=PS), fun.y=mean, geom="line", size=1)+
+  facet_wrap(~PS)+
+  scale_y_continuous(breaks=seq(0,20,2))+
+  mytheme
 
 time_range <- c(28800,max(ps_comparison$time))
 
@@ -390,14 +400,6 @@ ps_comparison %>%
   facet_wrap(~variable, scales='free')+
   mytheme
 
-# EIR
-ps_comparison %>% 
-  ggplot(aes(x=month, y=EIR, color=PS))+
-  geom_boxplot()+
-  stat_summary(aes(group=PS), fun.y=mean, geom="line", size=1)+
-  facet_wrap(~PS)+
-  scale_y_continuous(breaks=seq(0,20,2))+
-  mytheme
 
 
 
@@ -405,7 +407,7 @@ ps_comparison %>%
 # This repeats the diversity and epi comparisons, but with seasonality
 
 ## @knitr basic_variables_S_seasonality
-basic_variable_S <- compare_ps(ps_range=c('09','10'), 'S', exp = '001', 1:10, cutoff_prob=c(0,0.85))
+basic_variable_S <- compare_ps(ps_range=c('18'), 'S', exp = '001', 1, cutoff_prob=c(0.85))
 basic_variable_S[[1]]
 
 ## @knitr basic_variables_G_seasonality

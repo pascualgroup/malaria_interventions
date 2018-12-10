@@ -29,7 +29,7 @@ gg_labels <- as_labeller(c(`04` = 'Low',
                            `Module` = 'Module',
                            `Repertoire` = 'Repertoire'))
 
-all_experiments <- expand.grid(PS=sprintf('%0.2d', 4:6),
+all_experiments <- expand.grid(PS=sprintf('%0.3d', 4:6),
                            scenario=c('S','N','G'), 
                            exp='001',
                            run=1:50,
@@ -47,7 +47,7 @@ files <- tibble(file=files_list,
                 cutoff_prob= sapply(str_split(files_list,'_'),function (x) parse_number(x[5])),
                 type=sapply(str_split(files_list,'_'),function (x) paste(x[6:8],collapse='_'))
                 )
-files$PS <- sprintf('%0.2d', files$PS)
+files$PS <- sprintf('%0.3d', files$PS)
 files$type <- str_remove_all(files$type,'_NA')
 
 files %>% filter(PS=='06') %>% group_by(PS,scenario,cutoff_prob) %>% count(type) %>% print(n=20)
