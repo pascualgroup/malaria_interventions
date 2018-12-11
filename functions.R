@@ -123,14 +123,14 @@ get_parameter_reference <- function(parameter_file_ref='parameter_file_ref.py'){
   parameters <- map(lines, function(l){
     tmp <- str_sub(reference[l], 1, str_locate(reference[l], '=')[1]-1)
     if(!is.na(tmp)){return(tmp)}
-  }) %>% combine()
+  }) %>% gtable_combine()
   
   param_values <- map(lines, function(l){
     tmp <- str_trim(str_sub(reference[l], str_locate(reference[l], '=')[1]+1, 10^6), side = 'both')
     if(!is.na(tmp)){return(tmp)}
-  }) %>% combine()
+  }) %>% gtable_combine()
   
-  return(data.frame(param=str_trim(parameters), value=param_values, stringsAsFactors = F))
+  return(data.frame(param=str_trim(unlist(parameters)), value=unlist(param_values), stringsAsFactors = F))
 }
 
 # Function to set a parameter in the parameters data frame
@@ -303,14 +303,14 @@ get_generalized_immunity <- function(PS, run){
 # several times, once for each IRS scheme. It uses a parameter file which has
 # already has the rest of the parameters in place, and just changes the relevant
 # parameters for IRS.
-set_IRS <- function(design_ID, run, IRS_START_TIME, IRS_input, IRS_IMMIGRATION, POOLSIZE_BOUNCE_BACK_AFTER_INTERVENTION, experimental_design){
+set_IRS <- function(design_ID, run, IRS_START_TIME, IRS_input, IRS_IMMIGRATION_RATE_FACTORS, POOLSIZE_BOUNCE_BACK_AFTER_INTERVENTION, experimental_design){
   # Regime
   parameter_space <- experimental_design$PS[design_ID]
   scenario <- experimental_design$scenario[design_ID]
   experiment <- experimental_design$exp[design_ID] # Use 000 for checkpoints and 001 for control
   base_name <- paste('PS',parameter_space,'_',scenario,'_E',experiment,'_R',run,sep='')
   output_file <- paste(base_name,'.py',sep = '')
-  param_data <- get_parameter_reference(output_file)
+  param_data <- get_parameter_reference(paste(parameter_files_path_global,output_file,sep='/'))
   
   # Turn on IRS
   param_data[param_data$param=='IRS_ON',] <- set_parameter(param_data, 'IRS_ON', 'True')
@@ -330,7 +330,7 @@ set_IRS <- function(design_ID, run, IRS_START_TIME, IRS_input, IRS_IMMIGRATION, 
   param_data[param_data$param=='BITING_RATE_FACTORS',] <- set_parameter(param_data, 'BITING_RATE_FACTORS', x)
   # Add to the IRS_IMMIGRATION_RATE_FACTORS
   x <- substr(param_data[param_data$param=='IRS_IMMIGRATION_RATE_FACTORS',]$value, 1, nchar(param_data[param_data$param=='IRS_IMMIGRATION_RATE_FACTORS',]$value)-1)
-  x <- paste(x,',',IRS_IMMIGRATION,']',sep='')
+  x <- paste(x,',',IRS_IMMIGRATION_RATE_FACTORS,']',sep='')
   x <- str_replace(x, '\\[,','\\[')
   param_data[param_data$param=='IRS_IMMIGRATION_RATE_FACTORS',] <- set_parameter(param_data, 'IRS_IMMIGRATION_RATE_FACTORS', x)
   # Add POOLSIZE_BOUNCE_BACK_AFTER_INTERVENTION
@@ -339,7 +339,7 @@ set_IRS <- function(design_ID, run, IRS_START_TIME, IRS_input, IRS_IMMIGRATION, 
   
   # Write parameter file
   param_data$output <- paste(param_data$param,param_data$value,sep='=')
-  write_lines(param_data$output, output_file)
+  write_lines(param_data$output, paste(parameter_files_path_global,output_file,sep='/'))
 }
 
 # This function sets the parameters for a single MDA. It uses a parameter file which has
@@ -558,14 +558,14 @@ generate_files <- function(row_range, run_range, random_seed=NULL,
       if (!is.na(experimental_design$IRS_START_TIMES[design_ID])){
         IRS_scheme <- data.frame(IRS_START_TIME=str_split(experimental_design$IRS_START_TIMES[design_ID], ',')[[1]],
                                  IRS_input=str_split(experimental_design$IRS_input[design_ID], ',')[[1]],
-                                 IRS_IMMIGRATION=str_split(experimental_design$IRS_IMMIGRATION[design_ID], ',')[[1]],
+                                 IRS_IMMIGRATION_RATE_FACTORS=str_split(experimental_design$IRS_IMMIGRATION_RATE_FACTORS[design_ID], ',')[[1]],
                                  POOLSIZE_BOUNCE_BACK_AFTER_INTERVENTION=experimental_design$POOLSIZE_BOUNCE_BACK_AFTER_INTERVENTION[design_ID],
                                  stringsAsFactors = F)
         for (i in 1:nrow(IRS_scheme)){
           set_IRS(design_ID = design_ID, 
                   run = RUN, 
                   IRS_START_TIME = IRS_scheme$IRS_START_TIME[i], 
-                  IRS_IMMIGRATION = IRS_scheme$IRS_IMMIGRATION[i], 
+                  IRS_IMMIGRATION_RATE_FACTORS = IRS_scheme$IRS_IMMIGRATION_RATE_FACTORS[i], 
                   IRS_input = IRS_scheme$IRS_input[i], 
                   POOLSIZE_BOUNCE_BACK_AFTER_INTERVENTION=IRS_scheme$POOLSIZE_BOUNCE_BACK_AFTER_INTERVENTION[i], 
                   experimental_design)
