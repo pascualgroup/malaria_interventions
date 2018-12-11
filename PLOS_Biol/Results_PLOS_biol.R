@@ -180,6 +180,8 @@ module_results$strain_cluster <- as.integer(module_results$strain_cluster)
 
 persistence_df <- read_csv(paste('/media/Data/PLOS_Biol/Results/persistence_df_',PS_for_figure,'.csv',sep=''))
 persistence_df$scenario <- factor(persistence_df$scenario, levels=c('S','G','N'))
+persistence_df$id <- as.character(persistence_df$id)
+
 
 # Temporal diversity
 temporal_diversity <- c()
@@ -645,3 +647,127 @@ x %>%
   labs(x='Cut off', y=' Mean or median Temporal Diversity')+
   scale_color_manual(values=scenario_cols)+mytheme
 dev.off()
+
+
+
+# Sensitivity analysis ----------------------------------------------------
+
+sensitivity_experiments <- expand.grid(PS=100:183,
+                               scenario='S', 
+                               exp='001',
+                               run=1,
+                               cutoff_prob=0.85,
+                               stringsAsFactors = F)
+
+scenario <- 'S'
+run <- 1
+cutoff_prob <- 0.85
+module_results_sensitivity <- c()
+for (i in 1:nrow(sensitivity_experiments)){
+  PS <- sensitivity_experiments$PS[i]
+  x <- get_modularity_results(PS,scenario,run,cutoff_prob, folder = '/media/Data/PLOS_Biol/Results/sensitivity_analysis/')
+  module_results_sensitivity <- rbind(module_results_sensitivity,x)
+}
+write_csv(module_results_sensitivity, '/media/Data/PLOS_Biol/Results/module_results_sensitivity.csv')
+module_results_sensitivity$strain_cluster <- as.integer(module_results_sensitivity$strain_cluster)
+
+# Module examples Can only be plotted for one specific run There may be gaps in
+# the layers for a given module because modules are based on sampled
+# layer-repertoire tuples, and repertoires may not be sampled in every layer in the ABM.
+# So there are two options to plot: one that shows the gaps, and one that does not.
+module_results_sensitivity %>% 
+  filter(PS==150) %>%
+  distinct(module, layer, PS, scenario) %>% 
+  group_by(scenario,module) %>% summarise(birth_layer=min(layer),death_layer=max(layer)+1) %>% 
+  ggplot(aes(xmin=birth_layer, xmax=death_layer, ymin=module, ymax=module, color=scenario))+
+  geom_rect(size=2)+
+  scale_color_manual(values = scenario_cols)+
+  labs(y= 'module ID', x='Time (months)')+
+  facet_wrap(~scenario, scales='free', labeller = gg_labels)+manuscript_theme
+
+# Relative persistence
+module_persistence <- module_results_sensitivity %>% 
+  select(scenario, PS, run, cutoff_prob, layer, module) %>% 
+  group_by(scenario, PS,run,cutoff_prob,module) %>% 
+  summarise(birth_layer=min(layer), death_layer=max(layer), persistence=death_layer-birth_layer+1) %>% 
+  mutate(relative_persistence=persistence/(300-birth_layer+1)) %>% 
+  mutate(type='Module') %>% 
+  rename(id=module) %>% mutate(id=as.character(id))
+
+strain_persistence <- module_results_sensitivity %>% 
+  select(scenario, PS, run, cutoff_prob, layer, strain_cluster) %>% 
+  group_by(scenario, PS,run,cutoff_prob,strain_cluster) %>% 
+  summarise(birth_layer=min(layer), death_layer=max(layer), persistence=death_layer-birth_layer+1) %>% 
+  mutate(relative_persistence=persistence/(300-birth_layer+1)) %>% 
+  mutate(type='Repertoire') %>% 
+  rename(id=strain_cluster) %>% mutate(id=as.character(id))
+
+persistence_df_sensitivity <- module_persistence %>% bind_rows(strain_persistence)
+write_csv(persistence_df_sensitivity, '/media/Data/PLOS_Biol/Results/persistence_df_sensitivity.csv')
+
+
+# Compare module persistence of sensitivity to observed
+x <- persistence_df_sensitivity %>% 
+  bind_rows(persistence_df) %>% 
+  filter(scenario=='S') %>% 
+  mutate(grp=ifelse(PS=='06','Obs','Sens'))
+# x %<>% filter(PS %in% c('06', '158'))
+x %>% 
+  ggplot()+
+  geom_density(data=subset(x, PS !='06'), aes(relative_persistence), fill='#1E9B95')+
+  geom_density(data=subset(x, PS =='06' & run==1), aes(relative_persistence), fill=scenario_cols[1])+
+  facet_grid(~type, scales='free_y')+
+  labs(x='Relative persistence', y='Density')+
+  mytheme
+x %>% 
+  ggplot()+
+  geom_boxplot(aes(x=grp, y=relative_persistence, fill=grp), notch=F)+
+  scale_fill_manual(values = c(scenario_cols[1],'#1E9B95'))+
+  labs(y='Relative persistence')+
+  facet_grid(~type, scales='free_y', labeller = gg_labels)+
+  mytheme
+
+# Temporal diversity
+temporal_diversity_sensitivity <- c()
+scenario <- 'S'
+run <- 1
+cutoff_prob <- 0.85
+for (i in 1:nrow(sensitivity_experiments)){
+  PS <- sensitivity_experiments$PS[i]
+  x <- get_temporal_diversity(PS,scenario,run,cutoff_prob,folder = '/media/Data/PLOS_Biol/Results/sensitivity_analysis/')
+  temporal_diversity_sensitivity <- rbind(temporal_diversity_sensitivity,x)
+}
+temporal_diversity_sensitivity <- as.tibble(temporal_diversity_sensitivity)
+
+x <- temporal_diversity_sensitivity %>% 
+  bind_rows(temporal_diversity) %>% 
+  filter(scenario=='S') %>% 
+  mutate(grp=ifelse(PS=='06','Obs','Sens'))
+x %>% 
+  ggplot()+
+  geom_density(data=subset(x, PS !='06'), aes(statistic), fill='#1E9B95', alpha=0.4)+
+  geom_density(data=subset(x, PS =='06'), aes(statistic), fill=scenario_cols[1], alpha=0.4)+
+  labs(x='Temporal diversity', y='Density')+
+  mytheme
+
+# mFst
+mFst_sensitivity <- c()
+scenario <- 'S'
+run <- 1
+cutoff_prob <- 0.85
+for (i in 1:nrow(sensitivity_experiments)){
+  PS <- sensitivity_experiments$PS[i]
+  x <- get_mFst(PS,scenario,run,cutoff_prob,folder = '/media/Data/PLOS_Biol/Results/sensitivity_analysis/')
+  mFst_sensitivity <- rbind(mFst_sensitivity,x)
+}
+mFst_sensitivity <- as.tibble(mFst_sensitivity)
+x <- mFst_sensitivity %>% 
+  bind_rows(mFst) %>% 
+  filter(scenario=='S') %>% 
+  mutate(grp=ifelse(PS=='06','Obs','Sens'))
+x %>% 
+  ggplot()+
+  geom_density(data=subset(x, PS !='06'), aes(mFst), fill='#1E9B95', alpha=0.4)+
+  geom_density(data=subset(x, PS =='06'), aes(mFst), fill=scenario_cols[1], alpha=0.4)+
+  labs(x='mFst', y='Density')+
+  mytheme
