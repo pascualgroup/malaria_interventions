@@ -51,12 +51,12 @@ echo =============================================================
 Rscript $prog $PS $scenario '001' $cutoff_prob 'read_infomap_results'
 
 # Calculte module temporal diversity
-echo Starting script module_diversity
+echo Starting script temporal_diversity
 echo =============================================================
 Rscript $prog $PS $scenario '001' $cutoff_prob 'temporal_diversity'
 
 # Calculte module Fst
-echo Starting script module_diversity
+echo Starting script module_Fst
 echo =============================================================
 Rscript $prog $PS $scenario '001' $cutoff_prob 'module_Fst'
 

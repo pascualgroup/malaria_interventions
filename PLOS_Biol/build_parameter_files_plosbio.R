@@ -21,9 +21,9 @@ if (detect_locale()=='Mac'){
 design <- loadExperiments_GoogleSheets(local = F, workBookName = 'PLOS_Biol_design', sheetID = 2) 
 
 # Create the reference experiments (checkpoint and control)
-ps_range <- sprintf('%03d', 18)
+ps_range <- sprintf('%03d', 200)
 exp_range <- sprintf('%0.3d', 0:1)
-run_range <- 2:10
+run_range <- 1
 work_scenario <- 'S'
 # Generate 000 and 001 experiments
 design_subset <- subset(design, PS %in% ps_range & scenario==work_scenario & exp %in% exp_range)
@@ -107,17 +107,17 @@ system('rm *.sbatch')
 
 scenario_range <- c('S','N','G')
 exp_range <- sprintf('%0.3d', 0:1)
-ps_range <- sprintf('%0.3d', 16:23)
+ps_range <- sprintf('%0.2d', 18)
 
 for (ps in ps_range){
   for (scenario in scenario_range){
     unlink('files_tmp.txt')
     sink('files_tmp.txt', append = T)
     # Add py files
-    files <- list.files(path = '/media/Data/PLOS_Biol/parameter_files/', pattern = '.py', full.names = F) 
-    files <- files[str_sub(files,3,5) %in% ps]
-    files <- files[str_sub(files,7,7) %in% scenario]
-    files <- files[str_sub(files,10,12) %in% exp_range]
+    files <- list.files(path = '/media/Data/PLOS_Biol/parameter_files/', pattern = '\\.py', full.names = F) 
+    files <- files[str_sub(files,3,4) %in% ps]
+    files <- files[str_sub(files,6,6) %in% scenario]
+    files <- files[str_sub(files,9,11) %in% exp_range]
     for (i in 1:length(files)){
       cat(files[i]);cat('\n')
     }
@@ -273,14 +273,15 @@ sbatch_arguments$time <- rep(c('04:00:00','05:00:00','10:00:00'),3)
 
 sbatch_arguments <- subset(sbatch_arguments, scen=='G'&PS=='06')
 
-sbatch_arguments <- expand.grid(PS=sprintf('%0.3d', 115:183),
+sbatch_arguments <- expand.grid(PS=sprintf('%0.3d', 200),
                                 scen=c('S'),
                                 array='1', 
                                 stringsAsFactors = F)
 sbatch_arguments$cutoff_prob <- 0.85
 sbatch_arguments$mem_per_cpu <- 32000
-sbatch_arguments$time <- '08:00:00'
+sbatch_arguments$time <- '04:00:00'
 
+calculate_mFst <- F
 for (scenario in unique(sbatch_arguments$scen)){
   for (ps in unique(sbatch_arguments$PS)){
     x <- readLines('~/Documents/malaria_interventions/PLOS_Biol/get_data_midway_plosbiol.sbatch')
@@ -293,6 +294,9 @@ for (scenario in unique(sbatch_arguments$scen)){
     str_sub(x[19],5,7) <- ps
     str_sub(x[20],11,13) <- scenario
     str_sub(x[22],13,16) <- subset(sbatch_arguments, PS==ps & scen==scenario)$cutoff_prob
+    if (!calculate_mFst){
+      x <- x[-c(58:61)]
+    }
     writeLines(x, paste(parameter_files_path_global,'/','PS',ps,'_',scenario,'_',subset(sbatch_arguments, PS==ps & scen==scenario)$cutoff_prob,'_get_data_midway.sbatch',sep=''))
   }
 }
@@ -413,5 +417,82 @@ for (f in file_list){
   str_sub(file_name,pos_min,pos-1) <- str_pad(str_sub(file_name,pos_min,pos-1),3,'left','0')
   new_name <- paste(folder,file_name,sep='')
   system(paste('mv ',f,new_name))
+}
+
+
+# Calendar ----------------------------------------------------------------
+
+# This calendar helps match the days inthe ABM to the days in the empirical
+# data. This is especially important for simulations of seasonality, to match
+# the rain cycle and the IRS rounds.
+
+# Infomration on IRS:
+#
+# Survey 1: October 2012/End of Wet
+# Survey 2: June 2013/ End of Dry
+# IRS Round 1: Between October-December 2013 (End of the wet to Beginning of dry): 80% of Compounds sprayed with Organophosphates
+# Survey 3: June 2014/End of Dry
+# IRS Round 2: Between May-July 2014 (End of Dry/Beginning of Wet): 97% of Compounds sprayed with Organophosphates
+# Survey 4: October 2014/End of Wet
+# IRS Round 3: Between December 2014-Febuary 2015 (Middle of Dry): 96% of Compounds sprayed with Organophosphates Actellic 300CS
+# Survey 5: October 2015/End of Wet
+# Survey 6: June 2016/End of Dry
+
+# IRS interventions are supposed to be timed and completed before the start of
+# the wet season so that the insecticide is on the walls of the homes before the
+# mosquito population expands.An IRS round means that every home is sprayed once
+# during the time frame indicated. Insectisides are expected to last between
+# ~2-3 months (Organophosphates) or ~4-6 months (Organophosphates newer
+# formulation: Actellic 300CS) depending on the insecticide and/or formualtion
+# used.  This impacts the effect on reducing the mosquito population as females
+# rest on walls ~2-3 days post feeding, and therefore will be exposed to the
+# insecticide leading to death and therefore restricting/preventing transmission
+# of P.fal.
+
+build_calendar <- function(num_years = 25, year_to_start=2, plotit=F){
+  # num_years: This is the number of years from start to end, not including pre-burnin
+  months_in_year <- rep(c('Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'), each=30)
+  calendar <- data.frame(running_day=seq(from = 1,to = 360*num_years,by=1),
+                         year_sim=rep(1:num_years, each=360),
+                         month_sim=rep(months_in_year,num_years),
+                         day_sim=rep(1:30,num_years*12),
+                         layer=rep(1:300, each=30),
+                         stringsAsFactors = F)
+  
+  calendar$empirical_survey <- NA
+  calendar$empirical_IRS <- NA
+  
+  # Set the dates corresponding to the empirical survey dates. year_to_start is
+  # the year in the simulation where simulated data is starting to
+  # be matched to the empirical data.
+  calendar$empirical_survey[calendar$year_sim==year_to_start & calendar$month_sim=='Oct'] <- 'S1'
+  calendar$empirical_survey[calendar$year_sim==year_to_start+1 & calendar$month_sim=='Jun'] <- 'S2'
+  calendar$empirical_survey[calendar$year_sim==year_to_start+2 & calendar$month_sim=='Jun'] <- 'S3'
+  calendar$empirical_survey[calendar$year_sim==year_to_start+2 & calendar$month_sim=='Oct'] <- 'S4'
+  calendar$empirical_survey[calendar$year_sim==year_to_start+3 & calendar$month_sim=='Oct'] <- 'S5'
+  calendar$empirical_survey[calendar$year_sim==year_to_start+4 & calendar$month_sim=='Jun'] <- 'S6'
+  
+  IRS_empirical <- data.frame(IRS=paste('IRS',1:3,sep='_'),
+                              start_day=c(1,1,1),
+                              start_month=c('Nov','Jun','Jan'),
+                              start_year=c(year_to_start+1,year_to_start+2,year_to_start+3)
+                              )
+  IRS_empirical %>% rowwise() %>% mutate(day=extract_from_calendar(calendar, run_day=NULL, d=start_day, m=start_month, y=start_year)$running_day)
+
+  return(calendar)
+}
+  
+extract_from_calendar <- function(cal, run_day=NULL, y=NULL, m=NULL, d=NULL){
+  if(!is.null(run_day)){
+    return(subset(cal, running_day==run_day))
+  } else {
+    if (is.null(d)){
+      x <- subset(cal, year_sim==y & month_sim==m)
+      return(x)
+    } else {
+      x <- subset(cal, year_sim==y & month_sim==m & day_sim==d)
+      return(x)
+    }  
+  }
 }
 

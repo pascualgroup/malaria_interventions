@@ -290,6 +290,16 @@ do
 done
 
 
+for f in *;
+do
+    if [[ -d $f ]];
+    then
+		mv $f/*.* /media/Data/PLOS_Biol/Results/sensitivity_analysis
+		fi
+done
+
+
+
 
 ## Loop and extract particular files
 for i in 2 2Nt
