@@ -21,9 +21,9 @@ if (detect_locale()=='Mac'){
 design <- loadExperiments_GoogleSheets(local = F, workBookName = 'PLOS_Biol_design', sheetID = 2) 
 
 # Create the reference experiments (checkpoint and control)
-ps_range <- sprintf('%03d', 20:21)
+ps_range <- sprintf('%03d', 18)
 exp_range <- sprintf('%0.3d', 0:1)
-run_range <- 1
+run_range <- 2:10
 work_scenario <- 'S'
 # Generate 000 and 001 experiments
 design_subset <- subset(design, PS %in% ps_range & scenario==work_scenario & exp %in% exp_range)
@@ -107,7 +107,7 @@ system('rm *.sbatch')
 
 scenario_range <- c('S','N','G')
 exp_range <- sprintf('%0.3d', 0:1)
-ps_range <- sprintf('%0.3d', 16:21)
+ps_range <- sprintf('%0.3d', 16:23)
 
 for (ps in ps_range){
   for (scenario in scenario_range){
@@ -273,7 +273,7 @@ sbatch_arguments$time <- rep(c('04:00:00','05:00:00','10:00:00'),3)
 
 sbatch_arguments <- subset(sbatch_arguments, scen=='G'&PS=='06')
 
-sbatch_arguments <- expand.grid(PS=sprintf('%0.3d', 101:183),
+sbatch_arguments <- expand.grid(PS=sprintf('%0.3d', 115:183),
                                 scen=c('S'),
                                 array='1', 
                                 stringsAsFactors = F)
@@ -341,6 +341,8 @@ design_seed_001$TRANSITION_RATE_NOT_IMMUNE <- sensitivity_params$TRANSITION_RATE
 design <- design_seed_000 %>% bind_rows(design_seed_001)
 design$mem_per_cpu <- 32000
 design$wall_time <- '20:00:00'
+
+
 
 #  Verify result file on Midway -------------------------------------------
 

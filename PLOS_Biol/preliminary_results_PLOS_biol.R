@@ -365,8 +365,8 @@ module_results %>%
 
 
 # Seasonality -------------------------------------------------------------
-
-cases <- expand.grid(ps=c('14','16','18'), scenario='S', exp='001', run=1)
+PS_range <- c('14','16','18','020','022')
+cases <- expand.grid(ps=PS_range, scenario='S', exp='001', run=1)
 cases$cutoff_prob <- 0.85
 ps_comparison <- c()
 for (i in 1:nrow(cases)){
@@ -400,42 +400,23 @@ ps_comparison %>%
   facet_wrap(~variable, scales='free')+
   mytheme
 
+# Number of genes in 6 layers
+
+year <- sample(1:20,1)
+layers_empirical_no_IRS <- c(22,30)+12*(year-1)
+layers_empirical_with_IRS <- c(22,30,42,46,58,66)+12*(year-1)
+
+for (PS in PS_range){
+  module_results <- fread(paste('/media/Data/PLOS_Biol/Results/cutoff_to_use/PS',PS,'_S_E001_R1_0.85_modules.csv',sep=''))
+  module_results <- as.tibble(module_results)
+  module_results %<>% 
+    filter(layer%in%(layers_empirical_no_IRS)) %>% 
+    distinct(layer,strain_cluster,strain_id) %>% arrange(layer,strain_cluster,strain_id)
+
+  db <- src_sqlite(paste('/media/Data/PLOS_Biol/sqlite_S/PS',PS,'_S_E001_R1.sqlite',sep=''))
+  sampled_strains <- db %>% tbl('sampled_strains') %>% select(id,gene_id) %>% rename(strain_id=id)
+  module_results %<>% left_join(sampled_strains, copy=T)
+  print(length(unique(module_results$gene_id)))
+}
 
 
-
-
-# This repeats the diversity and epi comparisons, but with seasonality
-
-## @knitr basic_variables_S_seasonality
-basic_variable_S <- compare_ps(ps_range=c('18'), 'S', exp = '001', 1, cutoff_prob=c(0.85))
-basic_variable_S[[1]]
-
-## @knitr basic_variables_G_seasonality
-basic_variable_G <- compare_ps(ps_range=c('07','08','09'), 'G', exp = '001', 1:10, cutoff_prob=c(0.3,0.6,0.85))
-basic_variable_G[[1]]
-
-## @knitr basic_variables_N_seasonality
-basic_variable_N <- compare_ps(ps_range=c('07','08','09'), 'N', exp = '001', 1:10, cutoff_prob=c(0.3,0.6,0.85))
-basic_variable_N[[1]]
-
-## @knitr EIR_S_seasonality
-basic_variable_S[[2]]
-
-## @knitr EIR_G_seasonality
-basic_variable_G[[2]]
-## @knitr END
-
-## @knitr EIR_N_seasonality
-basic_variable_N[[2]]
-
-
-## @knitr compare_scenarios_01_seasonality
-x <- compare_scenarios(PS = '04', scenarios = c('S','N','G'), run_range = 1:10, cutoff_prob = 0.9)
-x
-## @knitr compare_scenarios_02_seasonality
-x <- compare_scenarios(PS = '05', scenarios = c('S','N','G'), run_range = 1:10, cutoff_prob = 0.9)
-x
-## @knitr compare_scenarios_03_seasonality
-x <- compare_scenarios(PS = '06', scenarios = c('S','N','G'), run_range = 1:10, cutoff_prob = 0.9)
-x
-## @knitr END

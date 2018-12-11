@@ -821,7 +821,7 @@ get_data <- function(parameter_space, scenario, experiment, run, cutoff_prob=0.9
     summary_general$exp <- experiment
     summary_general$scenario <- scenario
     summary_general$run <- run
-    summary_general$year <- gl(n = max(summary_general$time)/360, length = nrow(summary_general), k = 1)
+    summary_general$year <- rep(1:(nrow(summary_general)/12), each=12)
     summary_general$month <- gl(n = 12, k = 1, length = nrow(summary_general),labels = c('Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'), ordered = F)
     
     summary_alleles <- dbGetQuery(db, 'SELECT * FROM summary_alleles')
