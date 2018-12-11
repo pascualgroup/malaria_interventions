@@ -50,10 +50,15 @@ echo Starting script read_infomap_results
 echo =============================================================
 Rscript $prog $PS $scenario '001' $cutoff_prob 'read_infomap_results'
 
-# Calculte module diversity and mFst
+# Calculte module temporal diversity
 echo Starting script module_diversity
 echo =============================================================
-Rscript $prog $PS $scenario '001' $cutoff_prob 'module_diversity'
+Rscript $prog $PS $scenario '001' $cutoff_prob 'temporal_diversity'
+
+# Calculte module Fst
+echo Starting script module_diversity
+echo =============================================================
+Rscript $prog $PS $scenario '001' $cutoff_prob 'module_Fst'
 
 
 # remove files
