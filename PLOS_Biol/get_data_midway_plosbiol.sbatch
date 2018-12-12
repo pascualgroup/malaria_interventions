@@ -18,7 +18,7 @@ module load gcc/6.1
 # Initialize
 PS='XXX' # the parameter space
 scenario='XXX' # Can be: 'S', 'G' or 'N'
-#exp='001' # The experiment ID
+exp='XXX' # The experiment ID
 cutoff_prob=XXX
 base_folder='/scratch/midway2/pilosofs/PLOS_Biol/' # Where all the source files are and where the experiment folders will be created
 
@@ -36,29 +36,29 @@ cd $base_folder'/Results/'$PS'_'$scenario
 # Run R script
 echo Starting script make_networks
 echo =============================================================
-Rscript $prog $PS $scenario '001' $cutoff_prob 'make_networks'
+Rscript $prog $PS $scenario $exp $cutoff_prob 'make_networks'
 
 
 # Run Infomap
 echo Running Infomap
 echo =============================================================
-infomap_name='PS'$PS'_'$scenario'_E001_R'$SLURM_ARRAY_TASK_ID'_'$cutoff_prob'_Infomap_multilayer'
+infomap_name='PS'$PS'_'$scenario'_E'$exp'_R'$SLURM_ARRAY_TASK_ID'_'$cutoff_prob'_Infomap_multilayer'
 ./Infomap_v01926 $infomap_name'.txt' . -i multilayer -d -N 10 --rawdir --two-level --tree --expanded
 
 # Get infomap results
 echo Starting script read_infomap_results
 echo =============================================================
-Rscript $prog $PS $scenario '001' $cutoff_prob 'read_infomap_results'
+Rscript $prog $PS $scenario $exp $cutoff_prob 'read_infomap_results'
 
 # Calculte module temporal diversity
 echo Starting script temporal_diversity
 echo =============================================================
-Rscript $prog $PS $scenario '001' $cutoff_prob 'temporal_diversity'
+Rscript $prog $PS $scenario $exp $cutoff_prob 'temporal_diversity'
 
 # Calculte module Fst
 echo Starting script module_Fst
 echo =============================================================
-Rscript $prog $PS $scenario '001' $cutoff_prob 'module_Fst'
+Rscript $prog $PS $scenario $exp $cutoff_prob 'module_Fst'
 
 
 # remove files

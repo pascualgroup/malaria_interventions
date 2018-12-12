@@ -21,14 +21,16 @@ if (detect_locale()=='Mac'){
 design <- loadExperiments_GoogleSheets(local = F, workBookName = 'PLOS_Biol_design', sheetID = 2) 
 
 # Create the reference experiments (checkpoint and control)
-ps_range <- sprintf('%03d', 200)
-exp_range <- sprintf('%0.3d', 0:1)
+ps_range <- sprintf('%02d', 18)
+exp_range <- sprintf('%0.3d', 2)
 run_range <- 1
 work_scenario <- 'S'
 # Generate 000 and 001 experiments
 design_subset <- subset(design, PS %in% ps_range & scenario==work_scenario & exp %in% exp_range)
 generate_files(row_range = 1:nrow(design_subset), run_range = run_range, 
                experimental_design = design_subset, 
+               # The radom_seed is necessary if using CP for intervention when not creating the intervention experiment parameter file at the same time as the 000 file.
+               random_seed = get_random_seed(PS = 18, scenario = 'S', run_range = run_range, folder = '/media/Data/PLOS_Biol/parameter_files/18_S_py/'),
                biting_rate_file = design_subset$DAILY_BITING_RATE_DISTRIBUTION[1],
                target_folder = parameter_files_path_global)
 
@@ -106,7 +108,7 @@ setwd('/media/Data/PLOS_Biol/parameter_files')
 system('rm *.sbatch')
 
 scenario_range <- c('S','N','G')
-exp_range <- sprintf('%0.3d', 0:1)
+exp_range <- sprintf('%0.3d', 0:2)
 ps_range <- sprintf('%0.2d', 18)
 
 for (ps in ps_range){
@@ -263,9 +265,14 @@ sink.reset()
 
 
 # Generate sbatch files to extract data -----------------------------------
-sbatch_arguments <- expand.grid(PS=sprintf('%0.3d', 4:6),
+
+# Creating these files can be tricky. Pay carefult attention to combinations of
+# PS, scenario, experiment and cutoffs in the resulting sbatch files!!!
+
+sbatch_arguments <- expand.grid(PS=sprintf('%0.2d', 18:19),
                                 scen=c('S','N','G'),
                                 array='6-50', 
+                                exp=c('000','001','002'),
                                 stringsAsFactors = F)
 sbatch_arguments$cutoff_prob <- rep(c(0.3,0.6,0.85),3)
 sbatch_arguments$mem_per_cpu <- rep(c(6000,12000,32000),3)
@@ -273,8 +280,9 @@ sbatch_arguments$time <- rep(c('04:00:00','05:00:00','10:00:00'),3)
 
 sbatch_arguments <- subset(sbatch_arguments, scen=='G'&PS=='06')
 
-sbatch_arguments <- expand.grid(PS=sprintf('%0.3d', 200),
+sbatch_arguments <- expand.grid(PS=sprintf('%0.2d', 18),
                                 scen=c('S'),
+                                exp='002',
                                 array='1', 
                                 stringsAsFactors = F)
 sbatch_arguments$cutoff_prob <- 0.85
@@ -293,6 +301,7 @@ for (scenario in unique(sbatch_arguments$scen)){
     str_sub(x[9],23,25) <- subset(sbatch_arguments, PS==ps & scen==scenario)$mem_per_cpu
     str_sub(x[19],5,7) <- ps
     str_sub(x[20],11,13) <- scenario
+    str_sub(x[21],6,8) <- subset(sbatch_arguments, PS==ps & scen==scenario)$exp
     str_sub(x[22],13,16) <- subset(sbatch_arguments, PS==ps & scen==scenario)$cutoff_prob
     if (!calculate_mFst){
       x <- x[-c(58:61)]

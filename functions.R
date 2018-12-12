@@ -123,12 +123,12 @@ get_parameter_reference <- function(parameter_file_ref='parameter_file_ref.py'){
   parameters <- map(lines, function(l){
     tmp <- str_sub(reference[l], 1, str_locate(reference[l], '=')[1]-1)
     if(!is.na(tmp)){return(tmp)}
-  }) %>% gtable_combine()
+  }) %>% dplyr::combine()
   
   param_values <- map(lines, function(l){
     tmp <- str_trim(str_sub(reference[l], str_locate(reference[l], '=')[1]+1, 10^6), side = 'both')
     if(!is.na(tmp)){return(tmp)}
-  }) %>% gtable_combine()
+  }) %>% dplyr::combine()
   
   return(data.frame(param=str_trim(unlist(parameters)), value=unlist(param_values), stringsAsFactors = F))
 }
@@ -139,10 +139,10 @@ set_parameter <- function(param_data, parameter, value){
   return(subset(param_data, param==parameter))
 }
 
-get_random_seed <- function(PS, scenario, experiment='000', run_range){
+get_random_seed <- function(PS, scenario, experiment='000', run_range, folder){
   seeds <- c()
   for (run in run_range){
-    x <- try(readLines(paste('PS',PS,'_',scenario,'_','E',experiment,'_R',run,'.py',sep='')))
+    x <- try(readLines(paste(folder,'PS',PS,'_',scenario,'_','E',experiment,'_R',run,'.py',sep='')))
     if (inherits(x, "try-error")){
       print('Cannot find parameter file to extract random number. Most probably a generalized-immunity experiment/run that does not exist.')
       seeds <- c(seeds, NA)
