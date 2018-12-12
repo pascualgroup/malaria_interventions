@@ -1,8 +1,8 @@
 #!/bin/bash
-#SBATCH --job-name=PSXXX
+#SBATCH --job-name=XXX
 #SBATCH --time=XXX
-#SBATCH --output=slurm_output/PSXXX_%A_%a.out
-#SBATCH --error=slurm_output/PSXXX_%A_%a.err
+#SBATCH --output=slurm_output/XXX_%A_%a.out
+#SBATCH --error=slurm_output/XXX_%A_%a.err
 #SBATCH --array=XXX
 #SBATCH --tasks=1
 #SBATCH --cpus-per-task=1 
@@ -19,6 +19,7 @@ module load gcc/6.1
 PS='XXX' # the parameter space
 scenario='XXX' # Can be: 'S', 'G' or 'N'
 exp='XXX' # The experiment ID
+layers='XXX'
 cutoff_prob=XXX
 base_folder='/scratch/midway2/pilosofs/PLOS_Biol/' # Where all the source files are and where the experiment folders will be created
 
@@ -36,8 +37,7 @@ cd $base_folder'/Results/'$PS'_'$scenario
 # Run R script
 echo Starting script make_networks
 echo =============================================================
-Rscript $prog $PS $scenario $exp $cutoff_prob 'make_networks'
-
+Rscript $prog $PS $scenario $exp $cutoff_prob $layers 'make_networks'
 
 # Run Infomap
 echo Running Infomap
@@ -48,17 +48,17 @@ infomap_name='PS'$PS'_'$scenario'_E'$exp'_R'$SLURM_ARRAY_TASK_ID'_'$cutoff_prob'
 # Get infomap results
 echo Starting script read_infomap_results
 echo =============================================================
-Rscript $prog $PS $scenario $exp $cutoff_prob 'read_infomap_results'
+Rscript $prog $PS $scenario $exp $cutoff_prob $layers 'read_infomap_results'
 
 # Calculte module temporal diversity
 echo Starting script temporal_diversity
 echo =============================================================
-Rscript $prog $PS $scenario $exp $cutoff_prob 'temporal_diversity'
+Rscript $prog $PS $scenario $exp $cutoff_prob $layers 'temporal_diversity'
 
 # Calculte module Fst
 echo Starting script module_Fst
 echo =============================================================
-Rscript $prog $PS $scenario $exp $cutoff_prob 'module_Fst'
+Rscript $prog $PS $scenario $exp $cutoff_prob $layers 'module_Fst'
 
 
 # remove files

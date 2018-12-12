@@ -8,7 +8,7 @@ library(igraph, quietly = T)
 library(data.table, quietly = T)
 
 if (length(commandArgs(trailingOnly=TRUE))==0) {
-  args <- c('18','S','002',0.85, '')
+  args <- c('18','S','001',0.85, '118,126,138,142,154,162')
 } else {
   args <- commandArgs(trailingOnly=TRUE)
 }
@@ -18,11 +18,18 @@ job_exp <- as.character(args[3])
 # job_run <- 1
 job_run <- as.numeric(Sys.getenv('SLURM_ARRAY_TASK_ID'))
 cutoff_prob <- as.numeric(args[4])
-task <- as.character(args[5]) # Can be: make_networks | read_infomap_results | temporal_diversity | module_Fst
+layers <- as.character(args[5])
+if (layers=='1:300'){
+  layers <- 1:300
+} else {
+  layers <- as.integer(str_split(layers,",")[[1]])  
+}
+task <- as.character(args[6]) # Can be: make_networks | read_infomap_results | temporal_diversity | module_Fst
 
 base_name <- paste('PS',job_ps,'_',job_scenario,'_E',job_exp,'_R',job_run,'_',cutoff_prob,sep='')
 
 print(base_name)
+print(layers)
 print(task)
 
 if (task=='make_networks'){
@@ -48,7 +55,7 @@ if (task=='make_networks'){
                                    run = job_run,
                                    cutoff_prob = cutoff_prob, 
                                    cutoff_value = cutoff_value,
-                                   layers_to_include = 1:300,
+                                   layers_to_include = layers,
                                    sampled_infections = data$sampled_infections)
   
   # edges <- c(network$intralayer_edges_no_cutoff, network$interlayer_edges_no_cutoff)
@@ -85,18 +92,25 @@ if (task=='read_infomap_results'){
   sampled_strains <- x$sampled_strains
   sampled_alleles <- x$sampled_alleles
   
-  print(paste('Same strains in module and strain data frames?',setequal(sampled_strains$strain_id, modules$strain_id)))
+  print(paste('Identical strains in module and strain data frames?',setequal(sampled_strains$strain_id, modules$strain_id)))
+  print(paste('Are all the strains in the module data frame contained in the strain data frame?',all(modules$strain_id%in%sampled_strains$strain_id)))
   
   # Produce allele combinations in repertoires
   sampled_alleles$allele_locus <- paste(sampled_alleles$allele, sampled_alleles$locus,sep='_')
   sampled_alleles %<>% select(gene_id, allele_locus) %>% arrange(gene_id,allele_locus)
   sampled_strains %<>% left_join(sampled_alleles) %>% distinct(strain_id,allele_locus)
   
+  # Only consider the strains that appear in the modules. That is particularly
+  # necessary for cases where not all 300 layers are analyzed for modularity
+  # (like IRS)
+  sampled_strains %<>% filter(strain_id%in%modules$strain_id)
+  
   # Make a file for usearch. Need to use letters because it does not accept 0 and 1
   strain_allele_mat <- xtabs(~strain_id+allele_locus, sampled_strains)
   strain_allele_mat[strain_allele_mat==0] <- 'A'
   strain_allele_mat[strain_allele_mat==1] <- 'G'
   f <- paste('/scratch/midway2/pilosofs/PLOS_Biol/Results/',job_ps,'_',job_scenario,'/',base_name,'_strain_sequences.fasta',sep='')
+  # f <- paste('/media/Data/PLOS_Biol/parameter_files/',base_name,'_strain_sequences.fasta',sep='')
   sink(f, append = F)
   for (i in 1:nrow(strain_allele_mat)){
     cat('>');cat(rownames(strain_allele_mat)[i]);cat('\n')
@@ -106,6 +120,7 @@ if (task=='read_infomap_results'){
   # rep_clusters_file <- paste('/scratch/midway2/pilosofs/PLOS_Biol/Results/',job_ps,'_',job_scenario,'/',base_name,'_unique_repertoires.txt',sep='')
   rep_clusters_file <- paste(base_name,'_unique_repertoires.txt',sep='')
   system(paste("/scratch/midway2/pilosofs/PLOS_Biol/usearch10.0.240_i86linux32 -fastx_uniques ",f," -relabel rep -tabbedout ",rep_clusters_file,sep='')) # Find unique sequences
+  # system(paste("/media/Data/PLOS_Biol/parameter_files/usearch10.0.240_i86linux32 -fastx_uniques ",f," -relabel rep -tabbedout ",rep_clusters_file,sep='')) # Find unique sequences
   
   print('Getting results from usearch...')
   unique_repertoires <- read_delim(rep_clusters_file,
@@ -123,13 +138,18 @@ if (task=='read_infomap_results'){
     
   
   print('Writing Infomap results with unique repertoires to files...')
-  # write_csv(modules, paste('/scratch/midway2/pilosofs/PLOS_Biol/Results/',job_ps,'_',job_scenario,'/',base_name,'_modules.csv',sep=''))
-  # write_csv(sampled_strains, paste('/scratch/midway2/pilosofs/PLOS_Biol/Results/',job_ps,'_',job_scenario,'/',base_name,'_sampled_strains.csv',sep=''))
-  # write_csv(sampled_alleles, paste('/scratch/midway2/pilosofs/PLOS_Biol/Results/',job_ps,'_',job_scenario,'/',base_name,'_sampled_alleles.csv',sep=''))
-  write_csv(modules, paste(base_name,'_modules.csv',sep=''))
   write_csv(sampled_strains, paste(base_name,'_sampled_strains.csv',sep=''))
   write_csv(sampled_alleles, paste(base_name,'_sampled_alleles.csv',sep=''))
   
+  # # When not analyzing all layers (like in IRS), then before writing the module
+  # # data frame, change the layer index numbers to the actual layers.
+  # if (layers!=1:300){
+  #   layers_idx <- tibble(layer=1:length(layers),real_layer=layers)
+  #   modules %<>% left_join(layers_idx) %>% select(-layer) %>% rename(layer=real_layer) %>% select(layer, module:cutoff_prob)
+  #   # If want to keep the layer_idx do that. But it will have an additional column, which will create problems with compartibility for functions that use modules.csv
+  #   # modules %<>% left_join(layers_idx) %>% rename(layer_idx=layer) %>% rename(layer=real_layer) %>% select(layer, module:cutoff_prob, layer_idx)
+  # }
+  write_csv(modules, paste(base_name,'_modules.csv',sep=''))
   print('Done!')
 } # End task read_infomap_results
 

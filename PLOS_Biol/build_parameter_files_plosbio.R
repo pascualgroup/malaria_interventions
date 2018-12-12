@@ -24,13 +24,13 @@ design <- loadExperiments_GoogleSheets(local = F, workBookName = 'PLOS_Biol_desi
 ps_range <- sprintf('%02d', 18)
 exp_range <- sprintf('%0.3d', 2)
 run_range <- 1
-work_scenario <- 'S'
+work_scenario <- 'G'
 # Generate 000 and 001 experiments
 design_subset <- subset(design, PS %in% ps_range & scenario==work_scenario & exp %in% exp_range)
 generate_files(row_range = 1:nrow(design_subset), run_range = run_range, 
                experimental_design = design_subset, 
                # The radom_seed is necessary if using CP for intervention when not creating the intervention experiment parameter file at the same time as the 000 file.
-               random_seed = get_random_seed(PS = 18, scenario = 'S', run_range = run_range, folder = '/media/Data/PLOS_Biol/parameter_files/18_S_py/'),
+               # random_seed = get_random_seed(PS = 18, scenario = work_scenario, run_range = run_range, folder = '/media/Data/PLOS_Biol/parameter_files/'),
                biting_rate_file = design_subset$DAILY_BITING_RATE_DISTRIBUTION[1],
                target_folder = parameter_files_path_global)
 
@@ -280,33 +280,44 @@ sbatch_arguments$time <- rep(c('04:00:00','05:00:00','10:00:00'),3)
 
 sbatch_arguments <- subset(sbatch_arguments, scen=='G'&PS=='06')
 
+
+
+cal <- as.tibble(build_calendar(num_years = 25, 10))
+cal %>% filter(!is.na(survey)) %>% group_by(survey,layer) %>%
+  summarise(first_day=min(running_day),last_day=max(running_day), year=unique(year_sim)+2002, month=unique(month_sim))
+
 sbatch_arguments <- expand.grid(PS=sprintf('%0.2d', 18),
                                 scen=c('S'),
                                 exp='002',
-                                array='1', 
+                                array='11-50',
+                                layers='118,126,138,142,154,162',
+                                # layers='1:300',
                                 stringsAsFactors = F)
 sbatch_arguments$cutoff_prob <- 0.85
 sbatch_arguments$mem_per_cpu <- 32000
-sbatch_arguments$time <- '04:00:00'
+sbatch_arguments$time <- '03:00:00'
 
 calculate_mFst <- F
 for (scenario in unique(sbatch_arguments$scen)){
   for (ps in unique(sbatch_arguments$PS)){
-    x <- readLines('~/Documents/malaria_interventions/PLOS_Biol/get_data_midway_plosbiol.sbatch')
-    str_sub(x[2],22,24) <- paste(ps,scenario,sep='')
-    str_sub(x[3],16,18) <- subset(sbatch_arguments, PS==ps & scen==scenario)$time
-    str_sub(x[4],33,35) <- paste(ps,scenario,sep='')
-    str_sub(x[5],32,34) <- paste(ps,scenario,sep='')
-    str_sub(x[6],17,20) <- subset(sbatch_arguments, PS==ps & scen==scenario)$array
-    str_sub(x[9],23,25) <- subset(sbatch_arguments, PS==ps & scen==scenario)$mem_per_cpu
-    str_sub(x[19],5,7) <- ps
-    str_sub(x[20],11,13) <- scenario
-    str_sub(x[21],6,8) <- subset(sbatch_arguments, PS==ps & scen==scenario)$exp
-    str_sub(x[22],13,16) <- subset(sbatch_arguments, PS==ps & scen==scenario)$cutoff_prob
-    if (!calculate_mFst){
-      x <- x[-c(58:61)]
+    for (e in unique(sbatch_arguments$exp)){
+      x <- readLines('~/Documents/malaria_interventions/PLOS_Biol/get_data_midway_plosbiol.sbatch')
+      str_sub(x[2],20,22) <- paste(ps,scenario,e,sep='')
+      str_sub(x[3],16,18) <- subset(sbatch_arguments, PS==ps & scen==scenario)$time
+      str_sub(x[4],31,33) <- paste(ps,scenario,e,sep='')
+      str_sub(x[5],30,32) <- paste(ps,scenario,e,sep='')
+      str_sub(x[6],17,20) <- subset(sbatch_arguments, PS==ps & scen==scenario)$array
+      str_sub(x[9],23,25) <- subset(sbatch_arguments, PS==ps & scen==scenario)$mem_per_cpu
+      str_sub(x[19],5,7) <- ps
+      str_sub(x[20],11,13) <- scenario
+      str_sub(x[21],6,8) <- e
+      str_sub(x[22],9,11) <- subset(sbatch_arguments, PS==ps & scen==scenario)$layers
+      str_sub(x[23],13,16) <- subset(sbatch_arguments, PS==ps & scen==scenario)$cutoff_prob
+      if (!calculate_mFst){
+        x <- x[-c(58:61)]
+      }
+      writeLines(x, paste(parameter_files_path_global,'/','PS',ps,scenario,'E',e,'_',subset(sbatch_arguments, PS==ps & scen==scenario)$cutoff_prob,'_get_data_midway.sbatch',sep=''))
     }
-    writeLines(x, paste(parameter_files_path_global,'/','PS',ps,'_',scenario,'_',subset(sbatch_arguments, PS==ps & scen==scenario)$cutoff_prob,'_get_data_midway.sbatch',sep=''))
   }
 }
 # for i in {27..39}; do sbatch 'PS'$i'_G_get_data_midway.sbatch'; done
@@ -430,31 +441,7 @@ for (f in file_list){
 
 
 # Calendar ----------------------------------------------------------------
-
-# This calendar helps match the days inthe ABM to the days in the empirical
-# data. This is especially important for simulations of seasonality, to match
-# the rain cycle and the IRS rounds.
-
-# Infomration on IRS:
-#
-# Survey 1: October 2012/End of Wet
-# Survey 2: June 2013/ End of Dry
-# IRS Round 1: Between October-December 2013 (End of the wet to Beginning of dry): 80% of Compounds sprayed with Organophosphates
-# Survey 3: June 2014/End of Dry
-# IRS Round 2: Between May-July 2014 (End of Dry/Beginning of Wet): 97% of Compounds sprayed with Organophosphates
-# Survey 4: October 2014/End of Wet
-# IRS Round 3: Between December 2014-Febuary 2015 (Middle of Dry): 96% of Compounds sprayed with Organophosphates Actellic 300CS
-# Survey 5: October 2015/End of Wet
-# Survey 6: June 2016/End of Dry
-
-# IRS interventions are supposed to be timed and completed before the start of
-# the wet season so that the insecticide is on the walls of the homes before the
-# mosquito population expands.An IRS round means that every home is sprayed once
-# during the time frame indicated. Insectisides are expected to last between
-# ~2-3 months (Organophosphates) or ~4-6 months (Organophosphates newer
-# formulation: Actellic 300CS) depending on the insecticide and/or formualtion
-# used.  This impacts the effect on reducing the mosquito population as females
-# rest on walls ~2-3 days post feeding, and therefore will be exposed to the
-# insecticide leading to death and therefore restricting/preventing transmission
-# of P.fal.
+cal <- as.tibble(build_calendar(num_years = 25, 10))
+cal %>% filter(!is.na(survey)) %>% group_by(survey,layer) %>%
+  summarise(first_day=min(running_day),last_day=max(running_day), year=unique(year_sim)+2002, month=unique(month_sim))
 

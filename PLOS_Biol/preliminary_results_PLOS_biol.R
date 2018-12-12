@@ -365,14 +365,13 @@ module_results %>%
 
 
 # Seasonality -------------------------------------------------------------
-PS_range <- c('14','16','18','020','022')
-cases <- expand.grid(ps=PS_range, scenario='S', exp='001', run=1)
+PS_range <- c('18')
+cases <- expand.grid(ps=PS_range, scenario='S', exp='001', run=1:10)
 cases$cutoff_prob <- 0.85
 ps_comparison <- c()
 for (i in 1:nrow(cases)){
   print(paste('PS: ',cases$ps[i],' | Scenario: ',cases$scenario[i],' | exp: ',cases$exp[i], ' | run: ',cases$run[i],sep=''))
   tmp <- get_data(parameter_space = cases$ps[i], scenario = cases$scenario[i], experiment = cases$exp[i], run = cases$run[i], cutoff_prob = cases$cutoff_prob[i], use_sqlite = T, tables_to_get = 'summary_general')[[1]]
-  
   ps_comparison <- rbind(ps_comparison, tmp)
 }
 
@@ -394,11 +393,12 @@ ps_comparison %>%
   group_by(pop_id, time, exp, PS, scenario, variable) %>%
   summarise(value_mean=mean(value), value_sd=sd(value)) %>% # Need to average across runs
   filter(variable %in% monitored_variables) %>%
-  ggplot(aes(x=time, y=value_mean, color=PS))+
-  geom_line()+
-  scale_x_continuous(breaks=pretty(x=subset(ps_comparison, time>time_range[1]&time<time_range[2])$time,n=5))+
-  facet_wrap(~variable, scales='free')+
-  mytheme
+  ggplot()+
+    geom_line(aes(x=time, y=value_mean, color=PS))+
+    geom_errorbar(aes(ymin=value_mean-value_sd,ymax=value_mean+value_sd,x=time),color='gray',width=0.001, alpha=0.3)+
+    scale_x_continuous(breaks=pretty(x=subset(ps_comparison, time>time_range[1]&time<time_range[2])$time,n=5))+
+    facet_wrap(~variable, scales='free')+
+    mytheme
 
 # Number of genes in 6 layers
 
@@ -406,17 +406,45 @@ year <- sample(1:20,1)
 layers_empirical_no_IRS <- c(22,30)+12*(year-1)
 layers_empirical_with_IRS <- c(22,30,42,46,58,66)+12*(year-1)
 
-for (PS in PS_range){
-  module_results <- fread(paste('/media/Data/PLOS_Biol/Results/cutoff_to_use/PS',PS,'_S_E001_R1_0.85_modules.csv',sep=''))
+for (i in 1:nrow(cases)){
+  PS=cases$ps[i]
+  run=cases$run[i]
+  module_results <- fread(paste('/media/Data/PLOS_Biol/Results/seasonality/PS',PS,'_S_E001_R',run,'_0.85_modules.csv',sep=''))
   module_results <- as.tibble(module_results)
   module_results %<>% 
     filter(layer%in%(layers_empirical_no_IRS)) %>% 
     distinct(layer,strain_cluster,strain_id) %>% arrange(layer,strain_cluster,strain_id)
 
-  db <- src_sqlite(paste('/media/Data/PLOS_Biol/sqlite_S/PS',PS,'_S_E001_R1.sqlite',sep=''))
+  db <- src_sqlite(paste('/media/Data/PLOS_Biol/sqlite_S/PS',PS,'_S_E001_R',run,'.sqlite',sep=''))
   sampled_strains <- db %>% tbl('sampled_strains') %>% select(id,gene_id) %>% rename(strain_id=id)
   module_results %<>% left_join(sampled_strains, copy=T)
   print(length(unique(module_results$gene_id)))
 }
+
+
+# Empirical ---------------------------------------------------------------
+
+IRS_S <- get_data(parameter_space = '18', scenario = 'S', experiment = '002', run = 1, cutoff_prob = 0.85, use_sqlite = T, tables_to_get = 'summary_general')[[1]]
+IRS_G <- get_data(parameter_space = '18', scenario = 'G', experiment = '002', run = 1, cutoff_prob = 0.85, use_sqlite = T, tables_to_get = 'summary_general')[[1]]
+IRS_N <- get_data(parameter_space = '18', scenario = 'N', experiment = '002', run = 1, cutoff_prob = 0.85, use_sqlite = T, tables_to_get = 'summary_general')[[1]]
+
+IRS_S$layer <- 1:300
+IRS_G$layer <- 1:300
+IRS_N$layer <- 1:300
+IRS_S %>% bind_rows(IRS_G) %>% bind_rows(IRS_N) %>% 
+  mutate(scenario=factor(scenario, levels=c('S','G','N'))) %>% 
+  filter(layer%in%100:200) %>% 
+  select(-year, -month, -n_infected) %>% 
+  gather(variable, value, -pop_id, -time, -exp, -PS, -scenario, -run, -layer) %>% 
+  group_by(pop_id, time, layer, exp, PS, scenario, variable) %>%
+  summarise(value_mean=mean(value), value_sd=sd(value)) %>% # Need to average across runs
+  filter(variable %in% monitored_variables) %>%
+  ggplot()+
+  geom_line(aes(x=layer, y=value_mean, color=scenario))+
+  geom_errorbar(aes(ymin=value_mean-value_sd,ymax=value_mean+value_sd,x=layer, group=scenario),color='gray',width=0.001, alpha=0.3)+
+  geom_vline(xintercept = c(131,149),color-'black')+
+  scale_color_manual(values = scenario_cols)+
+  facet_wrap(~variable, scales='free')+
+  mytheme
 
 

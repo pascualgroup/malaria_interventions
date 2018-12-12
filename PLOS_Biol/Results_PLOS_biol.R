@@ -29,13 +29,14 @@ gg_labels <- as_labeller(c(`04` = 'Low',
                            `Module` = 'Module',
                            `Repertoire` = 'Repertoire'))
 
-all_experiments <- expand.grid(PS=sprintf('%0.2d', 4:6),
+all_experiments <- expand.grid(PS=sprintf('%0.2d', c(4:6,18)),
                            scenario=c('S','N','G'), 
                            exp='001',
                            run=1:50,
                            # cutoff_prob=seq(0.3,0.95,0.05),
                            stringsAsFactors = F)
-all_experiments$cutoff_prob <- rep(c(0.3,0.6,0.85),max(all_experiments$run)*3)
+cutoff_df <- tibble(PS=sprintf('%0.2d', c(4:6,18)),cutoff_prob=c(0.3,0.6,0.85,0.85))
+all_experiments <- left_join(all_experiments,cutoff_df)
 
 
 files_list <- list.files('/media/Data/PLOS_Biol/Results/cutoff_to_use')
@@ -57,9 +58,9 @@ files %>% filter(PS=='06') %>% group_by(PS,scenario,cutoff_prob) %>% count(type)
 # Module examples, Relative persistence, Temporal Diversity, mFst.
 # Number of repertoires per module is not so useful.
 
-PS_for_figure <- '06'
+PS_for_figure <- '18'
 
-experiments <- subset(all_experiments, PS==PS_for_figure)
+experiments <- subset(all_experiments, PS==PS_for_figure & run%in%1:10)
 
 module_results <- c()
 for (i in 1:nrow(experiments)){
@@ -96,6 +97,32 @@ module_results %>%
   scale_color_manual(values = scenario_cols)+
   labs(y= 'module ID', x='Time (months)')+
   facet_wrap(~scenario, scales='free', labeller = gg_labels)+manuscript_theme
+
+module_results %>% 
+  group_by(PS,scenario,run,layer) %>% 
+  summarise(repertoires=length(unique(strain_cluster))) %>% 
+  group_by(PS,scenario,layer) %>% 
+  summarise(repertoires_mean=mean(repertoires),
+            repertoires_sd=sd(repertoires)) %>% 
+  ggplot()+
+  geom_errorbar(aes(x=layer, ymax=repertoires_mean+repertoires_sd, ymin=repertoires_mean-repertoires_sd, group=scenario),color='gray50')+
+  geom_line(aes(x=layer, y=repertoires_mean, color=scenario))+
+  scale_color_manual(values = scenario_cols)+
+  labs(y= '# repertoires', x='Time (months)')+mytheme
+
+module_results %>% 
+  group_by(PS,scenario,run,layer) %>% 
+  summarise(modules=length(unique(module))) %>% 
+  group_by(PS,scenario,layer) %>% 
+  summarise(modules_mean=mean(modules),
+            modules_sd=sd(modules)) %>% 
+  ggplot()+
+  geom_errorbar(aes(x=layer, ymax=modules_mean+modules_sd, ymin=modules_mean-modules_sd, group=scenario),color='gray50')+
+  geom_line(aes(x=layer, y=modules_mean, color=scenario))+
+  scale_color_manual(values = scenario_cols)+
+  labs(y= '# modules', x='Time (months)')+mytheme
+    
+  
 
 # Relative persistence
 module_persistence <- module_results %>% 

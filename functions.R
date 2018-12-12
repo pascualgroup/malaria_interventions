@@ -1039,6 +1039,32 @@ get_duration_infection <- function(parameter_space, scenario, experiment, run){
 
 
 build_calendar <- function(num_years = 25, year_to_start=10){
+  # This calendar helps match the days inthe ABM to the days in the empirical
+  # data. This is especially important for simulations of seasonality, to match
+  # the rain cycle and the IRS rounds.
+  
+  # Infomration on IRS:
+  #
+  # Survey 1: October 2012/End of Wet
+  # Survey 2: June 2013/ End of Dry
+  # IRS Round 1: Between October-December 2013 (End of the wet to Beginning of dry): 80% of Compounds sprayed with Organophosphates
+  # Survey 3: June 2014/End of Dry
+  # IRS Round 2: Between May-July 2014 (End of Dry/Beginning of Wet): 97% of Compounds sprayed with Organophosphates
+  # Survey 4: October 2014/End of Wet
+  # IRS Round 3: Between December 2014-Febuary 2015 (Middle of Dry): 96% of Compounds sprayed with Organophosphates Actellic 300CS
+  # Survey 5: October 2015/End of Wet
+  # Survey 6: June 2016/End of Dry
+  
+  # IRS interventions are supposed to be timed and completed before the start of
+  # the wet season so that the insecticide is on the walls of the homes before the
+  # mosquito population expands.An IRS round means that every home is sprayed once
+  # during the time frame indicated. Insectisides are expected to last between
+  # ~2-3 months (Organophosphates) or ~4-6 months (Organophosphates newer
+  # formulation: Actellic 300CS) depending on the insecticide and/or formualtion
+  # used.  This impacts the effect on reducing the mosquito population as females
+  # rest on walls ~2-3 days post feeding, and therefore will be exposed to the
+  # insecticide leading to death and therefore restricting/preventing transmission
+  # of P.fal.
   # num_years: This is the number of years from start to end, not including pre-burnin
   months_in_year <- rep(c('Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'), each=30)
   calendar <- data.frame(running_day=seq(from = 1,to = 360*num_years,by=1),
@@ -1282,20 +1308,24 @@ createTemporalNetwork <- function(ps, scenario, exp, run, cutoff_prob=0.9, cutof
   # Build "interlayer networks"
   print('Building inter-layer networks...')
   interlayer_matrices <- list()
-  for (t in layers_to_include[-length(layers_to_include)]){
-    strain_copies_t <- rownames(intralayer_matrices[[t]]) # repertoires at time t
-    strain_copies_t1 <- rownames(intralayer_matrices[[t+1]]) # repertoires at time t+1
+  for (current_layer in layers_to_include[-length(layers_to_include)]){
+    next_layer <- layers_to_include[which(layers_to_include==current_layer)+1]
+    current_layer_idx <- which(layers_to_include==current_layer)
+    next_layer_idx <- which(layers_to_include==current_layer)+1
+    
+    strain_copies_t <- rownames(intralayer_matrices[[current_layer_idx]]) # repertoires at time t
+    strain_copies_t1 <- rownames(intralayer_matrices[[next_layer_idx]]) # repertoires at time t+1
     # need minimum of 2 strains in t and t+1 to build a matrix
     if (length(strain_copies_t)<2 | length(strain_copies_t1)<2){
-      print(paste('No interlayer edges between layers',t, 'and',t+1,'because there are < 2 repertoires.'))
+      print(paste('No interlayer edges between layers ',current_layer,' and ',next_layer,' because there are < 2 repertoires in one of them.',sep=''))
       return(NULL)
     } 
-    sampled_infections_interlayer <- subset(sampled_infections, layer%in%c(t,t+1)) # This is MUCH faster than sampled_infections_layer <- sampled_infections %>% filter(layer==l)
+    sampled_infections_interlayer <- subset(sampled_infections, layer%in%c(current_layer,next_layer)) # This is MUCH faster than sampled_infections_layer <- sampled_infections %>% filter(layer==l)
     x <- build_layer(sampled_infections_interlayer)$similarity_matrix # This is the similarity matrix for all the repertoires in both layers.
     # Pull only the similarity values between the repertoires from the correct layers (i.e. create a bipartite)
     inter_layer_edges_matrix <- x[strain_copies_t,strain_copies_t1]
-    interlayer_matrices[[t]] <- inter_layer_edges_matrix
-    print(paste('Built interlayer edges for layers: ',t,'-->',t+1,sep=''))
+    interlayer_matrices[[current_layer_idx]] <- inter_layer_edges_matrix
+    print(paste('Built interlayer edges for layers: ',current_layer,'-->',next_layer,sep=''))
   }
   
   # Create cutoff
@@ -1907,7 +1937,7 @@ build_infomap_objects <- function(network_object, write_to_infomap_file=T, infom
   print('Creating intralayer edge lists')
   layers <- 1:length(intralayer_matrices)
   infomap_intralayer <- lapply(layers, function (x) matrix_to_infomap_intralayer(x, nodeList = nodeList, network_object = network_object))
-  print(head(infomap_intralayer[[300]]))
+  print(head(infomap_intralayer[[1]]))
   print('Creating a DF of intralayer edges')
   infomap_intralayer <- do.call("rbind", infomap_intralayer)
   print(head(infomap_intralayer))
@@ -1998,6 +2028,8 @@ infomap_readTreeFile <- function(PS, scenario, exp, run, cutoff_prob, folder='/m
   # modules2 %>% ggplot(aes(x=layer,y=module))+geom_point()
   
   # Change node IDs to repertoire names
+  modules2$nodeID <- as.integer(modules2$nodeID)
+  print(paste('Same strains in module and the node_list strain data frames?',setequal(modules2$nodeID,node_list$nodeID)))
   modules2 %<>% left_join(node_list) %>% 
     rename(strain_unique=nodeLabel) %>% 
     mutate(strain_id=str_split(strain_unique,'_', simplify = T)[,1])
@@ -2037,16 +2069,20 @@ calculate_module_diversity <- function(PS, scenario, exp, run, cutoff_prob){
     file_modules <- paste('Results/',PS,'_',scenario,'/PS',PS,'_',scenario,'_E',exp,'_R',run,'_',cutoff_prob,'_modules.csv',sep='')
     file_strains <- paste('Results/',PS,'_',scenario,'/PS',PS,'_',scenario,'_E',exp,'_R',run,'_',cutoff_prob,'_sampled_strains.csv',sep='')  
   }
+  # file_modules <- paste('PS',PS,'_',scenario,'_E',exp,'_R',run,'_',cutoff_prob,'_modules.csv',sep='')
+  # file_strains <- paste('PS',PS,'_',scenario,'_E',exp,'_R',run,'_',cutoff_prob,'_sampled_strains.csv',sep='')  
   
   if(file.exists(file_modules) & file.exists(file_strains)){
     print(paste(PS,scenario,exp,run,cutoff_prob,sep=' | '))
     modules <- read_csv(file_modules, col_types = 'iiccciccccd')
     
+    max_layer_to_persist <- max(modules$layer)-min(modules$layer)+1 # This is important for analyses that do not have sequential number of layers (1:300), like in the empirical IRS.
+      
     module_persistence <- modules %>% 
       select(scenario, PS, run, cutoff_prob, layer, module) %>% 
       group_by(scenario, PS,run,cutoff_prob,module) %>% 
       summarise(birth_layer=min(layer), death_layer=max(layer), persistence=death_layer-birth_layer+1) %>% 
-      mutate(relative_persistence=persistence/(300-birth_layer+1))
+      mutate(relative_persistence=persistence/(max_layer_to_persist-birth_layer+1))
     
     sampled_strains <- read_csv(file_strains, col_types = 'ccc')
     sampled_strains <-  sampled_strains[,-3]
