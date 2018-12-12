@@ -1037,6 +1037,61 @@ get_duration_infection <- function(parameter_space, scenario, experiment, run){
   return(as.tibble(sampled_duration))
 }
 
+
+build_calendar <- function(num_years = 25, year_to_start=10){
+  # num_years: This is the number of years from start to end, not including pre-burnin
+  months_in_year <- rep(c('Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'), each=30)
+  calendar <- data.frame(running_day=seq(from = 1,to = 360*num_years,by=1),
+                         year_sim=rep(1:num_years, each=360),
+                         month_sim=rep(months_in_year,num_years),
+                         day_sim=rep(1:30,num_years*12),
+                         layer=rep(1:300, each=30),
+                         stringsAsFactors = F)
+  
+  calendar$survey <- NA
+  calendar$IRS <- NA
+  
+  # Set the dates corresponding to the empirical survey dates. year_to_start is
+  # the year in the simulation where simulated data is starting to
+  # be matched to the empirical data.
+  calendar$survey[calendar$year_sim==year_to_start & calendar$month_sim=='Oct'] <- 'S1'
+  calendar$survey[calendar$year_sim==year_to_start+1 & calendar$month_sim=='Jun'] <- 'S2'
+  calendar$survey[calendar$year_sim==year_to_start+2 & calendar$month_sim=='Jun'] <- 'S3'
+  calendar$survey[calendar$year_sim==year_to_start+2 & calendar$month_sim=='Oct'] <- 'S4'
+  calendar$survey[calendar$year_sim==year_to_start+3 & calendar$month_sim=='Oct'] <- 'S5'
+  calendar$survey[calendar$year_sim==year_to_start+4 & calendar$month_sim=='Jun'] <- 'S6'
+  
+  IRS_design <- data.frame(IRS=paste('IRS',1:3,sep='_'),
+                           start_day=c(1,1,1),
+                           start_month=c('Nov','Jun','Jan'),
+                           start_year=c(year_to_start+1,year_to_start+2,year_to_start+3)
+  )
+  IRS_design %<>% rowwise() %>% 
+    mutate(running_day_start=extract_from_calendar(calendar, run_day=NULL, d=start_day, m=start_month, y=start_year)$running_day)
+  IRS_design$running_day_end <- IRS_design$running_day_start+c(75,75,150)-1
+  
+  calendar[calendar$running_day>=IRS_design$running_day_start[1] & calendar$running_day<=IRS_design$running_day_end[1],'IRS'] <- 'IRS1'
+  calendar[calendar$running_day>=IRS_design$running_day_start[2] & calendar$running_day<=IRS_design$running_day_end[2],'IRS'] <- 'IRS2'
+  calendar[calendar$running_day>=IRS_design$running_day_start[3] & calendar$running_day<=IRS_design$running_day_end[3],'IRS'] <- 'IRS3'
+  
+  return(calendar)
+}
+
+extract_from_calendar <- function(cal, run_day=NULL, y=NULL, m=NULL, d=NULL){
+  if(!is.null(run_day)){
+    return(subset(cal, running_day==run_day))
+  } else {
+    if (is.null(d)){
+      x <- subset(cal, year_sim==y & month_sim==m)
+      return(x)
+    } else {
+      x <- subset(cal, year_sim==y & month_sim==m & day_sim==d)
+      return(x)
+    }  
+  }
+}
+
+
 # Generate networks -------------------------------------------------------
 
 # Calculate edge values in networks of repertories
