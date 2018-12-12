@@ -1331,10 +1331,19 @@ createTemporalNetwork <- function(ps, scenario, exp, run, cutoff_prob=0.9, cutof
   layer_summary <- as.tibble(layer_summary) %>% select(layer, hosts, repertoires_unique, repertoires_total, density, density_interlayer)
   
   print('Done!')
+  
+  if (exists('intralayer_edges') & exists('interlayer_edges')){
+    intralayer_edges_no_cutoff=intralayer_edges # Raw values of intralayer edges, in case needed to plot edge weight distributions; and only produced when cutoff is not already defined
+    interlayer_edges_no_cutoff=interlayer_edges # Raw values of interlayer edges, in case needed to plot edge weight distributions; and only produced when cutoff is not already defined
+  } else {
+    intralayer_edges_no_cutoff=NULL
+    interlayer_edges_no_cutoff=NULL
+  }
+  
   return(list(intralayer_matrices=intralayer_matrices, 
               interlayer_matrices=interlayer_matrices,
-              intralayer_edges_no_cutoff=intralayer_edges, # Raw values of intralayer edges, incase needed to plot edge weight distributions
-              interlayer_edges_no_cutoff=interlayer_edges, # Raw values of interlayer edges, incase needed to plot edge weight distributions
+              intralayer_edges_no_cutoff=intralayer_edges_no_cutoff, # Raw values of intralayer edges, incase needed to plot edge weight distributions
+              interlayer_edges_no_cutoff=interlayer_edges_no_cutoff, # Raw values of interlayer edges, incase needed to plot edge weight distributions
               cutoff_prob=cutoff_prob, 
               cutoff_value=cutoff_value, 
               layer_summary=layer_summary, 

@@ -8,7 +8,7 @@ library(igraph, quietly = T)
 library(data.table, quietly = T)
 
 if (length(commandArgs(trailingOnly=TRUE))==0) {
-  args <- c('03','N','001',0.9, '')
+  args <- c('18','S','002',0.85, '')
 } else {
   args <- commandArgs(trailingOnly=TRUE)
 }
