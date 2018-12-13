@@ -22,8 +22,8 @@ design <- loadExperiments_GoogleSheets(local = F, workBookName = 'PLOS_Biol_desi
 
 # Create the reference experiments (checkpoint and control)
 ps_range <- sprintf('%02d', 18)
-exp_range <- sprintf('%0.3d', 2)
-run_range <- 1
+exp_range <- sprintf('%0.3d', 0:1)
+run_range <- 11:50
 work_scenario <- 'G'
 # Generate 000 and 001 experiments
 design_subset <- subset(design, PS %in% ps_range & scenario==work_scenario & exp %in% exp_range)
@@ -289,13 +289,13 @@ cal %>% filter(!is.na(survey)) %>% group_by(survey,layer) %>%
 sbatch_arguments <- expand.grid(PS=sprintf('%0.2d', 18),
                                 scen=c('S'),
                                 exp='002',
-                                array='11-50',
+                                array='1',
                                 layers='118,126,138,142,154,162',
                                 # layers='1:300',
                                 stringsAsFactors = F)
 sbatch_arguments$cutoff_prob <- 0.85
 sbatch_arguments$mem_per_cpu <- 32000
-sbatch_arguments$time <- '03:00:00'
+sbatch_arguments$time <- '02:00:00'
 
 calculate_mFst <- F
 for (scenario in unique(sbatch_arguments$scen)){

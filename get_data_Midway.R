@@ -1,11 +1,11 @@
 # Initialize --------------------------------------------------------------
 source('functions.R')
 # prep.packages(c('sqldf','tidyverse','magrittr','igraph','data.table'))
-library(sqldf, quietly = T)
-library(tidyverse, quietly = T)
-library(magrittr, quietly = T)
-library(igraph, quietly = T)
-library(data.table, quietly = T)
+library(sqldf, quietly = T, warn.conflicts = F)
+library(tidyverse, quietly = T, warn.conflicts = F)
+library(magrittr, quietly = T, warn.conflicts = F)
+library(igraph, quietly = T, warn.conflicts = F)
+library(data.table, quietly = T, warn.conflicts = F)
 
 if (length(commandArgs(trailingOnly=TRUE))==0) {
   args <- c('18','S','001',0.85, '118,126,138,142,154,162')

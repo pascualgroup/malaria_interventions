@@ -2029,6 +2029,7 @@ infomap_readTreeFile <- function(PS, scenario, exp, run, cutoff_prob, folder='/m
   
   # Change node IDs to repertoire names
   modules2$nodeID <- as.integer(modules2$nodeID)
+  node_list$nodeID <- as.integer(node_list$nodeID)
   print(paste('Same strains in module and the node_list strain data frames?',setequal(modules2$nodeID,node_list$nodeID)))
   modules2 %<>% left_join(node_list) %>% 
     rename(strain_unique=nodeLabel) %>% 
