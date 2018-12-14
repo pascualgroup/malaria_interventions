@@ -421,30 +421,3 @@ for (i in 1:nrow(cases)){
   print(length(unique(module_results$gene_id)))
 }
 
-
-# Empirical ---------------------------------------------------------------
-
-IRS_S <- get_data(parameter_space = '18', scenario = 'S', experiment = '002', run = 1, cutoff_prob = 0.85, use_sqlite = T, tables_to_get = 'summary_general')[[1]]
-IRS_G <- get_data(parameter_space = '18', scenario = 'G', experiment = '002', run = 1, cutoff_prob = 0.85, use_sqlite = T, tables_to_get = 'summary_general')[[1]]
-IRS_N <- get_data(parameter_space = '18', scenario = 'N', experiment = '002', run = 1, cutoff_prob = 0.85, use_sqlite = T, tables_to_get = 'summary_general')[[1]]
-
-IRS_S$layer <- 1:300
-IRS_G$layer <- 1:300
-IRS_N$layer <- 1:300
-IRS_S %>% bind_rows(IRS_G) %>% bind_rows(IRS_N) %>% 
-  mutate(scenario=factor(scenario, levels=c('S','G','N'))) %>% 
-  filter(layer%in%100:200) %>% 
-  select(-year, -month, -n_infected) %>% 
-  gather(variable, value, -pop_id, -time, -exp, -PS, -scenario, -run, -layer) %>% 
-  group_by(pop_id, time, layer, exp, PS, scenario, variable) %>%
-  summarise(value_mean=mean(value), value_sd=sd(value)) %>% # Need to average across runs
-  filter(variable %in% monitored_variables) %>%
-  ggplot()+
-  geom_line(aes(x=layer, y=value_mean, color=scenario))+
-  geom_errorbar(aes(ymin=value_mean-value_sd,ymax=value_mean+value_sd,x=layer, group=scenario),color='gray',width=0.001, alpha=0.3)+
-  geom_vline(xintercept = c(131,149),color-'black')+
-  scale_color_manual(values = scenario_cols)+
-  facet_wrap(~variable, scales='free')+
-  mytheme
-
-

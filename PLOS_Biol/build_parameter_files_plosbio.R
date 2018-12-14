@@ -287,7 +287,7 @@ cal %>% filter(!is.na(survey)) %>% group_by(survey,layer) %>%
   summarise(first_day=min(running_day),last_day=max(running_day), year=unique(year_sim)+2002, month=unique(month_sim))
 
 sbatch_arguments <- expand.grid(PS=sprintf('%0.2d', 18),
-                                scen=c('S'),
+                                scen=c('N','G'),
                                 exp='002',
                                 array='1',
                                 layers='118,126,138,142,154,162',
