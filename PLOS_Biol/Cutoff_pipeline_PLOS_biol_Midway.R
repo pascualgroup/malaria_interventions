@@ -25,14 +25,17 @@ gg_labels <- as_labeller(c(`04` = 'Low',
                            `N` = 'Complete neutrality',
                            `Repertoire`='Repertoire',
                            `Module`='Module'))
+
+cutoff_prob_seq = seq(0.25,0.95,0.05)
+
 # Edge weights and cutoffs -----------------------------------------------
 
 if (task=='edge_weight_distributions'){
   print('Getting edge weight distributions...')
   # Selection
-  edges_S_04 <- get_edge_disributions(PS = '04',scenario = 'S',exp = '001',1, 0.25)
-  edges_S_05 <- get_edge_disributions(PS = '05',scenario = 'S',exp = '001',1, 0.7)
-  edges_S_06 <- get_edge_disributions(PS = '06',scenario = 'S',exp = '001',1, 0.9)
+  edges_S_04 <- get_edge_disributions(PS = '04',scenario = 'S',exp = '001',1, 0.3)
+  edges_S_05 <- get_edge_disributions(PS = '05',scenario = 'S',exp = '001',1, 0.6)
+  edges_S_06 <- get_edge_disributions(PS = '06',scenario = 'S',exp = '001',1, 0.85)
   x <- rbind(edges_S_04,edges_S_05,edges_S_06)
   x <- as.tibble(x)
   cutoff_df <- x %>% distinct(PS, cutoff_value, cutoff_prob)
@@ -49,9 +52,9 @@ if (task=='edge_weight_distributions'){
     theme_bw(base_size=26)
   dev.off()
   # GI
-  edges_G_04 <- get_edge_disributions(PS = '04',scenario = 'G',exp = '001',1, 0.25)
-  edges_G_05 <- get_edge_disributions(PS = '05',scenario = 'G',exp = '001',1, 0.7)
-  edges_G_06 <- get_edge_disributions(PS = '06',scenario = 'G',exp = '001',1, 0.9)
+  edges_G_04 <- get_edge_disributions(PS = '04',scenario = 'G',exp = '001',1, 0.3)
+  edges_G_05 <- get_edge_disributions(PS = '05',scenario = 'G',exp = '001',1, 0.6)
+  edges_G_06 <- get_edge_disributions(PS = '06',scenario = 'G',exp = '001',1, 0.85)
   x <- rbind(edges_G_04,edges_G_05,edges_G_06)
   x <- as.tibble(x)
   cutoff_df <- x %>% distinct(PS, cutoff_value, cutoff_prob)
@@ -68,9 +71,9 @@ if (task=='edge_weight_distributions'){
     theme_bw(base_size=26)
   dev.off()
   # Neutral
-  edges_N_04 <- get_edge_disributions(PS = '04',scenario = 'N',exp = '001',1, 0.25, get_inter = F)
-  edges_N_05 <- get_edge_disributions(PS = '05',scenario = 'N',exp = '001',1, 0.7, get_inter = F)
-  edges_N_06 <- get_edge_disributions(PS = '06',scenario = 'N',exp = '001',1, 0.9, get_inter = F)
+  edges_N_04 <- get_edge_disributions(PS = '04',scenario = 'N',exp = '001',1, 0.3, get_inter = F)
+  edges_N_05 <- get_edge_disributions(PS = '05',scenario = 'N',exp = '001',1, 0.6, get_inter = F)
+  edges_N_06 <- get_edge_disributions(PS = '06',scenario = 'N',exp = '001',1, 0.85, get_inter = F)
   x <- rbind(edges_N_04,edges_N_05,edges_N_06)
   x <- as.tibble(x)
   cutoff_df <- x %>% distinct(PS, cutoff_value, cutoff_prob)
@@ -93,7 +96,7 @@ if (task=='edge_weight_distributions'){
 if (task=='sensitivity_cutoff_selection'){
   print('Getting edge cutoffs for selection only (Boxplots)')
   # Get results
-  results_cutoff <- get_results_for_cutoff(cutoff_prob_seq = seq(0.05,0.95,0.05), scenario = 'S', run_range = 1:10)
+  results_cutoff <- get_results_for_cutoff(cutoff_prob_seq = cutoff_prob_seq, scenario = 'S', run_range = 1:10)
   write_csv(results_cutoff, 'Results/results_cutoff_S.csv')
   
   # Examples for modules
@@ -129,6 +132,7 @@ if (task=='sensitivity_cutoff_selection'){
     rename(id=strain_cluster)
   
   persistence_df <- module_persistence %>% bind_rows(strain_persistence) 
+  write_csv(persistence_df, 'Results/persistence_df_cutoff_S.csv')
   
   png('Results/persistence_boxplots.png', width = 1920, height = 1080)
   persistence_df %>% 
@@ -137,7 +141,7 @@ if (task=='sensitivity_cutoff_selection'){
     stat_summary(fun.y=mean, color="red", geom="point", 
                  shape=18, size=3,show.legend = FALSE)+
     facet_grid(PS~type, scales='free', labeller = gg_labels)+
-    scale_x_continuous(breaks = seq(0.05,0.95,0.1))+
+    scale_x_continuous(breaks = cutoff_prob_seq)+
     labs(x='Cut off', y=' Persistence')+
     scale_fill_manual(values=ps_cols)+mytheme
   dev.off()
@@ -149,7 +153,7 @@ if (task=='sensitivity_cutoff_selection'){
     stat_summary(fun.y=mean, color="red", geom="point", 
                  shape=18, size=3,show.legend = FALSE)+  
     facet_grid(PS~type, scales='free', labeller = gg_labels)+
-    scale_x_continuous(breaks = seq(0.05,0.95,0.1))+
+    scale_x_continuous(breaks = cutoff_prob_seq)+
     labs(x='Cut off', y=' Relative persistence')+
     scale_fill_manual(values=ps_cols)+mytheme
   dev.off()
@@ -164,7 +168,7 @@ if (task=='sensitivity_cutoff_selection'){
     stat_summary(fun.y=mean, color="red", geom="point", 
                  shape=18, size=3,show.legend = FALSE)+
     facet_grid(~PS, scales='free', labeller = gg_labels)+
-    scale_x_continuous(breaks = seq(0.05,0.95,0.1))+
+    scale_x_continuous(breaks = cutoff_prob_seq)+
     labs(x='Cut off', y=' Modules per layer')+
     scale_fill_manual(values=ps_cols)+mytheme
   dev.off()
@@ -180,7 +184,7 @@ if (task=='sensitivity_cutoff_selection'){
     stat_summary(fun.y=mean, color="red", geom="point", 
                  shape=18, size=3,show.legend = FALSE)+
     facet_grid(~PS, scales='free', labeller = gg_labels)+
-    scale_x_continuous(breaks = seq(0.05,0.95,0.1))+
+    scale_x_continuous(breaks = cutoff_prob_seq)+
     labs(x='Cut off', y='Repertoires per module')+
     scale_fill_manual(values=ps_cols)+mytheme
   dev.off()
@@ -200,7 +204,7 @@ if (task=='sensitivity_cutoff_selection'){
   #   stat_summary(fun.y=mean, color="red", geom="point", 
   #                shape=18, size=3,show.legend = FALSE)+
   #   facet_grid(~PS, scales='free', labeller = ps_labels)+
-  #   scale_x_continuous(breaks = seq(0.05,0.95,0.1))+
+  #   scale_x_continuous(breaks = cutoff_prob_seq)+
   #   labs(x='Cut off', y='Repertoires per module')+
   #   scale_fill_manual(values=ps_cols)+mytheme
   
@@ -210,7 +214,7 @@ if (task=='sensitivity_cutoff_selection'){
 if (task=='sensitivity_cutoff_all_scenarios'){
   print('Getting edge distributions for all scenarios...')
   
-  results_cutoff_N <- get_results_for_cutoff(cutoff_prob_seq = seq(0.05,0.95,0.05), scenario = 'N', run_range = 1:10)
+  results_cutoff_N <- get_results_for_cutoff(cutoff_prob_seq = cutoff_prob_seq, scenario = 'N', run_range = 1:10)
   write_csv(results_cutoff_N, 'Results/results_cutoff_N.csv')
   png('Results/module_examples_N.png', width = 1920, height = 1080)
   results_cutoff_N %>% 
@@ -227,7 +231,7 @@ if (task=='sensitivity_cutoff_all_scenarios'){
   dev.off()
   
   
-  results_cutoff_G <- get_results_for_cutoff(cutoff_prob_seq = seq(0.05,0.95,0.05), scenario = 'G', run_range = 1:10)
+  results_cutoff_G <- get_results_for_cutoff(cutoff_prob_seq = cutoff_prob_seq, scenario = 'G', run_range = 1:10)
   write_csv(results_cutoff_G, 'Results/results_cutoff_G.csv')
   png('Results/module_examples_G.png', width = 1920, height = 1080)
   results_cutoff_G %>% 
@@ -278,6 +282,13 @@ if (task=='sensitivity_cutoff_all_scenarios'){
               median_persistence=median(persistence),
               median_relative_persistence=median(relative_persistence)
     )
+  write_csv(persistence_df, 'Results/persistence_df_cutoff_SNG.csv')
+  
+  persistence_df_N %<>% persistence_df %>% filter(scenario=='N')
+  write_csv(persistence_df_N, 'Results/persistence_df_cutoff_N.csv')
+  persistence_df_G %<>% persistence_df %>% filter(scenario=='G')
+  write_csv(persistence_df_G, 'Results/persistence_df_cutoff_G.csv')
+  
   
   png('Results/module_persistence_scenarios.png', width = 1920, height = 1080)
   persistence_df %>% 
@@ -286,7 +297,7 @@ if (task=='sensitivity_cutoff_all_scenarios'){
     geom_point(aes(y=mean_persistence))+geom_line(aes(y=mean_persistence))+
     geom_point(aes(y=median_persistence), shape=15)+geom_line(aes(y=median_persistence), linetype='dashed')+
     facet_grid(PS~scenario, scales='free', labeller = gg_labels)+
-    scale_x_continuous(breaks = seq(0.05,0.95,0.1))+
+    scale_x_continuous(breaks = cutoff_prob_seqs)+
     labs(x='Cut off', y=' Mean or median MODULE persistence')+
     scale_color_manual(values=scenario_cols)+mytheme
   dev.off()
@@ -298,7 +309,7 @@ if (task=='sensitivity_cutoff_all_scenarios'){
     geom_point(aes(y=mean_persistence))+geom_line(aes(y=mean_persistence))+
     geom_point(aes(y=median_persistence), shape=15)+geom_line(aes(y=median_persistence), linetype='dashed')+
     facet_grid(PS~scenario, scales='free', labeller = gg_labels)+
-    scale_x_continuous(breaks = seq(0.05,0.95,0.1))+
+    scale_x_continuous(breaks = cutoff_prob_seq)+
     labs(x='Cut off', y=' Mean or median REPERTOIRE persistence')+
     scale_color_manual(values=scenario_cols)+mytheme
   dev.off()
@@ -311,7 +322,7 @@ if (task=='sensitivity_cutoff_all_scenarios'){
     geom_point(aes(y=mean_relative_persistence))+geom_line(aes(y=mean_relative_persistence))+
     geom_point(aes(y=median_relative_persistence), shape=15)+geom_line(aes(y=median_relative_persistence), linetype='dashed')+
     facet_grid(PS~scenario, scales='free', labeller = gg_labels)+
-    scale_x_continuous(breaks = seq(0.05,0.95,0.1))+
+    scale_x_continuous(breaks = cutoff_prob_seq)+
     labs(x='Cut off', y=' Mean or median MODULE relative persistence')+
     scale_color_manual(values=scenario_cols)+mytheme
   dev.off()
@@ -323,7 +334,7 @@ if (task=='sensitivity_cutoff_all_scenarios'){
     geom_point(aes(y=mean_relative_persistence))+geom_line(aes(y=mean_relative_persistence))+
     geom_point(aes(y=median_relative_persistence), shape=15)+geom_line(aes(y=median_relative_persistence), linetype='dashed')+
     facet_grid(PS~scenario, scales='free', labeller = gg_labels)+
-    scale_x_continuous(breaks = seq(0.05,0.95,0.1))+
+    scale_x_continuous(breaks = cutoff_prob_seq)+
     labs(x='Cut off', y=' Mean or median REPERTOIRE relative persistence')+
     scale_color_manual(values=scenario_cols)+mytheme
   dev.off()
@@ -340,7 +351,7 @@ if (task=='sensitivity_cutoff_all_scenarios'){
     geom_point(aes(y=mean_modules_per_layer))+geom_line(aes(y=mean_modules_per_layer))+
     geom_point(aes(y=median_modules_per_layer), shape=15)+geom_line(aes(y=median_modules_per_layer), linetype='dashed')+
     facet_grid(PS~scenario, scales='free', labeller = gg_labels)+
-    scale_x_continuous(breaks = seq(0.05,0.95,0.1))+
+    scale_x_continuous(breaks = cutoff_prob_seq)+
     labs(x='Cut off', y=' Mean or median modules per layer')+
     scale_color_manual(values=scenario_cols)+mytheme
   dev.off()
@@ -357,7 +368,7 @@ if (task=='sensitivity_cutoff_all_scenarios'){
     geom_point(aes(y=mean_repertoires_per_module))+geom_line(aes(y=mean_repertoires_per_module))+
     geom_point(aes(y=median_repertoires_per_layer), shape=15)+geom_line(aes(y=median_repertoires_per_layer), linetype='dashed')+
     facet_grid(PS~scenario, scales='free', labeller = gg_labels)+
-    scale_x_continuous(breaks = seq(0.05,0.95,0.1))+
+    scale_x_continuous(breaks = cutoff_prob_seq)+
     labs(x='Cut off', y=' Mean or median Repertoires per module')+
     scale_color_manual(values=scenario_cols)+mytheme
   dev.off()
@@ -373,7 +384,7 @@ if (task=='within_module_diversity'){
                                  scenario=scenario, 
                                  exp='001',
                                  run_range=1:10,
-                                 cutoff_prob=seq(0.3,0.95,0.05),
+                                 cutoff_prob=cutoff_prob_seq,
                                  stringsAsFactors = F)
     statistic_results <- c()
     for (i in 1:nrow(design_cutoff)){
@@ -386,28 +397,28 @@ if (task=='within_module_diversity'){
       statistic_results <- rbind(statistic_results, x)
       # print(paste(object.size(statistic_results), nrow(statistic_results)))
     }
-    write_csv(statistic_results, paste('Results/statistic_results_',scenario,'.csv',sep=''))
+    write_csv(statistic_results, paste('Results/temporal_diversity_cutoff_',scenario,'.csv',sep=''))
     
     # statistic_results <- read_csv(paste('Results/statistic_results_',scenario,'.csv',sep=''))
     
     print(paste('Plotting statistic for scenario',scenario))
-    png(paste('Results/statistic_results_',scenario,'.png',sep=''), width = 1920, height = 1080)
+    png(paste('Results/temporal_diversity_cutoff_',scenario,'.png',sep=''), width = 1920, height = 1080)
     statistic_results %>% 
       ggplot(aes(x=cutoff_prob, y=statistic, group=cutoff_prob, fill=PS))+
       geom_boxplot(outlier.size=0)+
       stat_summary(fun.y=mean, color=scenario_cols[which(c('S','N','G')==scenario)], geom="point", 
                    shape=18, size=3,show.legend = FALSE)+
       facet_grid(~PS, scales='free', labeller = gg_labels)+
-      scale_x_continuous(breaks = seq(0.05,0.95,0.1))+
+      scale_x_continuous(breaks = cutoff_prob_seq)+
       labs(x='Cut off', y='Temporal diversity')+
       scale_fill_manual(values=ps_cols)+mytheme
     dev.off()
   }
   
   # Now plot for all scenarios
-  s <- read_csv('Results/statistic_results_S.csv', col_types = 'ccidiiiiddd')
-  n <- read_csv('Results/statistic_results_N.csv', col_types = 'ccidiiiiddd')
-  g <- read_csv('Results/statistic_results_G.csv', col_types = 'ccidiiiiddd')
+  s <- read_csv('Results/temporal_diversity_cutoff_S.csv', col_types = 'ccidiiiiddd')
+  n <- read_csv('Results/temporal_diversity_cutoff_N.csv', col_types = 'ccidiiiiddd')
+  g <- read_csv('Results/temporal_diversity_cutoff_G.csv', col_types = 'ccidiiiiddd')
   
   statistic_results <- rbind(s,n,g)
   
@@ -437,19 +448,19 @@ if (task=='within_module_diversity'){
     geom_point(aes(y=median_D), shape=15)+geom_line(aes(y=median_D), linetype='dashed')+
     geom_errorbar(aes(ymin=ymin_D_ci,ymax=ymax_D_ci),alpha=0.6, width=0.01, size=1)+
     facet_grid(PS~scenario, scales='free', labeller = gg_labels)+
-    scale_x_continuous(breaks = seq(0.05,0.95,0.1))+
+    scale_x_continuous(breaks = cutoff_prob_seq)+
     labs(x='Cut off', y=' Mean or median D')+
     scale_color_manual(values=scenario_cols)+mytheme
   dev.off()
   
-  png('Results/statistic_scenarios.png', width = 1920, height = 1080)
+  png('Results/temporal_diversity_cutoff_scenarios.png', width = 1920, height = 1080)
   x %>% 
     ggplot(aes(x=cutoff_prob, color=scenario))+
     geom_point(aes(y=mean_statistic))+geom_line(aes(y=mean_statistic))+
     geom_point(aes(y=median_statistic), shape=15)+geom_line(aes(y=median_statistic), linetype='dashed')+
     geom_errorbar(aes(ymin=ymin_statistic_ci,ymax=ymax_statistic_ci),alpha=0.6, width=0.01, size=1)+
     facet_grid(PS~scenario, scales='free', labeller = gg_labels)+
-    scale_x_continuous(breaks = seq(0.05,0.95,0.1))+
+    scale_x_continuous(breaks = cutoff_prob_seq)+
     labs(x='Cut off', y=' Mean or median Temporal Diversity')+
     scale_color_manual(values=scenario_cols)+mytheme
   dev.off()

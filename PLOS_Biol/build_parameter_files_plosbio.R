@@ -216,10 +216,11 @@ files_py %>% filter(scenario=='G') %>% filter(as.numeric(PS)>=27) %>% distinct(P
 
 # Experiments for cutoff --------------------------------------------------
 
-cutoff_design <- expand.grid(PS=sprintf('%0.3d', 4:6),
+cutoff_design <- expand.grid(PS=sprintf('%0.2d', 6),
                              scenario=c('S','G','N'),
-                             cutoff_prob=seq(0.2,9,0.05),
-                             array='4-10',
+                             cutoff_prob=seq(0.25,0.95,0.05),
+                             array='1-10',
+                             calculate_mFst=F,
                              stringsAsFactors = F)
 cutoff_design$job_name <- paste(cutoff_design$PS, cutoff_design$scenario,'_',cutoff_design$cutoff_prob,sep='')
 cutoff_design$job_name <- gsub('\\.','',cutoff_design$job_name)
@@ -237,7 +238,7 @@ for (i in 1:nrow(cutoff_design)){
 }
 
 for (i in 1:nrow(cutoff_design)){
-  x <- readLines('~/GitHub/malaria_interventions/get_data_midway_plosbiol.sbatch')
+  x <- readLines('~/Documents/malaria_interventions/PLOS_Biol/get_data_midway_plosbiol.sbatch')
   ps <- cutoff_design$PS[i]
   scenario <- cutoff_design$scenario[i]
   cutoff_prob <- cutoff_design$cutoff_prob[i]
@@ -249,11 +250,16 @@ for (i in 1:nrow(cutoff_design)){
   str_sub(x[9],23,25) <- cutoff_design$mem_per_cpu[i]
   str_sub(x[19],5,7) <- ps
   str_sub(x[20],11,13) <- scenario
-  str_sub(x[22],13,16) <- cutoff_prob
-  writeLines(x, paste('~/GitHub/PLOS_Biol/Cutoff/','PS',ps,'_',scenario,'_',cutoff_prob,'_get_data_midway.sbatch',sep=''))
+  str_sub(x[21],6,8) <- '001'
+  str_sub(x[22],9,11) <- '1:300'
+  str_sub(x[23],13,16) <- cutoff_design$cutoff_prob[i]
+  if (!cutoff_design$calculate_mFst[i]){
+    x <- x[-c(58:61)]
+  }
+  writeLines(x, paste('/media/Data/PLOS_Biol/Cutoff/','PS',ps,'_',scenario,'_',cutoff_prob,'_get_data_midway.sbatch',sep=''))
 }
 
-sink('~/GitHub/PLOS_Biol/Cutoff/run_cutoff_experiments.sh')
+sink('/media/Data/PLOS_Biol/Cutoff/run_cutoff_experiments.sh')
 for (i in 1:nrow(cutoff_design)){
   ps <- cutoff_design$PS[i]
   scenario <- cutoff_design$scenario[i]
@@ -294,8 +300,8 @@ sbatch_arguments <- expand.grid(PS=sprintf('%0.2d', 18),
                                 # layers='1:300',
                                 stringsAsFactors = F)
 sbatch_arguments$cutoff_prob <- 0.85
-sbatch_arguments$mem_per_cpu <- 32000
-sbatch_arguments$time <- '02:00:00'
+sbatch_arguments$mem_per_cpu <- 8000
+sbatch_arguments$time <- '01:00:00'
 
 calculate_mFst <- F
 for (scenario in unique(sbatch_arguments$scen)){
@@ -380,18 +386,18 @@ ls sqlite/PS$i*_G_* -lv | wc -l
 done
 
 # Check for result files
-for i in 'sampled_alleles' 'sampled_infections' 'sampled_strains' 'summary_general' 'network_info' 'layer_summary' 'node_list' 'Infomap_multilayer' 'Infomap_multilayer_expanded' 'modules' 'strain_sequences' 'unique_repertoires' 'temporal_diversity' 'mFst' 
+for i in 'sampled_alleles' 'sampled_infections' 'sampled_strains' 'summary_general' 'network_info' 'layer_summary' 'node_list' 'Infomap_multilayer.txt' 'Infomap_multilayer_expanded' 'modules' 'strain_sequences' 'unique_repertoires' 'temporal_diversity' 'mFst' 
 do
 echo $i
-# ls Results/04_S/*_0.3_$i* -lv | wc -l
-# ls Results/04_N/*_0.3_$i* -lv | wc -l
-# ls Results/04_G/*_0.3_$i* -lv | wc -l
-# ls Results/05_S/*_0.6_$i* -lv | wc -l
-# ls Results/05_N/*_0.6_$i* -lv | wc -l
-# ls Results/05_G/*_0.6_$i* -lv | wc -l
-# ls Results/06_S/*_0.85_$i* -lv | wc -l
-ls Results/06_N/*_0.85_$i* -lv | wc -l
-# ls Results/06_G/*_0.85_$i* -lv | wc -l
+ls Results/04_S/*_$i* -lv | wc -l
+ls Results/04_N/*_$i* -lv | wc -l
+ls Results/04_G/*_$i* -lv | wc -l
+ls Results/05_S/*_$i* -lv | wc -l
+ls Results/05_N/*_$i* -lv | wc -l
+ls Results/05_G/*_$i* -lv | wc -l
+# ls Results/06_S/*_$i* -lv | wc -l
+# ls Results/06_N/*_$i* -lv | wc -l
+# ls Results/06_G/*_$i* -lv | wc -l
 done
 
 # move result files to one folder

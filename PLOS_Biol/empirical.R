@@ -32,13 +32,30 @@ IRS_S %>% bind_rows(IRS_G) %>% bind_rows(IRS_N) %>%
 # is different than calculating the probablity of persisting at least t layers.
 # to calculate the later, we need to look at some cumulative sum of the
 # probablities: cumulative=1-cumsum(prob)
+
+PS <- '18'
+exp <- '001'
+scenario <- 'N'
+persistence_df <- c()
+f <- paste('/media/Data/PLOS_Biol/Results/PS',PS,'_',scenario,'_E',exp,'_persistence_df.csv',sep='')
+persistence_df <- read_csv(f)
 persistence_df %>%
-  group_by(PS,scenario,exp,run,type) %>%
+  group_by(PS,scenario,type) %>%
   count(persistence) %>% 
   mutate(prob=n/sum(n)) %>% 
   ggplot()+
-  geom_line(aes(x=persistence, y=prob, color=type, linetype=type),size=1)+ geom_point(aes(x=persistence, y=prob),color='red')+scale_y_continuous(limits = c(0,1))
+  geom_line(aes(x=persistence, y=prob, color=type, linetype=type),size=1)+ 
+  facet_grid(~type)+
+  scale_y_continuous(limits = c(0,1))
 
+repertoire_persistence_prob <- persistence_df %>%
+  filter(type=='Repertoire') %>% 
+  count(persistence) %>% 
+  mutate(prob=n/sum(n))
+
+  ggplot(repertoire_persistence_prob)+
+  geom_line(aes(x=persistence, y=prob),size=1)+ 
+  scale_y_continuous(limits = c(0,1))
 
 
 # Analyzing simulations ---------------------------------------------------

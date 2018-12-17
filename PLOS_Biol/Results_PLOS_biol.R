@@ -72,8 +72,9 @@ for (scenario in unique(experiments$scenario)){
   
   x <- read_csv(paste('/media/Data/PLOS_Biol/Results/PS',PS_for_figure,'_',scenario,'_E',exp,'_temporal_diversity.csv',sep=''))
   temporal_diversity <- rbind(temporal_diversity,x)
-  x <- read_csv(paste('/media/Data/PLOS_Biol/Results/PS',PS_for_figure,'_',scenario,'_E',exp,'_mFst.csv',sep=''))
-  mFst <- rbind(mFst,x)
+  
+  # x <- read_csv(paste('/media/Data/PLOS_Biol/Results/PS',PS_for_figure,'_',scenario,'_E',exp,'_mFst.csv',sep=''))
+  # mFst <- rbind(mFst,x)
 }
 
 module_results$scenario <- factor(module_results$scenario, levels=c('S','G','N'))
@@ -87,7 +88,7 @@ mFst$scenario <- factor(mFst$scenario, levels=c('S','G','N'))
 
 
 panel_A <- module_results %>% 
-  filter(run==3) %>%
+  filter(run==1) %>%
   filter(scenario=='S') %>% 
   distinct(module, layer) %>% 
   group_by(module) %>% summarise(birth_layer=min(layer),death_layer=max(layer)+1) %>% 
@@ -95,7 +96,7 @@ panel_A <- module_results %>%
   geom_rect(size=2, color=scenario_cols[1])+
   manuscript_theme+theme(axis.title = element_blank())
 panel_B <- module_results %>% 
-  filter(run==3) %>%
+  filter(run==1) %>%
   filter(scenario=='G') %>% 
   distinct(module, layer) %>% 
   group_by(module) %>% summarise(birth_layer=min(layer),death_layer=max(layer)+1) %>% 
@@ -103,7 +104,7 @@ panel_B <- module_results %>%
   geom_rect(size=2, color=scenario_cols[2])+
   manuscript_theme+theme(axis.title = element_blank())
 panel_C <- module_results %>% 
-  filter(run==3) %>%
+  filter(run==1) %>%
   filter(scenario=='N') %>% 
   distinct(module, layer) %>% 
   group_by(module) %>% summarise(birth_layer=min(layer),death_layer=max(layer)+1) %>% 
