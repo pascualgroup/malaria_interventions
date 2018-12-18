@@ -121,7 +121,8 @@ if (task=='sensitivity_cutoff_selection'){
     summarise(birth_layer=min(layer), death_layer=max(layer), persistence=death_layer-birth_layer+1) %>% 
     mutate(relative_persistence=persistence/(300-birth_layer+1)) %>% 
     mutate(type='Module') %>% 
-    rename(id=module) %>% mutate(id=as.character(id))
+    rename(id=module) %>% 
+    mutate(id=as.character(id))
   
   strain_persistence <- results_cutoff %>% 
     select(PS, run, cutoff_prob, layer, strain_cluster) %>% 
@@ -129,7 +130,9 @@ if (task=='sensitivity_cutoff_selection'){
     summarise(birth_layer=min(layer), death_layer=max(layer), persistence=death_layer-birth_layer+1) %>% 
     mutate(relative_persistence=persistence/(300-birth_layer+1)) %>% 
     mutate(type='Repertoire') %>% 
-    rename(id=strain_cluster)
+    rename(id=strain_cluster) %>% 
+    mutate(id=as.character(id))
+  
   
   persistence_df <- module_persistence %>% bind_rows(strain_persistence) 
   write_csv(persistence_df, 'Results/persistence_df_cutoff_S.csv')
@@ -216,78 +219,57 @@ if (task=='sensitivity_cutoff_all_scenarios'){
   
   results_cutoff_N <- get_results_for_cutoff(cutoff_prob_seq = cutoff_prob_seq, scenario = 'N', run_range = 1:10)
   write_csv(results_cutoff_N, 'Results/results_cutoff_N.csv')
-  png('Results/module_examples_N.png', width = 1920, height = 1080)
-  results_cutoff_N %>% 
-    filter(run==2) %>%
-    distinct(module,layer, PS, cutoff_prob) %>% 
-    # filter(scenario=='S') %>% 
-    ggplot(aes(x=layer, y=module, group=PS, color=PS))+
-    geom_point(size=1)+
-    scale_color_manual(values = ps_cols)+
-    scale_x_continuous(breaks = seq(0,300,50))+
-    labs(y= 'module ID', x='Time (months)', title='Structure example')+
-    facet_grid(cutoff_prob~PS, scales='free')+
-    mytheme
-  dev.off()
+  module_persistence <- results_cutoff_N %>% 
+    select(PS, run, cutoff_prob, layer, module) %>% 
+    group_by(PS,run,cutoff_prob,module) %>% 
+    summarise(birth_layer=min(layer), death_layer=max(layer), persistence=death_layer-birth_layer+1) %>% 
+    mutate(relative_persistence=persistence/(300-birth_layer+1)) %>% 
+    mutate(type='Module') %>% 
+    rename(id=module) %>% 
+    mutate(id=as.character(id))
+  strain_persistence <- results_cutoff_N %>% 
+    select(PS, run, cutoff_prob, layer, strain_cluster) %>% 
+    group_by(PS,run,cutoff_prob,strain_cluster) %>% 
+    summarise(birth_layer=min(layer), death_layer=max(layer), persistence=death_layer-birth_layer+1) %>% 
+    mutate(relative_persistence=persistence/(300-birth_layer+1)) %>% 
+    mutate(type='Repertoire') %>% 
+    rename(id=strain_cluster) %>% 
+    mutate(id=as.character(id))
+  persistence_df_N <- module_persistence %>% bind_rows(strain_persistence) 
+  write_csv(persistence_df_N, 'Results/persistence_df_cutoff_N.csv')
   
   
   results_cutoff_G <- get_results_for_cutoff(cutoff_prob_seq = cutoff_prob_seq, scenario = 'G', run_range = 1:10)
   write_csv(results_cutoff_G, 'Results/results_cutoff_G.csv')
-  png('Results/module_examples_G.png', width = 1920, height = 1080)
-  results_cutoff_G %>% 
-    filter(run==2) %>%
-    distinct(module,layer, PS, cutoff_prob) %>% 
-    # filter(scenario=='S') %>% 
-    ggplot(aes(x=layer, y=module, group=PS, color=PS))+
-    geom_point(size=1)+
-    scale_color_manual(values = ps_cols)+
-    scale_x_continuous(breaks = seq(0,300,50))+
-    labs(y= 'module ID', x='Time (months)', title='Structure example')+
-    facet_grid(cutoff_prob~PS, scales='free')+
-    mytheme
-  dev.off()
-  
-  
-  # Join the scenarios to one data frame
-  s <- read_csv('Results/results_cutoff_S.csv', col_types = 'iicccicccid')
-  # s <- data.table::fread('Results/results_cutoff_S_R1.csv')
-  n <- read_csv('Results/results_cutoff_N.csv', col_types = 'iicccicccid')
-  # n <- data.table::fread('Results/results_cutoff_N_R1.csv')
-  g <- read_csv('Results/results_cutoff_G.csv', col_types = 'iicccicccid')
-  # g <- data.table::fread('Results/results_cutoff_G_R1.csv')
-  
-  results_cutoff <- rbind(s,n,g)
-  results_cutoff %<>% mutate(scenario=factor(scenario, levels=c('S','N','G')))
-  
-  module_persistence <- results_cutoff %>% 
-    select(scenario, PS, run, cutoff_prob, layer, module) %>% 
-    group_by(scenario, PS,run,cutoff_prob,module) %>% 
+  module_persistence <- results_cutoff_G %>% 
+    select(PS, run, cutoff_prob, layer, module) %>% 
+    group_by(PS,run,cutoff_prob,module) %>% 
     summarise(birth_layer=min(layer), death_layer=max(layer), persistence=death_layer-birth_layer+1) %>% 
     mutate(relative_persistence=persistence/(300-birth_layer+1)) %>% 
     mutate(type='Module') %>% 
-    rename(id=module) %>% mutate(id=as.character(id))
-  
-  strain_persistence <- results_cutoff %>% 
-    select(scenario, PS, run, cutoff_prob, layer, strain_cluster) %>% 
-    group_by(scenario, PS,run,cutoff_prob,strain_cluster) %>% 
+    rename(id=module) %>% 
+    mutate(id=as.character(id))
+  strain_persistence <- results_cutoff_G %>% 
+    select(PS, run, cutoff_prob, layer, strain_cluster) %>% 
+    group_by(PS,run,cutoff_prob,strain_cluster) %>% 
     summarise(birth_layer=min(layer), death_layer=max(layer), persistence=death_layer-birth_layer+1) %>% 
     mutate(relative_persistence=persistence/(300-birth_layer+1)) %>% 
     mutate(type='Repertoire') %>% 
-    rename(id=strain_cluster) %>% mutate(id=as.character(id))
-  
-  persistence_df <- module_persistence %>% bind_rows(strain_persistence) %>% 
-    group_by(scenario, PS, cutoff_prob, type) %>% 
-    summarise(mean_persistence=mean(persistence),
-              mean_relative_persistence=mean(relative_persistence),
-              median_persistence=median(persistence),
-              median_relative_persistence=median(relative_persistence)
-    )
-  write_csv(persistence_df, 'Results/persistence_df_cutoff_SNG.csv')
-  
-  persistence_df_N %<>% persistence_df %>% filter(scenario=='N')
-  write_csv(persistence_df_N, 'Results/persistence_df_cutoff_N.csv')
-  persistence_df_G %<>% persistence_df %>% filter(scenario=='G')
+    rename(id=strain_cluster) %>% 
+    mutate(id=as.character(id))
+  persistence_df_G <- module_persistence %>% bind_rows(strain_persistence) 
   write_csv(persistence_df_G, 'Results/persistence_df_cutoff_G.csv')
+  
+  
+  # Join the scenarios to one data frame
+  results_cutoff_S <- read_csv('Results/results_cutoff_S.csv', col_types = 'iicccicccid')
+  results_cutoff <- rbind(results_cutoff_S,results_cutoff_N,results_cutoff_G)
+  results_cutoff %<>% mutate(scenario=factor(scenario, levels=c('S','G','N')))
+  
+  persistence_df_S <- read_csv('Results/persistence_df_cutoff_S.csv', col_types = 'cidciiidc')
+  persistence_df <- rbind(persistence_df_S,persistence_df_G,persistence_df_N)
+  persistence_df %<>% mutate(scenario=factor(scenario, levels=c('S','G','N')))
+  
   
   
   png('Results/module_persistence_scenarios.png', width = 1920, height = 1080)
@@ -377,7 +359,7 @@ if (task=='sensitivity_cutoff_all_scenarios'){
 
 # Within-module diversity -------------------------------------------------
 if (task=='within_module_diversity'){
-  print ('Calculating diversity and the statistic')
+  print ('Calculating within-module temporal diversity...')
   
   for (scenario in c('S','N','G')){
     design_cutoff <- expand.grid(PS=sprintf('%0.2d', 4:6),

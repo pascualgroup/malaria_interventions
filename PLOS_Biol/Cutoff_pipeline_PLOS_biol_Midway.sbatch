@@ -1,8 +1,8 @@
 #!/bin/bash
-#SBATCH --job-name=prelim
+#SBATCH --job-name=Cutoff
 #SBATCH --time=36:00:00
-#SBATCH --output=slurm_output/prelim_%A.out
-#SBATCH --error=slurm_output/prelim_%A.err
+#SBATCH --output=slurm_output/Cutoff_%A.out
+#SBATCH --error=slurm_output/Cutoff_%A.err
 ##SBATCH --array=1
 #SBATCH --tasks=1
 #SBATCH --cpus-per-task=1 

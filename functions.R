@@ -1843,20 +1843,31 @@ build_infomap_objects <- function(network_object, write_to_infomap_file=T, infom
   layers <- layers[-length(layers)]
   infomap_interlayer <- lapply(layers, function (x) matrix_to_infomap_interlayer(x, nodeList = nodeList, network_object = network_object))
   
-  # Here is where rescaling of edges should take place.
-  # repertoire_persistence_prob %>% filter(persistence==8)
-  # repertoire_persistence_prob %>% filter(persistence==12)
-  # repertoire_persistence_prob %>% filter(persistence==4)
-  # # Divide edge weights by the probability of persistence. those that persisted for longer will have stronger values
-  # if (t==1){m <- m/get_persistence(8)} # 8 months between S1 and S2
-  # if (t==2){m <- m/get_persistence(12)} # 12 months between S2 and S3
-  # if (t==3){m <- m/get_persistence(4)} # 4 months between S3 and S4
-  
-  
-  
+  # Rescale edges
+  if (!is.null(repertoire_persistence_prob)){
+    print('Rescaling interlayer edges...')
+    # 8 months between S1 and S2
+    # 12 months between S2 and S3
+    # 4 months between S3 and S4
+    # 12 months between S4 and S5
+    # 8 months between S5 and S6
+    rescaling_factors <- tibble(layer_s=1:5,months_gap=c(8,12,4,12,8))
+    rescaling_factors %<>% 
+      left_join(repertoire_persistence_prob, by=c('months_gap'='persistence')) %>% 
+      select(layer_s,months_gap,prob)
+    for (l in 1:5){
+      # Divide edge weights by the probability of persistence. those that persisted
+      # for longer will have stronger values
+      x <- infomap_interlayer[[l]]
+      x %<>% left_join(rescaling_factors) %>% mutate(w_rescaled=w/prob)
+      infomap_interlayer[[l]] <- x
+    }
+  }
   print('Creating a DF of interlayer edges')
   infomap_interlayer <- do.call("rbind", infomap_interlayer)
   print(head(infomap_interlayer))
+  
+
   
   if (write_to_infomap_file){
     ## Write file for infomap
@@ -1864,19 +1875,13 @@ build_infomap_objects <- function(network_object, write_to_infomap_file=T, infom
     print(paste('Infomap file:',infomap_file_name))
     if (file.exists(infomap_file_name)){unlink(infomap_file_name)}
     
-    edges_to_write <- rbind(infomap_intralayer,infomap_interlayer)
+    if (!is.null(repertoire_persistence_prob)){
+      x <- infomap_interlayer %>% select(layer_s,node_s,layer_t,node_t,w_rescaled) %>% rename(w=w_rescaled)
+      edges_to_write <- infomap_intralayer %>% bind_rows(x)
+    } else {
+      edges_to_write <- infomap_intralayer %>% bind_rows(infomap_interlayer)
+    }
     fwrite(edges_to_write, infomap_file_name, sep=' ', col.names = F)
-    # sink(infomap_file_name, append = T)
-    # cat("# A network in a general multiplex format");cat('\n')
-    # cat(paste("*Vertices",nrow(nodeList)));cat('\n')
-    # write.table(nodeList, infomap_file_name, sep=' ', quote = T, row.names = F, col.names = F, append=T)
-    # cat("*Multiplex");cat('\n')
-    # cat("# layer node layer node [weight]");cat('\n')
-    # cat("# Intralayer edges");cat('\n')
-    # write.table(infomap_intralayer, infomap_file_name, sep = ' ', row.names = F, col.names = F, quote = F, append = T)
-    # cat("# Interlayer edges");cat('\n')
-    # write.table(infomap_interlayer, infomap_file_name, sep = ' ', row.names = F, col.names = F, quote = F, append = T)
-    # sink.reset()
   }
   
   if (return_objects){
@@ -1972,8 +1977,8 @@ infomap_readTreeFile <- function(PS, scenario, exp, run, cutoff_prob, folder='/m
 # Analysis of modules------------------------------------------------------
 calculate_module_diversity <- function(PS, scenario, exp, run, cutoff_prob){
   if (on_Midway()){
-    file_modules <- paste('PS',PS,'_',scenario,'_E',exp,'_R',run,'_',cutoff_prob,'_modules.csv',sep='')
-    file_strains <- paste('PS',PS,'_',scenario,'_E',exp,'_R',run,'_',cutoff_prob,'_sampled_strains.csv',sep='')
+    file_modules <- paste('/scratch/midway2/pilosofs/PLOS_Biol/Results/',PS,'_',scenario,'/PS',PS,'_',scenario,'_E',exp,'_R',run,'_',cutoff_prob,'_modules.csv',sep='')
+    file_strains <- paste('/scratch/midway2/pilosofs/PLOS_Biol/Results/',PS,'_',scenario,'/PS',PS,'_',scenario,'_E',exp,'_R',run,'_',cutoff_prob,'_sampled_strains.csv',sep='')
   } else {
     file_modules <- paste('Results/',PS,'_',scenario,'/PS',PS,'_',scenario,'_E',exp,'_R',run,'_',cutoff_prob,'_modules.csv',sep='')
     file_strains <- paste('Results/',PS,'_',scenario,'/PS',PS,'_',scenario,'_E',exp,'_R',run,'_',cutoff_prob,'_sampled_strains.csv',sep='')  

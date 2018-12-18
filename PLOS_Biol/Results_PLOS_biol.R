@@ -238,6 +238,20 @@ results_cutoff <- fread('/media/Data/PLOS_Biol/Results/results_cutoff_S.csv',
                                           character=c(5,7,8,9),
                                           double=11))
 results_cutoff <- as.tibble(results_cutoff)
+
+results_cutoff %>% 
+  # filter(PS=='06') %>% 
+  filter(run==1) %>%
+  filter(cutoff_prob>=0.5) %>% 
+  distinct(PS,cutoff_prob, module, layer) %>% 
+  group_by(PS,cutoff_prob,module) %>% summarise(birth_layer=min(layer),death_layer=max(layer)+1) %>% 
+  ggplot(aes(xmin=birth_layer, xmax=death_layer, ymin=module, ymax=module, color=PS, fill=PS))+
+  geom_rect(size=1)+
+  scale_color_manual(values=ps_cols)+
+  scale_fill_manual(values=ps_cols)+
+  facet_grid(cutoff_prob~PS, scales = 'free')+
+  mytheme+theme(axis.title = element_blank(), legend.position = 'none')
+
 ## Calculate module and repertoire persistence (need to do once. After that, just read the file)
 # module_persistence_cutoff <- results_cutoff %>% 
 #   select(PS, run, cutoff_prob, layer, module) %>% 
@@ -255,8 +269,11 @@ results_cutoff <- as.tibble(results_cutoff)
 #   rename(id=strain_cluster) %>% mutate(id=as.character(id))
 # persistence_df_cutoff <- module_persistence_cutoff %>% bind_rows(strain_persistence_cutoff) 
 # write_csv(persistence_df_cutoff, '/media/Data/PLOS_Biol/Results/persistence_df_cutoff_S.csv')
-persistence_df_cutoff <- read_csv('/media/Data/PLOS_Biol/Results/persistence_df_cutoff_S.csv')
+persistence_df_cutoff <- read_csv('/media/Data/PLOS_Biol/Results/persistence_df_cutoff_S.csv', col_types = 'cidciiidc')
 temporal_diversity_cutoff <- read_csv('/media/Data/PLOS_Biol/Results/temporal_diversity_cutoff_S.csv', col_types = 'ccidiiiiddd')
+
+
+
 
 ## Modules per layer
 panel_A <- results_cutoff %>% 
@@ -354,6 +371,19 @@ Fig_cutoff_GHI <- grid.arrange(arrangeGrob(Fig, left = y.grob, bottom = x.grob))
 title <- ggdraw() + draw_label("Cutoff results", size=20)
 pdf('Results/Fig_cutoff_selection.pdf', 16,12)
 plot_grid(title, Fig_cutoff_ABC,Fig_cutoff_DEF,Fig_cutoff_GHI, nrow=4, align='vh', rel_heights = c(0.096,0.32,0.32,0.32))
+# Also plot an example of modules
+results_cutoff %>% 
+  # filter(PS=='06') %>% 
+  filter(run==1) %>%
+  filter(cutoff_prob>=0.5) %>% 
+  distinct(PS,cutoff_prob, module, layer) %>% 
+  group_by(PS,cutoff_prob,module) %>% summarise(birth_layer=min(layer),death_layer=max(layer)+1) %>% 
+  ggplot(aes(xmin=birth_layer, xmax=death_layer, ymin=module, ymax=module, color=PS, fill=PS))+
+  geom_rect(size=1)+
+  scale_color_manual(values=ps_cols)+
+  scale_fill_manual(values=ps_cols)+
+  facet_grid(cutoff_prob~PS, scales = 'free')+
+  mytheme+theme(axis.title = element_blank(), legend.position = 'none')
 dev.off()
 
 
@@ -410,7 +440,7 @@ dev.off()
 
 # Cutoff plots (all scenarios) --------------------------------------------
 
-results_cutoff_N <- read_csv(results_cutoff_N, 'Results/results_cutoff_N.csv')
+results_cutoff_N <- read_csv('Results/results_cutoff_N.csv')
 png('Results/module_examples_N.png', width = 1920, height = 1080)
 results_cutoff_N %>% 
   filter(run==2) %>%

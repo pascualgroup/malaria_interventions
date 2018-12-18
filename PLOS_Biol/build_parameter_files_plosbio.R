@@ -216,10 +216,10 @@ files_py %>% filter(scenario=='G') %>% filter(as.numeric(PS)>=27) %>% distinct(P
 
 # Experiments for cutoff --------------------------------------------------
 
-cutoff_design <- expand.grid(PS=sprintf('%0.2d', 6),
+cutoff_design <- expand.grid(PS=sprintf('%0.2d', 5),
                              scenario=c('S','G','N'),
                              cutoff_prob=seq(0.25,0.95,0.05),
-                             array='1-10',
+                             array='11-50',
                              calculate_mFst=F,
                              stringsAsFactors = F)
 cutoff_design$job_name <- paste(cutoff_design$PS, cutoff_design$scenario,'_',cutoff_design$cutoff_prob,sep='')
@@ -275,23 +275,23 @@ sink.reset()
 # Creating these files can be tricky. Pay carefult attention to combinations of
 # PS, scenario, experiment and cutoffs in the resulting sbatch files!!!
 
-sbatch_arguments <- expand.grid(PS=sprintf('%0.2d', 18:19),
+sbatch_arguments <- expand.grid(PS=sprintf('%0.2d', 4:6),
                                 scen=c('S','N','G'),
-                                array='6-50', 
-                                exp=c('000','001','002'),
+                                array='11-50', 
+                                layers='1:300',
+                                exp=c('001'),
                                 stringsAsFactors = F)
 sbatch_arguments$cutoff_prob <- rep(c(0.3,0.6,0.85),3)
 sbatch_arguments$mem_per_cpu <- rep(c(6000,12000,32000),3)
 sbatch_arguments$time <- rep(c('04:00:00','05:00:00','10:00:00'),3)
 
-sbatch_arguments <- subset(sbatch_arguments, scen=='G'&PS=='06')
+# sbatch_arguments <- subset(sbatch_arguments, scen=='G'&PS=='06')
 
 
 
-cal <- as.tibble(build_calendar(num_years = 25, 10))
-cal %>% filter(!is.na(survey)) %>% group_by(survey,layer) %>%
-  summarise(first_day=min(running_day),last_day=max(running_day), year=unique(year_sim)+2002, month=unique(month_sim))
-
+# cal <- as.tibble(build_calendar(num_years = 25, 10))
+# cal %>% filter(!is.na(survey)) %>% group_by(survey,layer) %>%
+#   summarise(first_day=min(running_day),last_day=max(running_day), year=unique(year_sim)+2002, month=unique(month_sim))
 sbatch_arguments <- expand.grid(PS=sprintf('%0.2d', 18),
                                 scen=c('N','G'),
                                 exp='002',
@@ -326,13 +326,12 @@ for (scenario in unique(sbatch_arguments$scen)){
     }
   }
 }
-# for i in {27..39}; do sbatch 'PS'$i'_G_get_data_midway.sbatch'; done
 sink('/media/Data/PLOS_Biol/parameter_files/run_experiments.sh')
 for (i in 1:nrow(sbatch_arguments)){
   ps <- sbatch_arguments$PS[i]
   scenario <- sbatch_arguments$scen[i]
   cutoff_prob <- sbatch_arguments$cutoff_prob[i]
-  cat('sbatch ',paste('PS',ps,'_',scenario,'_',cutoff_prob,'_get_data_midway.sbatch',sep=''));cat('\n')
+  cat('sbatch ',paste('PS',ps,scenario,'E',e,'_',subset(sbatch_arguments, PS==ps & scen==scenario)$cutoff_prob,'_get_data_midway.sbatch',sep=''));cat('\n')
 }
 sink.reset()
 
@@ -384,20 +383,20 @@ ls sqlite/PS$i*_S_* -lv | wc -l
 ls sqlite/PS$i*_N_* -lv | wc -l
 ls sqlite/PS$i*_G_* -lv | wc -l
 done
-
+ls
 # Check for result files
 for i in 'sampled_alleles' 'sampled_infections' 'sampled_strains' 'summary_general' 'network_info' 'layer_summary' 'node_list' 'Infomap_multilayer.txt' 'Infomap_multilayer_expanded' 'modules' 'strain_sequences' 'unique_repertoires' 'temporal_diversity' 'mFst' 
 do
 echo $i
-ls Results/04_S/*_$i* -lv | wc -l
-ls Results/04_N/*_$i* -lv | wc -l
-ls Results/04_G/*_$i* -lv | wc -l
-ls Results/05_S/*_$i* -lv | wc -l
-ls Results/05_N/*_$i* -lv | wc -l
-ls Results/05_G/*_$i* -lv | wc -l
-# ls Results/06_S/*_$i* -lv | wc -l
-# ls Results/06_N/*_$i* -lv | wc -l
-# ls Results/06_G/*_$i* -lv | wc -l
+# ls Results/04_S/*_$i* -lv | wc -l
+# ls Results/04_N/*_$i* -lv | wc -l
+# ls Results/04_G/*_$i* -lv | wc -l
+# ls Results/05_S/*_$i* -lv | wc -l
+# ls Results/05_N/*_$i* -lv | wc -l
+# ls Results/05_G/*_$i* -lv | wc -l
+ls Results/06_S/*_$i* -lv | wc -l
+ls Results/06_N/*_$i* -lv | wc -l
+ls Results/06_G/*_$i* -lv | wc -l
 done
 
 # move result files to one folder

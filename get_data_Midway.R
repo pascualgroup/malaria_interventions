@@ -73,6 +73,9 @@ if (task=='make_networks'){
   # write_csv(as.tibble(network$intralayer_edges_no_cutoff), paste(base_name,'_intralayer_no_cutoff.csv',sep=''))
   # write_csv(as.tibble(network$interlayer_edges_no_cutoff), paste(base_name,'_interlayer_no_cutoff.csv',sep=''))
   
+  
+  # Need to insert here the code for rescaling the interlayer edgges
+  
   # Infomap objects
   infomap <- build_infomap_objects(network_object = network, 
                                    write_to_infomap_file = T, 
