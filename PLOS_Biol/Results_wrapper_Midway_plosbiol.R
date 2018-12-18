@@ -29,7 +29,7 @@ experiments <- as.tibble(expand.grid(PS=PS,
 cutoff_df <- tibble(PS=sprintf('%0.2d', c(4:6,18)),
                     cutoff_prob=c(0.3,0.6,0.85,0.85)
                     )
-cutoff_df$folder <- paste('/scratch/midway2/pilosofs/PLOS_Biol/Results/',cutoff_df$PS,'/',sep='')
+cutoff_df$folder <- paste('/scratch/midway2/pilosofs/PLOS_Biol/Results/',cutoff_df$PS,'_',scenario,'/',sep='')
 print(cutoff_df)
 
 experiments <- experiments %>% left_join(cutoff_df)
