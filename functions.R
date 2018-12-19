@@ -14,17 +14,20 @@ detect_locale <- function(){
   if (str_detect(Sys.info()[4],'ee-pascual')){return('Lab')}
 }
 
-prep.packages <- function(package.list) {
+prep.packages <- function(package.list, verbose=T) {
   loaded = package.list %in% .packages()
   if ( all(loaded) ) return(invisible())
   
   package.list = package.list[!loaded]
   installed = package.list %in% .packages(TRUE)
   if ( !all(installed) ) install.packages(package.list[!installed], repos="http://cran.rstudio.com/")
-  for ( p in package.list )
-  {
+  for ( p in package.list ){
     print(paste("Loading package:",p))
-    library(p,character.only=TRUE)
+    if (verbose){
+      library(p,character.only=TRUE)
+    } else {
+      suppressMessages(library(p,character.only=TRUE))  
+    }
   }
 }
 
@@ -1129,24 +1132,30 @@ overlapAlleleAdj<-function(mat){
 
 
 # A function to build the similarity matrix for a single layer and calculate some summary stats
-build_layer <- function(infection_df){
+build_layer <- function(infection_df, unit_for_edges){
   infection_df %<>% group_by(strain_id) %>%
     mutate(freq = n()/120) %>% # strain frequency (the number of strain copies should be equal to the frequency)
     arrange(strain_id_unique) 
   # Calculate the edges
-  similarity_matrix <- table(infection_df$strain_id_unique, infection_df$allele_locus)
+  if (unit_for_edges=='alleles'){
+    similarity_matrix <- table(infection_df$strain_id_unique, infection_df$allele_locus)
+  }
+  if (unit_for_edges=='genes'){
+    similarity_matrix <- table(infection_df$strain_id_unique, infection_df$gene_id)/2 # divide by two beause each hene appears twice because there are two loci  
+  }
   similarity_matrix <- overlapAlleleAdj(similarity_matrix)
   # Some summary
   layer_summary <- with(infection_df, 
                         data.frame(hosts=length(unique(host_id)),
                                    repertoires_unique=length(unique(strain_id)),
-                                   repertoires_total=length(unique(strain_id_unique))
+                                   repertoires_total=length(unique(strain_id_unique)),
+                                   unit_for_edges=unit_for_edges
                         ))
   return(list(similarity_matrix=similarity_matrix, infections=infection_df, layer_summary=layer_summary))
 }
 
 
-createTemporalNetwork <- function(ps, scenario, exp, run, cutoff_prob, cutoff_value=NULL, layers_to_include=NULL, sampled_infections=NULL){
+createTemporalNetwork <- function(ps, scenario, exp, run, cutoff_prob, cutoff_value=NULL, layers_to_include=NULL, sampled_infections=NULL, unit_for_edges='alleles'){
   # Define the sqlite file to use
   base_name <- paste('PS',ps,'_',scenario,'_E',exp,'_R',run,sep='')
   if (on_Midway()){
@@ -1195,7 +1204,7 @@ createTemporalNetwork <- function(ps, scenario, exp, run, cutoff_prob, cutoff_va
   for (l in layers_to_include){
     cat(paste('[',Sys.time(), '] building layer ',l,'\n',sep=''))
     sampled_infections_layer <- subset(sampled_infections, layer==l) # This is MUCH faster than sampled_infections_layer <- sampled_infections %>% filter(layer==l)
-    Layers[[which(layers_to_include==l)]] <- build_layer(sampled_infections_layer)
+    Layers[[which(layers_to_include==l)]] <- build_layer(infection_df = sampled_infections_layer, unit_for_edges)
   }
   intralayer_matrices <- lapply(Layers, function(x) x$similarity_matrix)   # Get just the matrices
   layer_summary <- do.call(rbind, lapply(Layers, function(x) x$layer_summary)) # Get the layer summary
@@ -1217,7 +1226,7 @@ createTemporalNetwork <- function(ps, scenario, exp, run, cutoff_prob, cutoff_va
       return(NULL)
     } 
     sampled_infections_interlayer <- subset(sampled_infections, layer%in%c(current_layer,next_layer)) # This is MUCH faster than sampled_infections_layer <- sampled_infections %>% filter(layer==l)
-    x <- build_layer(sampled_infections_interlayer)$similarity_matrix # This is the similarity matrix for all the repertoires in both layers.
+    x <- build_layer(sampled_infections_interlayer,unit_for_edges)$similarity_matrix # This is the similarity matrix for all the repertoires in both layers.
     # Pull only the similarity values between the repertoires from the correct layers (i.e. create a bipartite)
     inter_layer_edges_matrix <- x[strain_copies_t,strain_copies_t1]
     interlayer_matrices[[current_layer_idx]] <- inter_layer_edges_matrix
