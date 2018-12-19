@@ -19,11 +19,12 @@ job_exp <- as.character(args[3])
 job_run <- as.numeric(Sys.getenv('SLURM_ARRAY_TASK_ID'))
 cutoff_prob <- as.numeric(args[4])
 layers <- as.character(args[5])
-if (layers=='1:300'){
-  layers <- 1:300
+if (str_detect(layers,'\\:')){
+  layers <- seq(str_split(layers,'\\:')[[1]][1],str_split(layers,'\\:')[[1]][2],1)
 } else {
   layers <- as.integer(str_split(layers,",")[[1]])  
 }
+
 task <- as.character(args[6]) # Can be: make_networks | read_infomap_results | temporal_diversity | module_Fst
 
 base_name <- paste('PS',job_ps,'_',job_scenario,'_E',job_exp,'_R',job_run,'_',cutoff_prob,sep='')
@@ -74,13 +75,22 @@ if (task=='make_networks'){
   # write_csv(as.tibble(network$interlayer_edges_no_cutoff), paste(base_name,'_interlayer_no_cutoff.csv',sep=''))
   
   
-  # Need to insert here the code for rescaling the interlayer edgges
-  
-  # Infomap objects
-  infomap <- build_infomap_objects(network_object = network, 
-                                   write_to_infomap_file = T, 
-                                   infomap_file_name = paste(base_name,'_Infomap_multilayer.txt',sep=''), 
-                                   return_objects = T)
+  # Should interlayer edges be rescaled? Only if working with the 6 layers of the
+  # interventions in the PS of the interventions.
+  if (job_ps %in% as.character(200:299) && length(layers)==6 && file.exists('repertoire_persistence_prob.csv')){
+    repertoire_persistence_prob <- read_csv('repertoire_persistence_prob.csv')
+    infomap <- build_infomap_objects(network_object = network, 
+                                     write_to_infomap_file = T, 
+                                     infomap_file_name = paste(base_name,'_Infomap_multilayer.txt',sep=''), 
+                                     return_objects = T,
+                                     repertoire_persistence_prob = repertoire_persistence_prob)
+  } else {
+    infomap <- build_infomap_objects(network_object = network, 
+                                     write_to_infomap_file = T, 
+                                     infomap_file_name = paste(base_name,'_Infomap_multilayer.txt',sep=''), 
+                                     return_objects = T,
+                                     repertoire_persistence_prob = NULL)
+  }
   write_csv(infomap$nodeList, paste(base_name,'_node_list.csv',sep=''))
 } # End task 'make_networks'
 

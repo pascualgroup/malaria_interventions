@@ -21,16 +21,18 @@ if (detect_locale()=='Mac'){
 design <- loadExperiments_GoogleSheets(local = F, workBookName = 'PLOS_Biol_design', sheetID = 2) 
 
 # Create the reference experiments (checkpoint and control)
-ps_range <- sprintf('%02d', 18)
-exp_range <- sprintf('%0.3d', 0:1)
-run_range <- 11:50
-work_scenario <- 'G'
+ps_range <- sprintf('%03d', 500:599)
+exp_range <- sprintf('%0.3d', c(0,2))
+run_range <- 1
+work_scenario <- 'S'
 # Generate 000 and 001 experiments
 design_subset <- subset(design, PS %in% ps_range & scenario==work_scenario & exp %in% exp_range)
 generate_files(row_range = 1:nrow(design_subset), run_range = run_range, 
                experimental_design = design_subset, 
-               # The radom_seed is necessary if using CP for intervention when not creating the intervention experiment parameter file at the same time as the 000 file.
-               # random_seed = get_random_seed(PS = 18, scenario = work_scenario, run_range = run_range, folder = '/media/Data/PLOS_Biol/parameter_files/'),
+               # The radom_seed is necessary if using CP for intervention when
+               # not creating the intervention experiment parameter file at the
+               # same time as the 000 file.
+               #random_seed = get_random_seed(PS = 18, scenario = work_scenario, run_range = run_range, folder = '/media/Data/PLOS_Biol/parameter_files/'),
                biting_rate_file = design_subset$DAILY_BITING_RATE_DISTRIBUTION[1],
                target_folder = parameter_files_path_global)
 
@@ -71,25 +73,30 @@ sink.reset()
 unlink('files_to_run.zip')
 system('zip files_to_run.zip -@ < files_to_run.txt')
 
-# Copy the file to Midway and unzip it
-
-# First run the checkpoints
-paste("for i in ",paste(ps_range,collapse=' '),"; do sbatch 'PS'$i'",work_scenario,"E000.sbatch'; done;",sep='')
+# Copy the file to Midway and unzip it, then run the run_E000.sh file for run the checkpoints:
+sink('/media/Data/PLOS_Biol/parameter_files/run_E000.sh')
+for (ps in ps_range){
+  cat('sbatch PS',ps,work_scenario,'E000.sbatch',sep='');cat('\n')
+}
+sink.reset()
 
 # Then run control and interventions
 ## Run in Midway terminal:
-cat("rm job_ids.txt; sacct -u pilosofs --format=jobid,jobname --starttime 2018-12-07T16:13:00 --name=");cat(paste(paste(ps_range,work_scenario,'E000',sep=''),collapse = ','));cat(" >> 'job_ids.txt'")
+cat("rm job_ids.txt; sacct -u pilosofs --format=jobid,jobname --starttime 2018-12-18T11:13:00 --name=");cat(paste(paste(ps_range,work_scenario,'E000',sep=''),collapse = ','));cat(" >> 'job_ids.txt'")
 ## Copy file from Midway and run:
 jobids <- read.table('job_ids.txt', header = F, skip=2) 
 jobids <- na.omit(unique(parse_number(jobids$V1))) # 1 job id per PS
 length(jobids)==length(ps_range)
-exp_range='001'
-## Copy the output of the following loop and paste in Midway
+exp_range='002'
+sink('/media/Data/PLOS_Biol/parameter_files/run_E002.sh')
 for (ps in ps_range){
   for (e in exp_range){
     cat(paste('sbatch -d afterok:',jobids[which(ps_range==ps)],' PS',ps,work_scenario,'E',e,'.sbatch',sep=''));cat('\n')
   }
 }
+sink.reset()
+
+
 
 
 # Or, if checkpoints are already finished:
@@ -109,7 +116,7 @@ system('rm *.sbatch')
 
 scenario_range <- c('S','N','G')
 exp_range <- sprintf('%0.3d', 0:2)
-ps_range <- sprintf('%0.2d', 18)
+ps_range <- sprintf('%0.3d', 500:599)
 
 for (ps in ps_range){
   for (scenario in scenario_range){
@@ -117,9 +124,16 @@ for (ps in ps_range){
     sink('files_tmp.txt', append = T)
     # Add py files
     files <- list.files(path = '/media/Data/PLOS_Biol/parameter_files/', pattern = '\\.py', full.names = F) 
-    files <- files[str_sub(files,3,4) %in% ps]
-    files <- files[str_sub(files,6,6) %in% scenario]
-    files <- files[str_sub(files,9,11) %in% exp_range]
+    if (str_length(ps)==2){
+      files <- files[str_sub(files,3,4) %in% ps]
+      files <- files[str_sub(files,6,6) %in% scenario]
+      files <- files[str_sub(files,9,11) %in% exp_range]
+    }
+    if (str_length(ps)==3){
+      files <- files[str_sub(files,3,5) %in% ps]
+      files <- files[str_sub(files,7,7) %in% scenario]
+      files <- files[str_sub(files,10,12) %in% exp_range]
+    }
     for (i in 1:length(files)){
       cat(files[i]);cat('\n')
     }
@@ -131,6 +145,7 @@ for (ps in ps_range){
     }
   }
 }
+unlink('files_tmp.txt')
 
 
 # Verify files ------------------------------------------------------------
@@ -339,9 +354,9 @@ sink.reset()
 
 # Generate files for sensitivity analysis of main results ---------------------------------
 
-# Generate 100 simulations per scenario in high diversity with variation across 3 parameters:
-# 1. Diversity (vary between 10000 and 20000)
-# 2. Mean biting rate (0.35-0.5)
+# Generate 84 simulations for selection in high diversity with variation across 3 parameters:
+# 1. Diversity 
+# 2. Mean biting rate
 # 3. Naive duration of infection (range 6-18 months)
 
 # This code creates the design
@@ -413,6 +428,129 @@ for (i in 1:nrow(sbatch_arguments)){
   cat('sbatch ',paste('PS',ps,scenario,'E',e,'_',subset(sbatch_arguments, PS==ps & scen==scenario)$cutoff_prob,'_get_data_midway.sbatch',sep=''));cat('\n')
 }
 sink.reset()
+
+
+# Generate files for empirical data comparison ----------------------------
+
+# Generate 100 simulations per scenario for seasonality in high diversity with variation across 2 parameters:
+# 1. Diversity 
+# 2. Mean biting rate
+
+# This code creates the design. Use that design to create the sqlite files.
+
+diversity_range <- round(seq(30000,40000,length.out = 10)) # Main analysis is 35000
+biting_range <- seq(0.0001,0.0003,length.out = 10) # Main analysis is 0.00020
+empirical_comparison_params <- expand.grid(N_GENES_INITIAL=diversity_range, BITING_RATE_MEAN=biting_range)
+empirical_comparison_params <- as.tibble(empirical_comparison_params)
+nrow(empirical_comparison_params)
+empirical_comparison_params$PS <- str_pad((1:nrow(empirical_comparison_params))+499,width = 3, side = 'left', pad = '0')
+
+design <- loadExperiments_GoogleSheets(local = F, workBookName = 'PLOS_Biol_design', sheetID = 2) 
+design_seed_000 <- subset(design, PS=='18' & scenario=='S' & exp=='000')
+design_seed_000 %<>% slice(rep(1:n(), each = nrow(empirical_comparison_params)))
+design_seed_000$PS <- empirical_comparison_params$PS
+design_seed_000$N_GENES_INITIAL <- empirical_comparison_params$N_GENES_INITIAL
+design_seed_000$BITING_RATE_MEAN <- empirical_comparison_params$BITING_RATE_MEAN
+
+design_seed_002 <- subset(design, PS=='18' & scenario=='S' & exp=='002')
+design_seed_002 %<>% slice(rep(1:n(), each = nrow(empirical_comparison_params)))
+design_seed_002$PS <- empirical_comparison_params$PS
+design_seed_002$N_GENES_INITIAL <- empirical_comparison_params$N_GENES_INITIAL
+design_seed_002$BITING_RATE_MEAN <- empirical_comparison_params$BITING_RATE_MEAN
+
+design <- design_seed_000 %>% bind_rows(design_seed_002)
+design$mem_per_cpu <- 32000
+design$wall_time <- '20:00:00'
+
+# Create files to get data after sqlites are created.
+sbatch_arguments <- expand.grid(PS=sprintf('%0.3d', 100:183),
+                                scen=c('S'),
+                                array='1', 
+                                layers='1:300',
+                                exp=c('001'),
+                                stringsAsFactors = F)
+sbatch_arguments$cutoff_prob <-0.85
+sbatch_arguments$mem_per_cpu <- 20000
+sbatch_arguments$time <- '05:00:00'
+calculate_mFst <- F
+for (scenario in unique(sbatch_arguments$scen)){
+  for (ps in unique(sbatch_arguments$PS)){
+    for (e in unique(sbatch_arguments$exp)){
+      x <- readLines('~/Documents/malaria_interventions/PLOS_Biol/get_data_midway_plosbiol.sbatch')
+      str_sub(x[2],20,22) <- paste(ps,scenario,e,sep='')
+      str_sub(x[3],16,18) <- subset(sbatch_arguments, PS==ps & scen==scenario)$time
+      str_sub(x[4],31,33) <- paste(ps,scenario,e,sep='')
+      str_sub(x[5],30,32) <- paste(ps,scenario,e,sep='')
+      str_sub(x[6],17,20) <- subset(sbatch_arguments, PS==ps & scen==scenario)$array
+      str_sub(x[9],23,25) <- subset(sbatch_arguments, PS==ps & scen==scenario)$mem_per_cpu
+      str_sub(x[19],5,7) <- ps
+      str_sub(x[20],11,13) <- scenario
+      str_sub(x[21],6,8) <- e
+      str_sub(x[22],9,11) <- subset(sbatch_arguments, PS==ps & scen==scenario)$layers
+      str_sub(x[23],13,16) <- subset(sbatch_arguments, PS==ps & scen==scenario)$cutoff_prob
+      if (!calculate_mFst){
+        x <- x[-c(58:61)]
+      }
+      writeLines(x, paste(parameter_files_path_global,'/','PS',ps,scenario,'E',e,'_',subset(sbatch_arguments, PS==ps & scen==scenario)$cutoff_prob,'_get_data_midway.sbatch',sep=''))
+    }
+  }
+}
+sink('/media/Data/PLOS_Biol/parameter_files/run_experiments_sensitivity.sh')
+for (i in 1:nrow(sbatch_arguments)){
+  ps <- sbatch_arguments$PS[i]
+  scenario <- sbatch_arguments$scen[i]
+  cutoff_prob <- sbatch_arguments$cutoff_prob[i]
+  cat('sbatch ',paste('PS',ps,scenario,'E',e,'_',subset(sbatch_arguments, PS==ps & scen==scenario)$cutoff_prob,'_get_data_midway.sbatch',sep=''));cat('\n')
+}
+sink.reset()
+
+
+## Create files to extract data from Neutral simulations. This is done to obtain
+## the distribution of repertorie persistence.
+
+sbatch_arguments <- expand.grid(PS=sprintf('%0.3d', 500),
+                                scen='N',
+                                array='1', 
+                                layers='1:100',
+                                exp=c('002'),
+                                stringsAsFactors = F)
+sbatch_arguments$cutoff_prob <- 0.85
+sbatch_arguments$mem_per_cpu <- 32000
+sbatch_arguments$time <- '10:00:00'
+
+calculate_mFst <- F
+for (scenario in unique(sbatch_arguments$scen)){
+  for (ps in unique(sbatch_arguments$PS)){
+    for (e in unique(sbatch_arguments$exp)){
+      x <- readLines('~/Documents/malaria_interventions/PLOS_Biol/get_data_midway_plosbiol.sbatch')
+      str_sub(x[2],20,22) <- paste(ps,scenario,e,sep='')
+      str_sub(x[3],16,18) <- subset(sbatch_arguments, PS==ps & scen==scenario)$time
+      str_sub(x[4],31,33) <- paste(ps,scenario,e,sep='')
+      str_sub(x[5],30,32) <- paste(ps,scenario,e,sep='')
+      str_sub(x[6],17,20) <- subset(sbatch_arguments, PS==ps & scen==scenario)$array
+      str_sub(x[9],23,25) <- subset(sbatch_arguments, PS==ps & scen==scenario)$mem_per_cpu
+      str_sub(x[19],5,7) <- ps
+      str_sub(x[20],11,13) <- scenario
+      str_sub(x[21],6,8) <- e
+      str_sub(x[22],9,11) <- subset(sbatch_arguments, PS==ps & scen==scenario)$layers
+      str_sub(x[23],13,16) <- subset(sbatch_arguments, PS==ps & scen==scenario)$cutoff_prob
+      if (!calculate_mFst){
+        x <- x[-c(58:61)]
+      }
+      writeLines(x, paste(parameter_files_path_global,'/','PS',ps,scenario,'E',e,'_',subset(sbatch_arguments, PS==ps & scen==scenario)$cutoff_prob,'_get_data_midway.sbatch',sep=''))
+    }
+  }
+}
+sink('/media/Data/PLOS_Biol/parameter_files/run_experiments.sh')
+for (i in 1:nrow(sbatch_arguments)){
+  ps <- sbatch_arguments$PS[i]
+  scenario <- sbatch_arguments$scen[i]
+  cutoff_prob <- sbatch_arguments$cutoff_prob[i]
+  cat('sbatch ',paste('PS',ps,scenario,'E',e,'_',subset(sbatch_arguments, PS==ps & scen==scenario)$cutoff_prob,'_get_data_midway.sbatch',sep=''));cat('\n')
+}
+sink.reset()
+
+
 
 
 #  Verify result file on Midway -------------------------------------------
