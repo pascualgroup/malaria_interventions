@@ -344,6 +344,7 @@ sink.reset()
 # 2. Mean biting rate (0.35-0.5)
 # 3. Naive duration of infection (range 6-18 months)
 
+# This code creates the design
 diversity_range <- seq(10000,16000,1000) # Main analysis is 12000
 biting_range <- seq(0.3,0.5,0.1) # Main analysis is 0.00040
 naive_doi_range <- 1/(seq(180,540,120)/60) # Main analysis is 1/6
@@ -371,6 +372,47 @@ design <- design_seed_000 %>% bind_rows(design_seed_001)
 design$mem_per_cpu <- 32000
 design$wall_time <- '20:00:00'
 
+# Create files to get data after sqlites are created.
+sbatch_arguments <- expand.grid(PS=sprintf('%0.3d', 100:183),
+                                scen=c('S'),
+                                array='1', 
+                                layers='1:300',
+                                exp=c('001'),
+                                stringsAsFactors = F)
+sbatch_arguments$cutoff_prob <-0.85
+sbatch_arguments$mem_per_cpu <- 20000
+sbatch_arguments$time <- '05:00:00'
+calculate_mFst <- F
+for (scenario in unique(sbatch_arguments$scen)){
+  for (ps in unique(sbatch_arguments$PS)){
+    for (e in unique(sbatch_arguments$exp)){
+      x <- readLines('~/Documents/malaria_interventions/PLOS_Biol/get_data_midway_plosbiol.sbatch')
+      str_sub(x[2],20,22) <- paste(ps,scenario,e,sep='')
+      str_sub(x[3],16,18) <- subset(sbatch_arguments, PS==ps & scen==scenario)$time
+      str_sub(x[4],31,33) <- paste(ps,scenario,e,sep='')
+      str_sub(x[5],30,32) <- paste(ps,scenario,e,sep='')
+      str_sub(x[6],17,20) <- subset(sbatch_arguments, PS==ps & scen==scenario)$array
+      str_sub(x[9],23,25) <- subset(sbatch_arguments, PS==ps & scen==scenario)$mem_per_cpu
+      str_sub(x[19],5,7) <- ps
+      str_sub(x[20],11,13) <- scenario
+      str_sub(x[21],6,8) <- e
+      str_sub(x[22],9,11) <- subset(sbatch_arguments, PS==ps & scen==scenario)$layers
+      str_sub(x[23],13,16) <- subset(sbatch_arguments, PS==ps & scen==scenario)$cutoff_prob
+      if (!calculate_mFst){
+        x <- x[-c(58:61)]
+      }
+      writeLines(x, paste(parameter_files_path_global,'/','PS',ps,scenario,'E',e,'_',subset(sbatch_arguments, PS==ps & scen==scenario)$cutoff_prob,'_get_data_midway.sbatch',sep=''))
+    }
+  }
+}
+sink('/media/Data/PLOS_Biol/parameter_files/run_experiments_sensitivity.sh')
+for (i in 1:nrow(sbatch_arguments)){
+  ps <- sbatch_arguments$PS[i]
+  scenario <- sbatch_arguments$scen[i]
+  cutoff_prob <- sbatch_arguments$cutoff_prob[i]
+  cat('sbatch ',paste('PS',ps,scenario,'E',e,'_',subset(sbatch_arguments, PS==ps & scen==scenario)$cutoff_prob,'_get_data_midway.sbatch',sep=''));cat('\n')
+}
+sink.reset()
 
 
 #  Verify result file on Midway -------------------------------------------
