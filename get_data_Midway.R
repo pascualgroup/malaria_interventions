@@ -55,7 +55,7 @@ if (task=='make_networks'){
   # Network objects
   # If experiment is not control then take the cutoff value from the control. This
   # requires the control to be run first.
-  if (job_exp=='001'){
+  if (job_exp=='001' | !file.exists(paste('PS',job_ps,'_',job_scenario,'_E001_R',job_run,'_',cutoff_prob,'_network_info.csv',sep=''))){
     cutoff_value <- NULL
   } else {
     x <- readLines(paste('PS',job_ps,'_',job_scenario,'_E001_R',job_run,'_',cutoff_prob,'_network_info.csv',sep=''))

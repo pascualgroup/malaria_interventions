@@ -22,7 +22,7 @@ design <- loadExperiments_GoogleSheets(local = F, workBookName = 'PLOS_Biol_desi
 
 # Create the reference experiments (checkpoint and control)
 ps_range <- sprintf('%03d', 500:599)
-exp_range <- sprintf('%0.3d', c(0,2))
+exp_range <- sprintf('%0.3d', 1)
 run_range <- 1
 work_scenario <- 'S'
 # Generate 000 and 001 experiments
@@ -356,35 +356,96 @@ nrow(empirical_comparison_params)
 empirical_comparison_params$PS <- str_pad((1:nrow(empirical_comparison_params))+499,width = 3, side = 'left', pad = '0')
 
 design <- loadExperiments_GoogleSheets(local = F, workBookName = 'PLOS_Biol_design', sheetID = 2) 
-design_seed_000 <- subset(design, PS=='18' & scenario=='S' & exp=='000')
+work_scenario <- 'G'
+
+design_seed_000 <- subset(design, PS=='18' & scenario==work_scenario & exp=='000')
 design_seed_000 %<>% slice(rep(1:n(), each = nrow(empirical_comparison_params)))
 design_seed_000$PS <- empirical_comparison_params$PS
 design_seed_000$N_GENES_INITIAL <- empirical_comparison_params$N_GENES_INITIAL
 design_seed_000$BITING_RATE_MEAN <- empirical_comparison_params$BITING_RATE_MEAN
 
-design_seed_002 <- subset(design, PS=='18' & scenario=='S' & exp=='002')
+design_seed_001 <- subset(design, PS=='18' & scenario==work_scenario & exp=='001')
+design_seed_001 %<>% slice(rep(1:n(), each = nrow(empirical_comparison_params)))
+design_seed_001$PS <- empirical_comparison_params$PS
+design_seed_001$N_GENES_INITIAL <- empirical_comparison_params$N_GENES_INITIAL
+design_seed_001$BITING_RATE_MEAN <- empirical_comparison_params$BITING_RATE_MEAN
+
+design_seed_002 <- subset(design, PS=='18' & scenario==work_scenario & exp=='002')
 design_seed_002 %<>% slice(rep(1:n(), each = nrow(empirical_comparison_params)))
 design_seed_002$PS <- empirical_comparison_params$PS
 design_seed_002$N_GENES_INITIAL <- empirical_comparison_params$N_GENES_INITIAL
 design_seed_002$BITING_RATE_MEAN <- empirical_comparison_params$BITING_RATE_MEAN
 
-design <- design_seed_000 %>% bind_rows(design_seed_002)
+design <- design_seed_000 %>% bind_rows(design_seed_001) %>% bind_rows(design_seed_002)
 design$mem_per_cpu <- 32000
 design$wall_time <- '20:00:00'
 
+
+if (detect_locale()=='Lab'){
+  setwd('/home/shai/Documents/malaria_interventions')
+  sqlite_path_global <- '/media/Data/PLOS_Biol/sqlite_S'
+  parameter_files_path_global <- '/media/Data/PLOS_Biol/parameter_files'
+}
+if (detect_locale()=='Mac'){
+  setwd('~/GitHub/malaria_interventions')
+  sqlite_path_global <- '~/GitHub/PLOS_Biol/sqlite_S'
+  parameter_files_path_global <- '~/GitHub/PLOS_Biol/parameter_files'
+}
+
+
+# Create the reference experiments (checkpoint and control)
+ps_range <- sprintf('%03d', 500:599)
+exp_range <- sprintf('%0.3d', 0:2)
+run_range <- 1
+
+for (ps in ps_range){
+design_subset <- subset(design, PS %in% ps & scenario==work_scenario & exp %in% exp_range)
+generate_files(row_range = 1:nrow(design_subset), run_range = run_range, 
+               experimental_design = design_subset, 
+               # The radom_seed is necessary if using CP for intervention when
+               # not creating the intervention experiment parameter file at the
+               # same time as the 000 file.
+               #random_seed = get_random_seed(PS = 18, scenario = work_scenario, run_range = run_range, folder = '/media/Data/PLOS_Biol/parameter_files/'),
+               biting_rate_file = design_subset$DAILY_BITING_RATE_DISTRIBUTION[1],
+               target_folder = parameter_files_path_global)
+}
+
+# Copy the file to Midway and unzip it, then run the run_E000.sh file for run the checkpoints:
+sink('/media/Data/PLOS_Biol/parameter_files/run_E000.sh')
+for (ps in ps_range){
+  cat('sbatch PS',ps,work_scenario,'E000.sbatch',sep='');cat('\n')
+}
+sink.reset()
+
+jobids <- c(55805308:55805370,55805372:55805408) # from Midway after runnign run_E000.sh
+sink('/media/Data/PLOS_Biol/parameter_files/run_E001.sh')
+for (ps in ps_range){
+  cat('sbatch -d afterok:',jobids[which(ps_range==ps)],' PS',ps,work_scenario,'E001.sbatch',sep='');cat('\n')
+}
+sink.reset()
+
+sink('/media/Data/PLOS_Biol/parameter_files/run_E002.sh')
+for (ps in ps_range){
+  cat('sbatch -d afterok:',jobids[which(ps_range==ps)],' PS',ps,work_scenario,'E002.sbatch',sep='');cat('\n')
+}
+sink.reset()
+
 # Create files to extract data
 sbatch_arguments <- expand.grid(PS=sprintf('%0.3d', 500:599),
-                                scen='S',
+                                scen='N',
                                 array='1', 
-                                layers='1:80',
-                                exp=c('002'),
+                                layers='1:100',
+                                exp='002',
                                 stringsAsFactors = F)
 sbatch_arguments$cutoff_prob <- 0.85
 sbatch_arguments$mem_per_cpu <- 20000
 sbatch_arguments$time <- '02:00:00'
-sbatch_arguments$after_job <- 55792279:55792378
+sbatch_arguments$after_job <- c(55803955:55804045,55804560,55804046,55804074,55804047:55804052)
 # use make_sbatch_get_data here
 make_sbatch_get_data(sbatch_arguments, make_networks = T)
+make_sbatch_get_data(sbatch_arguments, repertoire_persistence = T) # For neutral simulations
+
+
 
 #  Verify result file on Midway -------------------------------------------
 
