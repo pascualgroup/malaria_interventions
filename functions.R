@@ -677,6 +677,59 @@ generate_sbatch <- function(ps, scen, experiment, runs, unzip_py_files){
 }
 
 
+make_sbatch_get_data <- function(sbatch_arguments,
+                                 make_networks=F,
+                                 repertoire_persistence=F,
+                                 prepare_infomap=F,
+                                 run_Infomap=F,
+                                 read_infomap_results=F,
+                                 temporal_diversity=F,
+                                 module_Fst=F,
+                                 run_experiments_file='/media/Data/PLOS_Biol/parameter_files/run_experiments.sh') {
+  
+  for (scenario in unique(sbatch_arguments$scen)){
+    for (ps in unique(sbatch_arguments$PS)){
+      for (e in unique(sbatch_arguments$exp)){
+        x <- readLines('~/Documents/malaria_interventions/PLOS_Biol/get_data_midway_plosbiol.sbatch')
+        str_sub(x[2],20,22) <- paste(ps,scenario,e,sep='')
+        str_sub(x[3],16,18) <- subset(sbatch_arguments, PS==ps & scen==scenario)$time
+        str_sub(x[4],31,33) <- paste(ps,scenario,e,sep='')
+        str_sub(x[5],30,32) <- paste(ps,scenario,e,sep='')
+        str_sub(x[6],17,20) <- subset(sbatch_arguments, PS==ps & scen==scenario)$array
+        str_sub(x[9],23,25) <- subset(sbatch_arguments, PS==ps & scen==scenario)$mem_per_cpu
+        str_sub(x[19],5,7) <- ps
+        str_sub(x[20],11,13) <- scenario
+        str_sub(x[21],6,8) <- e
+        str_sub(x[22],9,11) <- subset(sbatch_arguments, PS==ps & scen==scenario)$layers
+        str_sub(x[23],13,16) <- subset(sbatch_arguments, PS==ps & scen==scenario)$cutoff_prob
+        x[35] <- ""
+        if (make_networks){x[36] <- "Rscript $prog $PS $scenario $exp $cutoff_prob $layers 'make_networks'"}
+        if (repertoire_persistence){x[37] <- "Rscript $prog $PS $scenario $exp $cutoff_prob $layers 'repertoire_persistence'"}
+        if (prepare_infomap){x[38] <- "Rscript $prog $PS $scenario $exp $cutoff_prob $layers 'prepare_infomap'"}
+        if (run_Infomap){x[39] <- "infomap_name='PS'$PS'_'$scenario'_E'$exp'_R'$SLURM_ARRAY_TASK_ID'_'$cutoff_prob'_Infomap_multilayer'"}
+        if (run_Infomap){x[40] <- "./Infomap_v01926 $infomap_name'.txt' . -i multilayer -d -N 10 --rawdir --two-level --tree --expanded"}
+        if (read_infomap_results){x[41] <- "Rscript $prog $PS $scenario $exp $cutoff_prob $layers 'read_infomap_results'"}
+        if (temporal_diversity){x[42] <- "Rscript $prog $PS $scenario $exp $cutoff_prob $layers 'temporal_diversity'"}
+        if (module_Fst){x[43] <- "Rscript $prog $PS $scenario $exp $cutoff_prob $layers 'module_Fst'"}
+        
+        writeLines(x, paste(parameter_files_path_global,'/','PS',ps,'_',scenario,'_','E',e,'_',subset(sbatch_arguments, PS==ps & scen==scenario)$cutoff_prob,'_get_data_midway.sbatch',sep=''))
+      }
+    }
+  }
+  sink(run_experiments_file)
+  for (i in 1:nrow(sbatch_arguments)){
+    ps <- sbatch_arguments$PS[i]
+    scenario <- sbatch_arguments$scen[i]
+    cutoff_prob <- sbatch_arguments$cutoff_prob[i]
+    exp <- sbatch_arguments$exp[i]
+    if ('after_job'%in%names(sbatch_arguments)){
+      cat('sbatch -d afterok:',sbatch_arguments$after_job[i], ' PS',ps,'_',scenario,'_','E',exp,'_',cutoff_prob,'_get_data_midway.sbatch',sep='');cat('\n')
+    } else {
+      cat('sbatch PS',ps,'_',scenario,'_','E',exp,'_',cutoff_prob,'_get_data_midway.sbatch',sep='');cat('\n')
+    }
+  }
+  sink.reset()
+}
 
 # Plotting ----------------------------------------------------------------
 library(ggplot2)

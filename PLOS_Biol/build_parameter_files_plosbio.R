@@ -462,96 +462,19 @@ design <- design_seed_000 %>% bind_rows(design_seed_002)
 design$mem_per_cpu <- 32000
 design$wall_time <- '20:00:00'
 
-# Create files to get data after sqlites are created.
-sbatch_arguments <- expand.grid(PS=sprintf('%0.3d', 100:183),
-                                scen=c('S'),
+# Create files to extract data
+sbatch_arguments <- expand.grid(PS=sprintf('%0.3d', 500:599),
+                                scen='S',
                                 array='1', 
-                                layers='1:300',
-                                exp=c('001'),
-                                stringsAsFactors = F)
-sbatch_arguments$cutoff_prob <-0.85
-sbatch_arguments$mem_per_cpu <- 20000
-sbatch_arguments$time <- '05:00:00'
-calculate_mFst <- F
-for (scenario in unique(sbatch_arguments$scen)){
-  for (ps in unique(sbatch_arguments$PS)){
-    for (e in unique(sbatch_arguments$exp)){
-      x <- readLines('~/Documents/malaria_interventions/PLOS_Biol/get_data_midway_plosbiol.sbatch')
-      str_sub(x[2],20,22) <- paste(ps,scenario,e,sep='')
-      str_sub(x[3],16,18) <- subset(sbatch_arguments, PS==ps & scen==scenario)$time
-      str_sub(x[4],31,33) <- paste(ps,scenario,e,sep='')
-      str_sub(x[5],30,32) <- paste(ps,scenario,e,sep='')
-      str_sub(x[6],17,20) <- subset(sbatch_arguments, PS==ps & scen==scenario)$array
-      str_sub(x[9],23,25) <- subset(sbatch_arguments, PS==ps & scen==scenario)$mem_per_cpu
-      str_sub(x[19],5,7) <- ps
-      str_sub(x[20],11,13) <- scenario
-      str_sub(x[21],6,8) <- e
-      str_sub(x[22],9,11) <- subset(sbatch_arguments, PS==ps & scen==scenario)$layers
-      str_sub(x[23],13,16) <- subset(sbatch_arguments, PS==ps & scen==scenario)$cutoff_prob
-      if (!calculate_mFst){
-        x <- x[-c(58:61)]
-      }
-      writeLines(x, paste(parameter_files_path_global,'/','PS',ps,scenario,'E',e,'_',subset(sbatch_arguments, PS==ps & scen==scenario)$cutoff_prob,'_get_data_midway.sbatch',sep=''))
-    }
-  }
-}
-sink('/media/Data/PLOS_Biol/parameter_files/run_experiments_sensitivity.sh')
-for (i in 1:nrow(sbatch_arguments)){
-  ps <- sbatch_arguments$PS[i]
-  scenario <- sbatch_arguments$scen[i]
-  cutoff_prob <- sbatch_arguments$cutoff_prob[i]
-  cat('sbatch ',paste('PS',ps,scenario,'E',e,'_',subset(sbatch_arguments, PS==ps & scen==scenario)$cutoff_prob,'_get_data_midway.sbatch',sep=''));cat('\n')
-}
-sink.reset()
-
-
-## Create files to extract data from Neutral simulations. This is done to obtain
-## the distribution of repertorie persistence.
-
-sbatch_arguments <- expand.grid(PS=sprintf('%0.3d', 500),
-                                scen='N',
-                                array='1', 
-                                layers='1:100',
+                                layers='1:80',
                                 exp=c('002'),
                                 stringsAsFactors = F)
 sbatch_arguments$cutoff_prob <- 0.85
-sbatch_arguments$mem_per_cpu <- 32000
-sbatch_arguments$time <- '10:00:00'
-
-calculate_mFst <- F
-for (scenario in unique(sbatch_arguments$scen)){
-  for (ps in unique(sbatch_arguments$PS)){
-    for (e in unique(sbatch_arguments$exp)){
-      x <- readLines('~/Documents/malaria_interventions/PLOS_Biol/get_data_midway_plosbiol.sbatch')
-      str_sub(x[2],20,22) <- paste(ps,scenario,e,sep='')
-      str_sub(x[3],16,18) <- subset(sbatch_arguments, PS==ps & scen==scenario)$time
-      str_sub(x[4],31,33) <- paste(ps,scenario,e,sep='')
-      str_sub(x[5],30,32) <- paste(ps,scenario,e,sep='')
-      str_sub(x[6],17,20) <- subset(sbatch_arguments, PS==ps & scen==scenario)$array
-      str_sub(x[9],23,25) <- subset(sbatch_arguments, PS==ps & scen==scenario)$mem_per_cpu
-      str_sub(x[19],5,7) <- ps
-      str_sub(x[20],11,13) <- scenario
-      str_sub(x[21],6,8) <- e
-      str_sub(x[22],9,11) <- subset(sbatch_arguments, PS==ps & scen==scenario)$layers
-      str_sub(x[23],13,16) <- subset(sbatch_arguments, PS==ps & scen==scenario)$cutoff_prob
-      if (!calculate_mFst){
-        x <- x[-c(58:61)]
-      }
-      writeLines(x, paste(parameter_files_path_global,'/','PS',ps,scenario,'E',e,'_',subset(sbatch_arguments, PS==ps & scen==scenario)$cutoff_prob,'_get_data_midway.sbatch',sep=''))
-    }
-  }
-}
-sink('/media/Data/PLOS_Biol/parameter_files/run_experiments.sh')
-for (i in 1:nrow(sbatch_arguments)){
-  ps <- sbatch_arguments$PS[i]
-  scenario <- sbatch_arguments$scen[i]
-  cutoff_prob <- sbatch_arguments$cutoff_prob[i]
-  cat('sbatch ',paste('PS',ps,scenario,'E',e,'_',subset(sbatch_arguments, PS==ps & scen==scenario)$cutoff_prob,'_get_data_midway.sbatch',sep=''));cat('\n')
-}
-sink.reset()
-
-
-
+sbatch_arguments$mem_per_cpu <- 20000
+sbatch_arguments$time <- '02:00:00'
+sbatch_arguments$after_job <- 55792279:55792378
+# use make_sbatch_get_data here
+make_sbatch_get_data(sbatch_arguments, make_networks = T)
 
 #  Verify result file on Midway -------------------------------------------
 
