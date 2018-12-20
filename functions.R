@@ -2243,7 +2243,7 @@ get_temporal_diversity <- function(PS,scenario,run,cutoff_prob,folder='/media/Da
   }
 }
 
-get_mFst <- function(PS,scenario,run,cutoff_prob,folder='/media/Data/PLOS_Biol/Results/cutoff_to_use/'){
+get_mFst <- function(PS,scenario,exp,run,cutoff_prob,folder='/media/Data/PLOS_Biol/Results/cutoff_to_use/'){
   file <- paste(folder,'PS',PS,'_',scenario,'_E',exp,'_R',run,'_',cutoff_prob,'_mFst.csv',sep='')
   if(file.exists(file)){
     print(paste(PS,scenario,exp,run,cutoff_prob,sep=' | '))
