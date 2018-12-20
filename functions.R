@@ -702,15 +702,15 @@ make_sbatch_get_data <- function(sbatch_arguments,
         str_sub(x[21],6,8) <- e
         str_sub(x[22],9,11) <- subset(sbatch_arguments, PS==ps & scen==scenario)$layers
         str_sub(x[23],13,16) <- subset(sbatch_arguments, PS==ps & scen==scenario)$cutoff_prob
-        x[35] <- ""
-        if (make_networks){x[36] <- "Rscript $prog $PS $scenario $exp $cutoff_prob $layers 'make_networks'"}
-        if (repertoire_persistence){x[37] <- "Rscript $prog $PS $scenario $exp $cutoff_prob $layers 'repertoire_persistence'"}
-        if (prepare_infomap){x[38] <- "Rscript $prog $PS $scenario $exp $cutoff_prob $layers 'prepare_infomap'"}
-        if (run_Infomap){x[39] <- "infomap_name='PS'$PS'_'$scenario'_E'$exp'_R'$SLURM_ARRAY_TASK_ID'_'$cutoff_prob'_Infomap_multilayer'"}
-        if (run_Infomap){x[40] <- "./Infomap_v01926 $infomap_name'.txt' . -i multilayer -d -N 10 --rawdir --two-level --tree --expanded"}
-        if (read_infomap_results){x[41] <- "Rscript $prog $PS $scenario $exp $cutoff_prob $layers 'read_infomap_results'"}
-        if (temporal_diversity){x[42] <- "Rscript $prog $PS $scenario $exp $cutoff_prob $layers 'temporal_diversity'"}
-        if (module_Fst){x[43] <- "Rscript $prog $PS $scenario $exp $cutoff_prob $layers 'module_Fst'"}
+        x[length(x)+1] <- ""
+        if (make_networks){x[length(x)+1] <- "Rscript $prog $PS $scenario $exp $cutoff_prob $layers 'make_networks'"}
+        if (repertoire_persistence){x[length(x)+1] <- "Rscript $prog $PS $scenario $exp $cutoff_prob $layers 'repertoire_persistence'"}
+        if (prepare_infomap){x[length(x)+1] <- "Rscript $prog $PS $scenario $exp $cutoff_prob $layers 'prepare_infomap'"}
+        if (run_Infomap){x[length(x)+1] <- "infomap_name='PS'$PS'_'$scenario'_E'$exp'_R'$SLURM_ARRAY_TASK_ID'_'$cutoff_prob'_Infomap_multilayer'"}
+        if (run_Infomap){x[length(x)+1] <- "./Infomap_v01926 $infomap_name'.txt' . -i multilayer -d -N 10 --rawdir --two-level --tree --expanded"}
+        if (read_infomap_results){x[length(x)+1] <- "Rscript $prog $PS $scenario $exp $cutoff_prob $layers 'read_infomap_results'"}
+        if (temporal_diversity){x[length(x)+1] <- "Rscript $prog $PS $scenario $exp $cutoff_prob $layers 'temporal_diversity'"}
+        if (module_Fst){x[length(x)+1] <- "Rscript $prog $PS $scenario $exp $cutoff_prob $layers 'module_Fst'"}
         
         writeLines(x, paste(parameter_files_path_global,'/','PS',ps,'_',scenario,'_','E',e,'_',subset(sbatch_arguments, PS==ps & scen==scenario)$cutoff_prob,'_get_data_midway.sbatch',sep=''))
       }
@@ -1343,11 +1343,11 @@ createTemporalNetwork <- function(ps, scenario, exp, run, cutoff_prob, cutoff_va
 
 
 get_edge_disributions <- function(PS, scenario, exp, run, cutoff_prob, get_inter=T){
-  x <- readLines(paste('Results/',PS,'_',scenario,'/PS',PS,'_',scenario,'_E',exp,'_R',run,'_',cutoff_prob,'_network_info.csv',sep=''))
+  x <- readLines(paste('/media/Data/PLOS_Biol/Results/',PS,'_',scenario,'/PS',PS,'_',scenario,'_E',exp,'_R',run,'_',cutoff_prob,'_network_info.csv',sep=''))
   cutoff_value <- as.numeric(x[6])
-  intra <- fread(paste('Results/',PS,'_',scenario,'/PS',PS,'_',scenario,'_E',exp,'_R',run,'_',cutoff_prob,'_intralayer_no_cutoff.csv',sep=''))  
+  intra <- fread(paste('/media/Data/PLOS_Biol/Results/',PS,'_',scenario,'/PS',PS,'_',scenario,'_E',exp,'_R',run,'_',cutoff_prob,'_intralayer_no_cutoff.csv',sep=''))  
   if (get_inter){
-    inter <- fread(paste('Results/',PS,'_',scenario,'/PS',PS,'_',scenario,'_E',exp,'_R',run,'_',cutoff_prob,'_interlayer_no_cutoff.csv',sep=''))  
+    inter <- fread(paste('/media/Data/PLOS_Biol/Results/',PS,'_',scenario,'/PS',PS,'_',scenario,'_E',exp,'_R',run,'_',cutoff_prob,'_interlayer_no_cutoff.csv',sep=''))  
     x <- rbind(intra,inter)
   } else {
     x <- intra
@@ -1884,6 +1884,7 @@ matrix_to_infomap_interlayer <- function(l, nodeList, network_object){
 # It also returns the list of node names.
 # requires igraph
 build_infomap_objects <- function(network_object, write_to_infomap_file=T, infomap_file_name, return_objects=T, repertoire_persistence_prob=NULL){
+  require(data.table)
   intralayer_matrices <- network_object$intralayer_matrices
   base_name <- network_object$base_name
 
@@ -1916,12 +1917,12 @@ build_infomap_objects <- function(network_object, write_to_infomap_file=T, infom
     rescaling_factors <- tibble(layer_s=1:5,months_gap=c(8,12,4,12,8))
     rescaling_factors %<>% 
       left_join(repertoire_persistence_prob, by=c('months_gap'='persistence')) %>% 
-      select(layer_s,months_gap,prob)
+      select(layer_s,months_gap,cum_prob)
     for (l in 1:5){
       # Divide edge weights by the probability of persistence. those that persisted
       # for longer will have stronger values
       x <- infomap_interlayer[[l]]
-      x %<>% left_join(rescaling_factors) %>% mutate(w_rescaled=w/prob)
+      x %<>% left_join(rescaling_factors) %>% mutate(w_rescaled=w/cum_prob)
       infomap_interlayer[[l]] <- x
     }
   }
@@ -1953,14 +1954,16 @@ build_infomap_objects <- function(network_object, write_to_infomap_file=T, infom
 
 
 
-infomap_readTreeFile <- function(PS, scenario, exp, run, cutoff_prob, folder='/media/Data/PLOS_Biol/Results/cutoff_to_use/'){
+infomap_readTreeFile <- function(PS, scenario, exp, run, cutoff_prob, folder='/media/Data/PLOS_Biol/Results/cutoff_to_use/', infomap_file=NULL){
   print ('Reading infomap file...')
-  if (on_Midway()){
-    infomap_file <-       paste('PS',PS,'_',scenario,'_E',exp,'_R',run,'_',cutoff_prob,'_Infomap_multilayer_expanded.tree',sep='')
-    node_list <- read_csv(paste('PS',PS,'_',scenario,'_E',exp,'_R',run,'_',cutoff_prob,'_node_list.csv',sep=''), col_types = list(col_character(),col_character()))
-  } else {
-    infomap_file <-       paste(folder,'/PS',PS,'_',scenario,'_E',exp,'_R',run,'_',cutoff_prob,'_Infomap_multilayer_expanded.tree',sep='')
-    node_list <- read_csv(paste(folder,'/PS',PS,'_',scenario,'_E',exp,'_R',run,'_',cutoff_prob,'_node_list.csv',sep=''), col_types = list(col_character(),col_character()))
+  if (is.null(infomap_file)){
+    if (on_Midway()){
+      infomap_file <-       paste('PS',PS,'_',scenario,'_E',exp,'_R',run,'_',cutoff_prob,'_Infomap_multilayer_expanded.tree',sep='')
+      node_list <- read_csv(paste('PS',PS,'_',scenario,'_E',exp,'_R',run,'_',cutoff_prob,'_node_list.csv',sep=''), col_types = list(col_character(),col_character()))
+    } else {
+      infomap_file <-       paste(folder,'/PS',PS,'_',scenario,'_E',exp,'_R',run,'_',cutoff_prob,'_Infomap_multilayer_expanded.tree',sep='')
+      node_list <- read_csv(paste(folder,'/PS',PS,'_',scenario,'_E',exp,'_R',run,'_',cutoff_prob,'_node_list.csv',sep=''), col_types = list(col_character(),col_character()))
+    }
   }
   lines <- readLines(infomap_file)
   cat(lines[1]);cat('\n')
