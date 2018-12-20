@@ -1,29 +1,214 @@
+# Initialize --------------------------------------------------------------
+source('/home/shai/Documents/malaria_interventions/functions.R')
+prep.packages(c("stringr","ggplot2","igraph","Matrix","dplyr","cowplot"))
 
-# Empirical ---------------------------------------------------------------
+setwd('/media/Data/PLOS_Biol/empirical')
 
-IRS_S <- get_data(parameter_space = '18', scenario = 'S', experiment = '002', run = 1, cutoff_prob = 0.85, use_sqlite = T, tables_to_get = 'summary_general')[[1]]
-IRS_G <- get_data(parameter_space = '18', scenario = 'G', experiment = '002', run = 1, cutoff_prob = 0.85, use_sqlite = T, tables_to_get = 'summary_general')[[1]]
-IRS_N <- get_data(parameter_space = '18', scenario = 'N', experiment = '002', run = 1, cutoff_prob = 0.85, use_sqlite = T, tables_to_get = 'summary_general')[[1]]
+plotSurveyLayer <- function(x, zeroDiag=T, cutoff_g=NULL){
+  if(zeroDiag){diag(x) <- 0}
+  g <- graph.adjacency(x, mode = 'directed', weighted = T, diag = F)
+  if(!is.null(cutoff_g)){g <- delete_edges(g, which(E(g)$weight<quantile(E(g)$weight, cutoff_g)))} # remove all edges smaller than the cutoff
+  plot(g, 
+       vertex.color='#8F25DD',
+       vertex.size=6,
+       vertex.label=NA,
+       # edge.arrow.mode='-', 
+       edge.arrow.width=1,
+       edge.arrow.size=0.2,
+       edge.curved=0.5, 
+       edge.width=E(g)$weight*10)  
+}
 
-IRS_S$layer <- 1:300
-IRS_G$layer <- 1:300
-IRS_N$layer <- 1:300
-IRS_S %>% bind_rows(IRS_G) %>% bind_rows(IRS_N) %>% 
-  mutate(scenario=factor(scenario, levels=c('S','G','N'))) %>% 
-  filter(layer%in%100:200) %>% 
-  select(-year, -month, -n_infected) %>% 
-  gather(variable, value, -pop_id, -time, -exp, -PS, -scenario, -run, -layer) %>% 
-  group_by(pop_id, time, layer, exp, PS, scenario, variable) %>%
-  summarise(value_mean=mean(value), value_sd=sd(value)) %>% # Need to average across runs
-  filter(variable %in% monitored_variables) %>%
-  ggplot()+
-  geom_line(aes(x=layer, y=value_mean, color=scenario))+
-  geom_errorbar(aes(ymin=value_mean-value_sd,ymax=value_mean+value_sd,x=layer, group=scenario),color='gray',width=0.001, alpha=0.3)+
-  geom_vline(xintercept = c(131,149),color-'black')+
-  scale_color_manual(values = scenario_cols)+
-  facet_wrap(~variable, scales='free')+
-  mytheme
 
+
+# Get and clean empirical data ---------------------------------------------------
+
+mainData <- data.table::fread('S1ToS6_all_renamed_otuTable_binary.txt',sep = '\t',header = T)
+names(mainData)[1] <- 'OTU_ID'
+anyDuplicated(mainData$OTU_ID)
+anyDuplicated(colnames(mainData))
+varGroupings <- data.table::fread('S1ToS6_all_renamed_centroids_DBLaUpsType.csv', header = T)
+varGroupings <- as.tibble(varGroupings)
+varGroupings %<>% separate(col=type, into=c('var_type','sample','size'),sep=';')
+
+setequal(mainData$OTU_ID,varGroupings$var_type)
+setdiff(mainData$OTU_ID,varGroupings$var_type)
+setdiff(varGroupings$var_type,mainData$OTU_ID)
+
+mainData <- subset(mainData, OTU_ID%in%subset(varGroupings, Grouping=='BC')$var_type)
+OTU_ID <- mainData$OTU_ID
+mainData <- mainData[,-1]
+mainData <- as.matrix(mainData)
+rownames(mainData) <- OTU_ID
+mainData[1:5,1:5]
+
+
+# Get surveys for isolates
+isolates_df <- tibble(isolate_code=colnames(mainData), isolate_name=str_sub(isolates_all,3,9))
+isolates_df %<>% mutate(survey=str_sub(isolate_code, 1, str_locate(isolates_all, 'MRS')[,1]-1))
+isolates_df %>% count(survey)
+isolates_df %<>% 
+  filter(isolate_name!='MRS1011') %>% # Remove the single individual with a chronic infection
+  mutate(survey=ifelse(survey=='R2S1','S1',survey)) %>% 
+  mutate(survey=ifelse(survey=='RS1','S1',survey)) %>% 
+  mutate(survey=ifelse(survey=='RS4','S4',survey))
+nrow(isolates_df)
+isolates_df %<>% distinct()
+nrow(isolates_df)
+
+cleanSurveyData <- function(main_data, isolates_df, Survey, min.var.per.isolate=40, max.var.per.isolate=60, plotit=F){
+  
+  x <- isolates_df %>% filter(survey==Survey) %>% select(isolate_code)
+  x <- x$isolate_code
+  
+  data_survey <- main_data[,x]
+  data_survey <- bipartite::empty(data_survey)
+  
+  if(plotit){
+    require(ggplot2)
+    require(cowplot)
+    x <- tibble(vars_in_pop=rowSums(data_survey))
+    p1 <- ggplot(data = x, aes(x=vars_in_pop))+geom_histogram(fill='#1E9B95')+
+      labs(x='var types in population', title='Number of times a var type\noccurs in the host population')+
+      manuscript_theme
+    x <- tibble(vars_in_isolate=colSums(data_survey))
+    p2 <- ggplot(data = x, aes(x=vars_in_isolate))+geom_histogram(fill='#2C69C2')+
+      labs(x='var types in isolate', title='Number of var types\nin an isolate')+
+      geom_vline(xintercept = c(min.var.per.isolate,max.var.per.isolate), color='red')+
+      manuscript_theme
+    title <- ggdraw() + draw_label(Survey, size=20)
+    p <- plot_grid(p1, p2,
+                   labels = c("A", "B"),
+                   nrow = 1, ncol = 2)
+    p <- plot_grid(title, p, nrow=2, rel_heights = c(0.096,0.904))
+    print(p)
+  }
+  data_survey <- data_survey[, which(colSums(data_survey)>=min.var.per.isolate & colSums(data_survey)<=max.var.per.isolate)]  # Remove isolates by constrains on number of var genes
+  data_survey <- bipartite::empty(data_survey)
+  dim(data_survey)
+  # df <- df[which(rowSums(df)>1),] # Remove var types that appear only once
+  # df <- bipartite::empty(df)
+  cat(nrow(data_survey),' var types in ',ncol(data_survey),' isolates')
+  return(data_survey)
+}
+
+# Limit to 60 vars (MOI=1)
+maxVarIsolate <- 55
+Data_S1 <- cleanSurveyData(main_data = mainData, isolates_df, Survey = 'S1', min.var.per.isolate = 40, max.var.per.isolate = maxVarIsolate, plotit = F)
+Data_S2 <- cleanSurveyData(main_data = mainData, isolates_df, Survey = 'S2', min.var.per.isolate = 40, max.var.per.isolate = maxVarIsolate, plotit = F)
+Data_S3 <- cleanSurveyData(main_data = mainData, isolates_df, Survey = 'S3', min.var.per.isolate = 40, max.var.per.isolate = maxVarIsolate, plotit = F)
+Data_S4 <- cleanSurveyData(main_data = mainData, isolates_df, Survey = 'S4', min.var.per.isolate = 40, max.var.per.isolate = maxVarIsolate, plotit = F)
+Data_S5 <- cleanSurveyData(main_data = mainData, isolates_df, Survey = 'S5', min.var.per.isolate = 40, max.var.per.isolate = maxVarIsolate, plotit = F)
+Data_S6 <- cleanSurveyData(main_data = mainData, isolates_df, Survey = 'S6', min.var.per.isolate = 40, max.var.per.isolate = maxVarIsolate, plotit = F)
+
+# isoaltes in rows, var genes in columns
+Data_S1 <- t(Data_S1)
+Data_S2 <- t(Data_S2)
+Data_S3 <- t(Data_S3)
+Data_S4 <- t(Data_S4)
+Data_S5 <- t(Data_S5)
+Data_S6 <- t(Data_S6)
+
+# isolates_to_include <- unique(c(rownames(Data_S1),rownames(Data_S2),rownames(Data_S3),rownames(Data_S4),rownames(Data_S5),rownames(Data_S6)))
+# vars_to_include <- unique(c(colnames(Data_S1),colnames(Data_S2),colnames(Data_S3),colnames(Data_S4),colnames(Data_S5),colnames(Data_S6)))
+# mainDataClean <- mainData[vars_to_include,isolates_to_include]
+# dim(mainDataClean)
+
+
+# Define Layers -----------------------------------------------------------
+
+empiricalLayer_1 <- overlapAlleleAdj(Data_S1)
+empiricalLayer_2 <- overlapAlleleAdj(Data_S2)
+empiricalLayer_3 <- overlapAlleleAdj(Data_S3)
+empiricalLayer_4 <- overlapAlleleAdj(Data_S4)
+empiricalLayer_5 <- overlapAlleleAdj(Data_S5)
+empiricalLayer_6 <- overlapAlleleAdj(Data_S6)
+
+diag(empiricalLayer_1) <- 0
+diag(empiricalLayer_2) <- 0
+diag(empiricalLayer_3) <- 0
+diag(empiricalLayer_4) <- 0
+diag(empiricalLayer_5) <- 0
+diag(empiricalLayer_6) <- 0
+
+intralayer_matrices_empirical <- list(empiricalLayer_1, empiricalLayer_2, empiricalLayer_3, empiricalLayer_4,empiricalLayer_5,empiricalLayer_6)
+
+plotSurveyLayer(intralayer_matrices_empirical[[3]])
+
+# Interlayer edges --------------------------------------------------------
+
+# Build "interlayer networks"
+print('Building inter-layer networks...')
+interlayer_matrices_empirical <- list()
+for (current_layer in 1:5){
+  next_layer <- current_layer+1
+
+  strain_copies_t <- rownames(intralayer_matrices_empirical[[current_layer]]) # repertoires at time t
+  strain_copies_t1 <- rownames(intralayer_matrices_empirical[[next_layer]]) # repertoires at time t+1
+  # need minimum of 2 strains in t and t+1 to build a matrix
+  if (length(strain_copies_t)<2 | length(strain_copies_t1)<2){
+    print(paste('No interlayer edges between layers ',current_layer,' and ',next_layer,' because there are < 2 repertoires in one of them.',sep=''))
+    return(NULL)
+  } 
+  
+  data_tmp <- bipartite::empty(mainData[,union(strain_copies_t,strain_copies_t1)])
+  x <- overlapAlleleAdj(t(data_tmp)) # This is the similarity matrix for all the repertoires in both layers.
+  inter_layer_edges_matrix <- x[strain_copies_t,strain_copies_t1]# Pull only the similarity values between the repertoires from the correct layers (i.e. create a bipartite)
+  interlayer_matrices_empirical[[current_layer]] <- inter_layer_edges_matrix
+  print(paste('Built interlayer edges for layers: ',current_layer,' (',length(strain_copies_t),' isolates with MOI=1)',' --> ',next_layer,' (',length(strain_copies_t1),' isolates with MOI=1)',sep=''))
+}
+
+
+
+# Get edge weight distributions from simulations --------------------------
+edge_weights_simulated <- c()
+for (ps in 500:599){
+  print(ps)
+  x <- get_edge_disributions(PS = ps, scenario = 'S', exp = '001', run = 1,cutoff_prob = 0.85, get_inter = F)
+  x <- subset(x, value!=0)
+  edge_weights_simulated <- rbind(edge_weights_simulated, x)
+}
+
+edge_weights_simulated <- as.tibble(edge_weights_simulated)
+edge_weights_simulated$grp <- 'Simulated'
+
+
+# Define cutoff -----------------------------------------------------------
+
+# # Limit the surveys
+# intralayer_matrices_empirical <- intralayer_matrices_empirical[1:4]
+# interlayer_matrices_empirical <- interlayer_matrices_empirical[1:4]
+
+cutoff_prob_empirical <- 0.85
+
+# Get empirical edge weights
+intralayer_edges <- unlist(sapply(intralayer_matrices_empirical, as.vector))
+interlayer_edges <- unlist(sapply(interlayer_matrices_empirical, as.vector))
+edges <- c(intralayer_edges,interlayer_edges)
+
+#Create a data frame for empirical edge weights
+edges_empirical <- tibble(value=intralayer_edges,grp='Empirical')
+edges_empirical %<>% filter(value!=0) # remove instances with no edges
+
+# Calculate cutoff based on empirical data
+cutoff_value <- quantile(edges_empirical$value, probs = cutoff_prob_empirical)
+
+# Plot distributions
+edge_weights_simulated %>% 
+  bind_rows(edges_empirical) %>%
+  ggplot(aes(x=value,fill=grp))+
+  geom_density(aes(y=..scaled..))+
+  scale_fill_manual(values=c('#8F25DD','#10A4EF'))+
+  geom_vline(xintercept = cutoff_value, color='red')
+
+# Apply cutoff to layers
+print('Applying cutoff to layers...')
+for (i in 1:length(intralayer_matrices_empirical)){
+  # print(i)
+  x <- intralayer_matrices_empirical[[i]]
+  x[x<cutoff_value] <- 0
+  intralayer_matrices_empirical[[i]] <- x
+}
 
 
 # Distribution of repertoire persistence ----------------------------------
@@ -53,188 +238,148 @@ repertoire_persistence_prob <- persistence_df %>%
   count(persistence) %>% 
   mutate(prob=n/sum(n))
 
-  ggplot(repertoire_persistence_prob)+
-  geom_line(aes(x=persistence, y=prob),size=1)+ 
+repertoire_persistence_prob$cum_prob <- 1-(c(0,cumsum(repertoire_persistence_prob$prob)[-nrow(repertoire_persistence_prob)]))
+
+ggplot(repertoire_persistence_prob)+
+  geom_line(aes(x=persistence, y=cum_prob),size=1)+ 
   scale_y_continuous(limits = c(0,1))
 
 
+# Build Infomap objects -----------------------------------------------
+network_object <- vector(mode = 'list', length = 2)
+names(network_object) <- c('intralayer_matrices','interlayer_matrices')
+network_object$intralayer_matrices <- intralayer_matrices_empirical
+network_object$interlayer_matrices <- interlayer_matrices_empirical
+infomap_empirical <- build_infomap_objects(network_object = network_object, write_to_infomap_file = T,
+                                           infomap_file_name = '/media/Data/PLOS_Biol/empirical/infomap_empirical.txt', 
+                                          return_objects = T,repertoire_persistence_prob = repertoire_persistence_prob)
+
+infomap_empirical$infomap_interlayer %>% ggplot()+
+  geom_density(aes(x=w),fill='purple',alpha=0.6)+
+  geom_density(aes(x=w_rescaled),fill='#10A4EF',alpha=0.6)
+
+# Run Infomap -------------------------------------------------------------
+
+system("./Infomap_v01926 infomap_empirical.txt . -i multilayer -d -N 50 --rawdir --two-level --tree --expanded")
+
+
+# Read Infomap results ----------------------------------------------------
+node_list <- infomap_empirical$nodeList
+print ('Reading infomap file...')
+infomap_file <- '/media/Data/PLOS_Biol/empirical/infomap_empirical_expanded.tree'
+lines <- readLines(infomap_file)
+cat(lines[1]);cat('\n')
+# x <- fread(infomap_file, skip = 2, stringsAsFactors = F) # Read results of Infomap
+x <- read_delim(infomap_file, 
+                delim = ' ',
+                col_types = list(col_character(), col_double(), col_character(), col_integer(), col_integer()), 
+                col_names = c('path', 'flow', 'name', 'layer', 'node'),
+                skip = 2) # Read results of Infomap
+print(x)
+
+# Create a data frame to store results
+modules <- tibble(module=rep(NA,nrow(x)),
+                  nodeID=rep(NA,nrow(x)),
+                  layer=rep(NA,nrow(x)),
+                  path=x$path)
+
+print('Creating module data frame...')
+modules$module <- as.numeric(str_split(string = modules$path, pattern = ':', simplify = T)[,1])
+modules$nodeID <- str_trim(str_split(string = x$name, pattern = '\\|', simplify = T)[,1])
+modules$layer <- as.numeric(str_trim(str_split(string = x$name, pattern = '\\|', simplify = T)[,2])) # can also use x$layer
+
+modules %>%  ggplot(aes(x=layer,y=module))+geom_point()
+
+# Rename modules because Infomap gives random names
+print('Adding information on strains...')
+modules2 <- modules %>% 
+  distinct(module,layer) %>% 
+  arrange(module,layer)
+x <- c(1,table(modules2$module))
+module_birth_layers <- modules2 %>% slice(cumsum(x)) %>% arrange(layer,module)
+module_renaming <- data.frame(module=module_birth_layers$module, module_renamed = 1:max(module_birth_layers$module)) 
+modules2 %<>% left_join(module_renaming)
+modules2 %<>% full_join(modules) 
+modules2 %<>% select(-module, -path)
+names(modules2)[2] <- 'module'
+modules2 %<>% arrange(module, layer, nodeID)
+
+# Change node IDs to repertoire names
+modules2$nodeID <- as.integer(modules2$nodeID)
+node_list$nodeID <- as.integer(node_list$nodeID)
+print(paste('Same strains in module and the node_list strain data frames?',setequal(modules2$nodeID,node_list$nodeID)))
+modules2 %<>% left_join(node_list) %>% 
+  rename(strain_unique=nodeLabel) %>% 
+  mutate(strain_id=str_split(strain_unique,'_', simplify = T)[,1])
+
+# Add information
+modules2$PS <- 'Empirical'
+modules2$scenario <- 'S'
+modules2$exp <- '002'
+modules2$run <- 1
+modules2$cutoff_prob <- cutoff_prob_empirical
+
+modules_empirical <- modules2
+
+
+# Module analysis ---------------------------------------------------------
+
+modules_empirical %>% ggplot(aes(x=layer,y=module))+geom_point()
+
+modules_empirical %>% 
+  group_by(module) %>% mutate(layer_birth=min(layer),layer_death=max(layer),persistence=layer_death-layer_birth+1) %>% 
+  distinct(module,persistence)
+
+modules_empirical %>% group_by(module) %>% summarise(numStrains=length(strain_unique))
+
+
+
+# Proportiion of new moduels appearing after intervention
+moduleInLayer <- binarize(xtabs(~module+layer,modules_empirical))
+beginning <- apply(moduleInLayer,1, function(x) which(x!=0)[1]) # position of first non-zero element from each row.
+end <- apply(moduleInLayer,1, function(x) tail(which(x!=0),1)) # position of last non-zero element from each row.
+moduleIntervals <- data.frame(start=beginning,end=end)
+table(beginning)/nModules
+
+
+# Module/Repertoire distribution across isolates
+# Because we work with MOI=1 then the distribution of repertoires in isoaltes 
+# will always produce maximum entropy, since an isolate is a repertoire. So it 
+# remains to see how modules are distributed. The number of cases is actually
+# the number of strains (or isolates); again, becaues of MOI=1.
+
+moduleDistribution <- modules_empirical %>% group_by(layer,module) %>% summarise(numStrains=length(strain))
+diversModules <- moduleDistribution %>% group_by(layer) %>% summarise(H_normalized=vegan::diversity(numStrains)/log(length(module)+1))
+
+
+
+
+# Empirical ---------------------------------------------------------------
+
+IRS_S <- get_data(parameter_space = '18', scenario = 'S', experiment = '002', run = 1, cutoff_prob = 0.85, use_sqlite = T, tables_to_get = 'summary_general')[[1]]
+IRS_G <- get_data(parameter_space = '18', scenario = 'G', experiment = '002', run = 1, cutoff_prob = 0.85, use_sqlite = T, tables_to_get = 'summary_general')[[1]]
+IRS_N <- get_data(parameter_space = '18', scenario = 'N', experiment = '002', run = 1, cutoff_prob = 0.85, use_sqlite = T, tables_to_get = 'summary_general')[[1]]
+
+IRS_S$layer <- 1:300
+IRS_G$layer <- 1:300
+IRS_N$layer <- 1:300
+IRS_S %>% bind_rows(IRS_G) %>% bind_rows(IRS_N) %>% 
+  mutate(scenario=factor(scenario, levels=c('S','G','N'))) %>% 
+  filter(layer%in%100:200) %>% 
+  select(-year, -month, -n_infected) %>% 
+  gather(variable, value, -pop_id, -time, -exp, -PS, -scenario, -run, -layer) %>% 
+  group_by(pop_id, time, layer, exp, PS, scenario, variable) %>%
+  summarise(value_mean=mean(value), value_sd=sd(value)) %>% # Need to average across runs
+  filter(variable %in% monitored_variables) %>%
+  ggplot()+
+  geom_line(aes(x=layer, y=value_mean, color=scenario))+
+  geom_errorbar(aes(ymin=value_mean-value_sd,ymax=value_mean+value_sd,x=layer, group=scenario),color='gray',width=0.001, alpha=0.3)+
+  geom_vline(xintercept = c(131,149),color-'black')+
+  scale_color_manual(values = scenario_cols)+
+  facet_wrap(~variable, scales='free')+
+  mytheme
+
+
+
+
 # Analyzing simulations ---------------------------------------------------
-# !!! STILL OLD CODE !!!
-# Randomly select individuals to match to the data. This is where we limit to MOI=1
-empirical_number_individuals <- c(97,67,66,50)
-for (i in 1:length(layersFull)){
-  x <-layersFull[[i]]
-  if (nrow(x) < empirical_number_individuals[i]){next}
-  sampled_individuals <- sample(rownames(x), empirical_number_individuals[i], replace = F)
-  x <- x[sampled_individuals,sampled_individuals]
-  layersFull[[i]] <- x
-}
-print('MATCHED layer sizes:')
-sapply(layersFull, nrow)
-
-print('layer density:')
-sapply(layersFull, function (x) gdensity(x,F,T))
-
-# Extract the similarity matrix among all the repertoires in the 4 layers
-similarityMatrix <- overlapAlleleAdj(table(strainComposition_reduced$strainId, strainComposition_reduced$geneId))
-nodeLabel <- sort(unique(unlist(lapply(layersFull,rownames))))
-similarityMatrix <- similarityMatrix[nodeLabel, nodeLabel]
-diag(similarityMatrix) <- 0
-write.csv(similarityMatrix, paste('../Results/',filename_base,'_similarityMatrix_no_cutoff.csv',sep='')) # save this so to be able tro plt edge weight distributons fast
-
-# Apply cutoff: percentile of strongest links -------------------------------------------------
-# calculates a cutoff value which will be used across all layers, and interlayer edges
-
-if (cutoffMethod=='CP'){
-  message('Applying cutoff by percentile...')
-  cutoffValue <- quantile(as.vector(similarityMatrix[similarityMatrix!=0]), probs = cutoffPercentile)
-  # ggHistogram(as.vector(similarityMatrix[similarityMatrix!=0]), xlab = 'Non-zero similarity values')+geom_vline(xintercept = cutoffValue, color='red')
-  similarityMatrix[similarityMatrix<cutoffValue] <- 0 # This is to be used later for the interlayer edges
-  # Apply cutoff on the layers
-  for (i in 1:length(layersFull)){
-    x <-layersFull[[i]]
-    x[x<cutoffValue] <- 0
-    layersFull[[i]] <- x
-  }
-  
-  print('Layer density by applying a cutoff percentile:')
-  sapply(layersFull, function (x) gdensity(x,F,T))
-  write.csv(sapply(layersFull, function (x) gdensity(x,F,T)), paste('../Results/',filename_base,'_layerdensity.csv',sep=''))
-}
-
-# Apply cutoff: match density ---------------------------------------------
-if (cutoffMethod=='MD'){
-  mprint('Applying cut off by matching densities')
-  
-  density_vector_intra <- str_replace(str_replace(args[5],pattern = '\\[',''),'\\]','')
-  density_vector_intra <- as.numeric(unlist(strsplit(density_vector_intra, "[,]")))
-  density_vector_inter <- str_replace(str_replace(args[6],pattern = '\\[',''),'\\]','')
-  density_vector_inter <- as.numeric(unlist(strsplit(density_vector_inter, "[,]")))
-  
-  for (i in 1:length(layersFull)){
-    x <- match_density(layersFull[[i]],density_vector_intra[i])
-    layersFull[[i]] <- x
-  }
-  
-  print('Matched intra-layer densities:')
-  print(sapply(layersFull, function (x) gdensity(x,F,T)))
-  write.csv(sapply(layersFull, function (x) gdensity(x,F,T)), paste('../Results/',filename_base,'_layerdensity.csv',sep=''))
-}
-
-
-# Write files for Infomap -------------------------------------------------
-message('Building Infomap files...')
-nodeLabel <- sort(unique(unlist(lapply(layersFull,rownames))))
-nodeList <- data.frame(nodeID=1:length(nodeLabel), nodeLabel)
-# Build interlayer edges
-ile_matrix <- list()
-ile_edgelist <- list()
-
-# Get the probabilities of persistence for 4,8 and 12 months
-persistence_dist <-  data.table::fread(paste('neutral_',simNum,'_',cutoffPercentile,'_',cutoffMethod,'_repertoire_persistence.csv',sep=''))
-
-get_persistence <- function(q){
-  if (q%in%persistence_dist$persistence){
-    rep_persistence <- subset(persistence_dist, persistence == q)$cumulative
-  } else { # If q is not in the least take the closesty value
-    mprint('Cannot find persistence value!')
-    x <- persistence_dist$persistence
-    dt = data.table(x, val = x) # you'll see why val is needed in a sec
-    setattr(dt, "sorted", "x")  # let data.table know that w is sorted
-    setkey(dt, x) # sorts the data
-    # binary search and "roll" to the nearest neighbour
-    # In the final expression the val column will have the you're looking for.
-    closest <- dt[J(q), roll = "nearest"]$val
-    rep_persistence <- subset(persistence_dist, persistence == closest)$cumulative
-  }
-  return(rep_persistence)
-}
-
-
-for (t in 1:(length(timeSlices)-1)){
-  cat('Building interlayer edges for layers: ',t,'-->',t+1,'\n')
-  strainCopies_t <- rownames(layersFull[[t]])
-  strainCopies_t1 <- rownames(layersFull[[t+1]])
-  if (length(strainCopies_t)<2 | length(strainCopies_t1)<2){
-    print('need minimum of 2 strains in t and t+1 to build a matrix. SKIPPING layer')
-    next
-  } # need minimum of 2 strains in t and t+1 to build a matrix
-  
-  m <- similarityMatrix[strainCopies_t,strainCopies_t1]
-  print(paste('density of interlayer edges layer',t,'to',t+1,':',gdensity(m,F,T)))
-  if (cutoffMethod=='MD'){
-    m <- match_density(m,density_vector_inter[t],bipartite = T)
-    print(paste('MATCHED density of interlayer edges layer',t,'to',t+1,':',gdensity(m,F,T)))
-  }
-  
-  # Divide edge weights by the probability of persistence. those that persisted for longer will have stronger values
-  if (t==1){m <- m/get_persistence(8)} # 8 months between S1 and S2
-  if (t==2){m <- m/get_persistence(12)} # 12 months between S2 and S3
-  if (t==3){m <- m/get_persistence(4)} # 4 months between S3 and S4
-  
-  if(sum(m)==0){
-    print('No interactions, SKIPPING layer')
-    next
-  }
-  ile_matrix[[t]] <- m
-  
-  NZ <- which(m!=0, arr.ind = T) # non-zero elements
-  
-  edges_interlayer <- data.frame(layer_s=rep(t,nrow(NZ)),
-                                 node_s=rep(NA,nrow(NZ)),
-                                 layer_t=rep(t+1,nrow(NZ)),
-                                 node_t=rep(NA,nrow(NZ)),
-                                 w=rep(NA,nrow(NZ)))
-  
-  edges_interlayer$node_s <- rownames(m)[NZ[,1]]
-  edges_interlayer$node_t <- colnames(m)[NZ[,2]]
-  for (n in 1:nrow(edges_interlayer)){
-    edges_interlayer[n,'w'] <- m[as.character(edges_interlayer[n,'node_s']),as.character(edges_interlayer[n,'node_t'])]
-  }
-  
-  edges_interlayer$node_s <- nodeList$nodeID[match(edges_interlayer$node_s,nodeList$nodeLabel)]
-  edges_interlayer$node_t <- nodeList$nodeID[match(edges_interlayer$node_t,nodeList$nodeLabel)]
-  
-  ile_edgelist[[t]] <- edges_interlayer
-}
-inter_edges_simulated <- do.call(rbind.data.frame,ile_edgelist)
-intra_edges_simulated <- infomap_makeIntralayerEdges(layersFull,nodeList)
-
-print('inter-layer densities:')
-print(sapply(ile_matrix, dim))
-print(sapply(ile_matrix, function (x) gdensity(x,T)))
-write.csv(sapply(ile_matrix, function (x) gdensity(x,T)), paste('../Results/',filename_base,'_inter-layerdensity.csv',sep=''))
-
-
-## Write file for infomap
-message('Writing Infomap files')
-file <- paste(filename_base,'_Infomap_multilayer','.txt',sep='')
-print(paste('Infomap file:',file))
-if (file.exists(file)){unlink(file)}
-sink(file, append = T)
-cat("# A network in a general multiplex format");cat('\n')
-cat(paste("*Vertices",nrow(nodeList)));cat('\n')
-write.table(nodeList, file, append = T,sep=' ', quote = T, row.names = F, col.names = F)
-cat("*Multiplex");cat('\n')
-cat("# layer node layer node [weight]");cat('\n')
-cat("# Intralayer edges");cat('\n')
-write.table(intra_edges_simulated, file, sep = ' ', row.names = F, col.names = F, quote = F, append = T)
-cat("# Interlayer edges");cat('\n')
-write.table(inter_edges_simulated, file, sep = ' ', row.names = F, col.names = F, quote = F, append = T)
-sink.reset()
-
-
-message('Running Infomap...')
-#runInfomapCommand <- paste('./Infomap ',file,' . -2 -i multiplex --multiplex-relax-rate -1 -d -N 10 --rawdir --tree --expanded',sep='')
-runInfomapCommand <- paste('./Infomap_v01914 ',file,' ',args[7],' . -2 -i multilayer -d -N 20 --rawdir --tree --expanded',sep='')
-
-system(runInfomapCommand)
-
-message('Reading Infomap results...')
-
-modules_simulated <- infomap_readTreeFile(paste(filename_base,'_Infomap_multilayer','_expanded.tree',sep=''), reorganize_modules = T, remove_buggy_instances = T,max_layers = 4)
-
-modules_simulated$scenario <- scenario
-modules_simulated$simNum <- simNum
-
-write.csv(modules_simulated, paste('../Results/',filename_base,'_modules.csv',sep=''))
