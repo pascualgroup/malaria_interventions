@@ -252,36 +252,7 @@ for (i in 1:nrow(cutoff_design)){
   if(cutoff_design[i,'cutoff_prob']>0.8 & cutoff_design[i,'PS']!='06'){cutoff_design$time[i] <- '10:00:00'}
 }
 
-for (i in 1:nrow(cutoff_design)){
-  x <- readLines('~/Documents/malaria_interventions/PLOS_Biol/get_data_midway_plosbiol.sbatch')
-  ps <- cutoff_design$PS[i]
-  scenario <- cutoff_design$scenario[i]
-  cutoff_prob <- cutoff_design$cutoff_prob[i]
-  x[2] <- paste('#SBATCH --job-name=',cutoff_design$job_name[i],sep='')
-  str_sub(x[3],16,18) <- cutoff_design$time[i]
-  x[4] <- paste('#SBATCH --output=slurm_output/',cutoff_design$job_name[i],'_%A_%a.out',sep='')
-  x[5] <- paste('#SBATCH --error=slurm_output/',cutoff_design$job_name[i],'_%A_%a.err',sep='')
-  str_sub(x[6],17,20) <- cutoff_design$array[i]
-  str_sub(x[9],23,25) <- cutoff_design$mem_per_cpu[i]
-  str_sub(x[19],5,7) <- ps
-  str_sub(x[20],11,13) <- scenario
-  str_sub(x[21],6,8) <- '001'
-  str_sub(x[22],9,11) <- '1:300'
-  str_sub(x[23],13,16) <- cutoff_design$cutoff_prob[i]
-  if (!cutoff_design$calculate_mFst[i]){
-    x <- x[-c(58:61)]
-  }
-  writeLines(x, paste('/media/Data/PLOS_Biol/Cutoff/','PS',ps,'_',scenario,'_',cutoff_prob,'_get_data_midway.sbatch',sep=''))
-}
-
-sink('/media/Data/PLOS_Biol/Cutoff/run_cutoff_experiments.sh')
-for (i in 1:nrow(cutoff_design)){
-  ps <- cutoff_design$PS[i]
-  scenario <- cutoff_design$scenario[i]
-  cutoff_prob <- cutoff_design$cutoff_prob[i]
-  cat('sbatch',paste('PS',ps,'_',scenario,'_',cutoff_prob,'_get_data_midway.sbatch',sep=''));cat('\n')
-}
-sink.reset()
+#Use function make_sbatch_get_data()
 
 
 
@@ -318,38 +289,7 @@ sbatch_arguments$cutoff_prob <- 0.85
 sbatch_arguments$mem_per_cpu <- 8000
 sbatch_arguments$time <- '01:00:00'
 
-calculate_mFst <- F
-for (scenario in unique(sbatch_arguments$scen)){
-  for (ps in unique(sbatch_arguments$PS)){
-    for (e in unique(sbatch_arguments$exp)){
-      x <- readLines('~/Documents/malaria_interventions/PLOS_Biol/get_data_midway_plosbiol.sbatch')
-      str_sub(x[2],20,22) <- paste(ps,scenario,e,sep='')
-      str_sub(x[3],16,18) <- subset(sbatch_arguments, PS==ps & scen==scenario)$time
-      str_sub(x[4],31,33) <- paste(ps,scenario,e,sep='')
-      str_sub(x[5],30,32) <- paste(ps,scenario,e,sep='')
-      str_sub(x[6],17,20) <- subset(sbatch_arguments, PS==ps & scen==scenario)$array
-      str_sub(x[9],23,25) <- subset(sbatch_arguments, PS==ps & scen==scenario)$mem_per_cpu
-      str_sub(x[19],5,7) <- ps
-      str_sub(x[20],11,13) <- scenario
-      str_sub(x[21],6,8) <- e
-      str_sub(x[22],9,11) <- subset(sbatch_arguments, PS==ps & scen==scenario)$layers
-      str_sub(x[23],13,16) <- subset(sbatch_arguments, PS==ps & scen==scenario)$cutoff_prob
-      if (!calculate_mFst){
-        x <- x[-c(58:61)]
-      }
-      writeLines(x, paste(parameter_files_path_global,'/','PS',ps,scenario,'E',e,'_',subset(sbatch_arguments, PS==ps & scen==scenario)$cutoff_prob,'_get_data_midway.sbatch',sep=''))
-    }
-  }
-}
-sink('/media/Data/PLOS_Biol/parameter_files/run_experiments.sh')
-for (i in 1:nrow(sbatch_arguments)){
-  ps <- sbatch_arguments$PS[i]
-  scenario <- sbatch_arguments$scen[i]
-  cutoff_prob <- sbatch_arguments$cutoff_prob[i]
-  cat('sbatch ',paste('PS',ps,scenario,'E',e,'_',subset(sbatch_arguments, PS==ps & scen==scenario)$cutoff_prob,'_get_data_midway.sbatch',sep=''));cat('\n')
-}
-sink.reset()
-
+#Use function make_sbatch_get_data()
 
 
 # Generate files for sensitivity analysis of main results ---------------------------------
@@ -397,38 +337,8 @@ sbatch_arguments <- expand.grid(PS=sprintf('%0.3d', 100:183),
 sbatch_arguments$cutoff_prob <-0.85
 sbatch_arguments$mem_per_cpu <- 20000
 sbatch_arguments$time <- '05:00:00'
-calculate_mFst <- F
-for (scenario in unique(sbatch_arguments$scen)){
-  for (ps in unique(sbatch_arguments$PS)){
-    for (e in unique(sbatch_arguments$exp)){
-      x <- readLines('~/Documents/malaria_interventions/PLOS_Biol/get_data_midway_plosbiol.sbatch')
-      str_sub(x[2],20,22) <- paste(ps,scenario,e,sep='')
-      str_sub(x[3],16,18) <- subset(sbatch_arguments, PS==ps & scen==scenario)$time
-      str_sub(x[4],31,33) <- paste(ps,scenario,e,sep='')
-      str_sub(x[5],30,32) <- paste(ps,scenario,e,sep='')
-      str_sub(x[6],17,20) <- subset(sbatch_arguments, PS==ps & scen==scenario)$array
-      str_sub(x[9],23,25) <- subset(sbatch_arguments, PS==ps & scen==scenario)$mem_per_cpu
-      str_sub(x[19],5,7) <- ps
-      str_sub(x[20],11,13) <- scenario
-      str_sub(x[21],6,8) <- e
-      str_sub(x[22],9,11) <- subset(sbatch_arguments, PS==ps & scen==scenario)$layers
-      str_sub(x[23],13,16) <- subset(sbatch_arguments, PS==ps & scen==scenario)$cutoff_prob
-      if (!calculate_mFst){
-        x <- x[-c(58:61)]
-      }
-      writeLines(x, paste(parameter_files_path_global,'/','PS',ps,scenario,'E',e,'_',subset(sbatch_arguments, PS==ps & scen==scenario)$cutoff_prob,'_get_data_midway.sbatch',sep=''))
-    }
-  }
-}
-sink('/media/Data/PLOS_Biol/parameter_files/run_experiments_sensitivity.sh')
-for (i in 1:nrow(sbatch_arguments)){
-  ps <- sbatch_arguments$PS[i]
-  scenario <- sbatch_arguments$scen[i]
-  cutoff_prob <- sbatch_arguments$cutoff_prob[i]
-  cat('sbatch ',paste('PS',ps,scenario,'E',e,'_',subset(sbatch_arguments, PS==ps & scen==scenario)$cutoff_prob,'_get_data_midway.sbatch',sep=''));cat('\n')
-}
-sink.reset()
 
+#Use function make_sbatch_get_data()
 
 # Generate files for empirical data comparison ----------------------------
 
