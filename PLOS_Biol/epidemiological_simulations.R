@@ -1,0 +1,286 @@
+# Initialize --------------------------------------------------------------
+if (length(commandArgs(trailingOnly=TRUE))==0) {
+  args <- c('mtn_2',9,300,0.25,12,10,5)
+} else {
+  message('Taking arguments from command line.')
+  args <- commandArgs(trailingOnly=TRUE)
+}
+experiment <- as.character(args[1])
+run <- as.numeric(args[2])
+numLayers <- as.numeric(args[3]) # This is to limit the number of layers. When running the real model this should be at the maximum value. number of layers will be (MaxTime-18000)/window width, whre 18000 is the burnin time of the model and window width is in days (typically 30)
+cutoffPercentile <- as.numeric(args[4])
+time_interval <- as.numeric(args[5])
+n_hosts <- as.numeric(args[6]) # Number of naive hosts to infect
+n_samples <- as.numeric(args[7]) # Number of random starting point layers within each module
+
+message('Arguments passed:')
+cat('experiment: ');cat(experiment);cat('\n')
+cat('run: ');cat(run);cat('\n')
+cat('numLayers: ');cat(numLayers);cat('\n')
+cat('cutoffPercentile: ');cat(cutoffPercentile);cat('\n')
+cat('time interval: ');cat(time_interval);cat('\n')
+cat('# hosts: ');cat(n_hosts);cat('\n')
+cat('# samples: ');cat(n_samples);cat('\n')
+
+# if (Sys.info()[4]=='ee-pascual-dell01'){source('/home/shai/Documents/malaria_temporal_networks/mtn_functions.R')}
+
+source('mtn_functions.R')
+prep.packages(c("dplyr","data.table","splitstackshape"))
+
+exp_run <- paste(experiment,'run',run,sep='_')
+filenameBase <- paste(experiment,'_','run_',run,'_',cutoffPercentile,'_',numLayers,sep='')
+
+# if (Sys.info()[4]=='ee-pascual-dell01'){
+#   setwd('/home/shai/Documents/mtn_data/epi')
+# }
+
+
+message('load strain compositon')
+strainComposition <- fread(paste(filenameBase,'_strain_composition','.csv',sep=''), sep=',', header = T, colClasses = c('character','character','character'))
+
+message('Loading modules...')
+modules <- infomap_readTreeFile(paste(filenameBase,'_2level_expanded.tree',sep=''), reorganize_modules = T, remove_buggy_instances = F, max_layers = numLayers)
+names(modules)[2] <- 'strainCopy'
+modules$strainId <- splitText(modules$strainCopy, after = F)
+
+message('Merging the strain composition with the module data frame...')
+modules <- inner_join(modules, strainComposition, by='strainId') %>% arrange(layer,module,strainCopy) # This is much faster
+
+rep_module_layer <- modules %>% select('strainId','module','layer') %>% distinct(strainId,module,layer)
+
+duration_new_gene <- 360/60 # 360 is the naive duration of infection and 60 is the number of genes in a repertoire, both taken from the experiment parameters run in the agent-based model
+
+
+# How many infections per layer should be performed? That would depend on the 
+# EIR parameter from the stochastic ABM which is on the units of
+# infectious bites/day/person. For eample, if EIR is 0.5 then it is an infectious bite every 2
+# days. So infections_per_layer=length_of_layer*EIR
+EIR <- read.csv(paste(filenameBase,'_EIR.csv',sep=''))$eirVal/360 # need to devide by 360 because the EIR is calculated for a year
+infections_per_layer <- ceiling(30*EIR) # need to use ceiling because for low diversity/transmission EIR is < 1.
+
+message('Finished initializing')
+
+
+# Functions ---------------------------------------------------------------
+
+sample_min_distance <- function(L, d, N){
+  # Function originally programmed in MaLab taken from here: https://stackoverflow.com/questions/31971344/generating-random-sequence-with-minimum-distance-between-elements-matlab
+  #L is length of interval
+  #d is minimum distance
+  #N is number of points
+  
+  E=L-(N-1)*d;  #excess space for points
+  
+  P=L-d
+  while (max(P)>=L-d){
+    #generate N+1 random values; 
+    Ro=runif(N+1)   # random vector
+    #normalize so that the extra space is consumed
+    #extra value is the amount of extra space "unused"
+    Rn=E*Ro[1:N]/sum(Ro); #normalize
+    
+    #spacing of points
+    S=d*matrix(rep(1,N),nrow = N,ncol=1)+Rn;  
+    
+    #location of points, adjusted to "start" at 0
+    P=round(cumsum(S)-1)
+  }
+  if(any(diff(P)<d)){
+    print('Failed generating sequence. returning NULL')
+    return(NULL)
+  } else {
+    return(P)
+  }
+}
+
+
+
+# A function to follow event queues and produce infections
+simulate_infections <- function(event){
+  repertoires_seen <- c()
+  genes_seen <- c()
+  infection_id <- 0
+  infection_queue <- data.frame(module=NULL, layer=NULL, infection_id=NULL, genes_seen=NULL, repertoires_seen=NULL, duration=NULL)
+  for (i in 1:nrow(event)){
+    infection_id <- infection_id+1
+    rep <- event$strainId[i]
+    rep_genes <- unique(subset(strainComposition, strainId==rep)$geneId) # Genes in the repertoire
+    new_genes <- sum(!rep_genes%in%genes_seen) # Genes in that repertorie which are new to the host
+    duration <- new_genes*duration_new_gene
+    # update history
+    genes_seen <- unique(c(genes_seen, rep_genes))
+    repertoires_seen <- unique(c(repertoires_seen, rep))
+    # Add to infection history queue
+    infection_queue[infection_id,'layer'] <- event[infection_id,'layer']
+    infection_queue[infection_id,'module'] <- event[infection_id,'module']
+    infection_queue[infection_id,'infection_id'] <- infection_id
+    infection_queue[infection_id,'genes_seen'] <- length(genes_seen)
+    infection_queue[infection_id,'repertoires_seen'] <- length(repertoires_seen)
+    infection_queue[infection_id,'duration'] <- duration
+  }
+  return(infection_queue)
+}
+
+event_status <- function(events){
+  print(paste('Total events:',nrow(events)))
+  print(paste('Mean infections per layer:',mean(table(events$layer))))
+  print(paste('Number of distinct modules:',length(unique(events$module))))
+  print(paste('Number of distinct repertoires:',length(unique(events$strainId))))
+}
+
+
+build_event_queue_within_modules <- function(){
+  # This selects n_hosts modules, each with time_interval layers
+  x <- rep_module_layer %>% group_by(module,layer) %>% summarise(nreps=length(strainId))
+  # Select the first 12 layers in each module. The trick when using top_n is to give the layer as the nverse weight to give priority to lower numbers
+  event_queue <- x %>% group_by(module) %>% top_n(n=time_interval, wt=1/layer) %>% arrange(module,layer) 
+  
+  # Remain only with those modules which have at least time_interval layers
+  y <- event_queue %>% group_by(module) %>% summarise(n=n()) %>% filter(n>=time_interval) # calculate the number of layers each module is present
+  event_queue <- inner_join(event_queue,y)
+  # Limit to the number of modules
+  if(length(unique(event_queue$module))<n_hosts){
+    warning('Number of modules smaller than n_hosts; leaving all of them')
+  }
+  if(length(unique(event_queue$module))>n_hosts){
+    m <- sort(sample(unique(event_queue$module), n_hosts, F))
+    event_queue <- event_queue %>% filter(module%in%m)
+  }
+  
+  # Which repertoires appear in these module-layer combinations?
+  x <- rep_module_layer %>% filter(module%in%event_queue$module & layer%in%event_queue$layer) %>% group_by(module,layer)%>% arrange(module,layer) 
+  event_queue <- inner_join(x, event_queue) %>% arrange(module,layer) 
+  # Select infections_per_layer. Notice that there is replacement because this
+  # is within module and some modules do not have enough repertories within a
+  # layer. That is the whole idea in the within-module case...
+  event_queue <- event_queue %>% group_by(module, layer) %>% sample_n(infections_per_layer, T)
+  
+  verify <- event_queue %>% group_by(module) %>% summarise(count=length(unique(layer)))
+  if(!all(verify$count==time_interval)){warning('Something went wrong; apparently not all module-layer combinations have the correct time_interval')}
+  
+  return(event_queue)
+}
+
+
+build_event_queue_between_modules <- function(){
+  
+  # In this case we need to select blocks of time_interval infections with
+  # at least infections_per_layer in each layer
+  # Then select 1 repertoire from each module in that layer
+  # And limit the number of repertoires to that determined by biting rate
+  
+  starting_points <- sort(sample_min_distance(L=numLayers, d=time_interval+1, N=n_hosts)) # sample_min_distance makes sure there will be no overlap in layer sequences
+  layers <- unlist(lapply(starting_points, function(x) seq(from=x,to=x+time_interval-1,by=1)))
+  # select 1 repertoire from infections_per_layer modules in each layer. Select
+  # with replacement in case there are less than infections_per_layer modules in
+  # a layer.
+  x <- subset(rep_module_layer, layer%in%layers)
+  event_queue <- NULL
+  for (l in layers){
+    y <- subset(x, layer==l)
+    if (length(unique(y$module))<infections_per_layer){
+      z <- y %>% group_by(layer) %>% sample_n(infections_per_layer, replace = T)
+    } else {
+      z <- y %>% group_by(module,layer) %>% sample_n(1) # Select 1 repertoire from each module
+      z <- z %>% group_by(layer) %>% sample_n(infections_per_layer, replace = F) # Select infections_per_layer repertoires
+    }  
+    event_queue <- rbind(event_queue, z)
+  }
+  return(event_queue)
+}
+
+
+build_event_queue_random <- function(){
+  
+  # In this case is similar to that of between-modules but we randomly
+  # select infections_per_layer from each layer, regardless of modlules
+  
+  starting_points <- sort(sample_min_distance(L=numLayers, d=time_interval+1, N=n_hosts)) # sample_min_distance makes sure there will be no overlap in layer sequences
+  layers <- unlist(lapply(starting_points, function(x) seq(from=x,to=x+time_interval-1,by=1)))
+  # select infections_per_layer repertoires in each layer, with replacement in
+  # case there are less than infections_per_layer modules in a layer.
+  x <- subset(rep_module_layer, layer%in%layers)
+  
+  event_queue <- x %>% group_by(layer) %>% sample_n(infections_per_layer, replace = T) %>% arrange(layer,module)
+  
+  return(event_queue)
+}
+
+
+for (s in 1:n_samples){
+  # Within-module simulations 
+  # In the case of within-module infections each host is actually a module because
+  # we follow a host for 12 layers within a module
+  mprint(paste(filenameBase,'| sample ',s,' | within',sep=''))
+  events_within <- build_event_queue_within_modules() # build event queue
+  event_status(events_within)
+  infection_history_within <- NULL
+  for (e in unique(events_within$module)){
+    # print(which(unique(events_within$module)==e))
+    x <- subset(events_within, module==e)
+    y <- simulate_infections(x)
+    infection_history_within <- rbind(infection_history_within, y)
+  }
+  # infection_history_within %>% group_by(infection_id) %>% summarise(d=mean(duration)) %>% ggplot(aes(infection_id, d))+geom_point()+geom_line()
+  
+  
+  # Between-module simulations
+  # Each host is a sequence of 10 consecutive layers
+  mprint(paste(filenameBase,'| sample ',s,' | between',sep=''))
+  events_between <- build_event_queue_between_modules() # build event queue
+  event_status(events_between)
+  ## Split the queue to single events (hosts)
+  d <- unique(events_between$layer)
+  x <- seq_along(d)
+  host_events <-  split(d, ceiling(x/time_interval))
+  infection_history_between <- NULL
+  for (e in 1:n_hosts){
+    # print(e)
+    x <- subset(events_between, layer%in%host_events[[e]])
+    y <- simulate_infections(x)
+    infection_history_between <- rbind(infection_history_between, y)
+  }
+  # infection_history_between %>% group_by(infection_id) %>% summarise(d=mean(duration)) %>% ggplot(aes(infection_id, d))+geom_point()+geom_line()
+  
+  
+  # Random-module simulations
+  # Each host is a sequence of 10 consecutive layers
+  mprint(paste(filenameBase,'| sample ',s,' | random',sep=''))
+  events_random <- build_event_queue_random() # build event queue
+  event_status(events_random)
+  ## Split the queue to single events (hosts)
+  d <- unique(events_random$layer)
+  x <- seq_along(d)
+  host_events <-  split(d, ceiling(x/time_interval))
+  infection_history_random <- NULL
+  for (e in 1:n_hosts){
+    print(e)
+    x <- subset(events_random, layer%in%host_events[[e]])
+    y <- simulate_infections(x)
+    infection_history_random <- rbind(infection_history_random, y)
+  }
+  # infection_history_random %>% group_by(infection_id) %>% summarise(d=mean(duration)) %>% ggplot(aes(infection_id, d))+geom_point()+geom_line()
+  
+  # Finalize
+  ## Join the results
+  infection_history_between$case <- 'B'
+  infection_history_within$case <- 'W'
+  infection_history_random$case <- 'R'
+  results <- rbind(infection_history_between,infection_history_within,infection_history_random)
+  results$sample <- s
+  
+  ## Write results to file
+  write.table(results, paste('Results/',filenameBase,'_epi_T',time_interval,'_H',n_hosts,'_sample_',s,'.csv',sep=''), sep=',')
+  
+  # Write the event queues
+  events_within$case <- 'W'
+  events_between$case <- 'B'
+  events_random$case <- 'R'
+  events <- rbind(events_within[,c("strainId","module","layer","case")],events_between,events_random)
+  events$sample <- s
+  write.table(events, paste('Results/',filenameBase,'_epi_T',time_interval,'_H',n_hosts,'_sample_',s,'_EVENTS.csv',sep=''), sep=',')
+}
+
+# results <- as_tibble(results)
+# results %>% group_by(case, infection_id) %>% summarise(d=mean(duration)) %>% 
+#   ggplot(aes(infection_id, d, color=case))+geom_point()+geom_line()+geom_vline(xintercept = seq(1,95,15))
