@@ -274,21 +274,6 @@ sbatch_arguments$time <- rep(c('04:00:00','05:00:00','10:00:00'),3)
 # sbatch_arguments <- subset(sbatch_arguments, scen=='G'&PS=='06')
 
 
-
-# cal <- as.tibble(build_calendar(num_years = 25, 10))
-# cal %>% filter(!is.na(survey)) %>% group_by(survey,layer) %>%
-#   summarise(first_day=min(running_day),last_day=max(running_day), year=unique(year_sim)+2002, month=unique(month_sim))
-sbatch_arguments <- expand.grid(PS=sprintf('%0.2d', 18),
-                                scen=c('N','G'),
-                                exp='002',
-                                array='1',
-                                layers='118,126,138,142,154,162',
-                                # layers='1:300',
-                                stringsAsFactors = F)
-sbatch_arguments$cutoff_prob <- 0.85
-sbatch_arguments$mem_per_cpu <- 8000
-sbatch_arguments$time <- '01:00:00'
-
 #Use function make_sbatch_get_data()
 
 
@@ -444,6 +429,31 @@ sbatch_arguments$after_job <- c(55803955:55804045,55804560,55804046,55804074,558
 # use make_sbatch_get_data here
 make_sbatch_get_data(sbatch_arguments, make_networks = T)
 make_sbatch_get_data(sbatch_arguments, repertoire_persistence = T) # For neutral simulations
+
+# Data for the intervention
+cal <- as.tibble(build_calendar(num_years = 25, 10))
+cal %>% filter(!is.na(survey)) %>% group_by(survey,layer) %>%
+  summarise(first_day=min(running_day),last_day=max(running_day), year=unique(year_sim)+2002, month=unique(month_sim))
+sbatch_arguments <- expand.grid(PS=sprintf('%0.3d', 500:599),
+                                scen=c('S'),
+                                exp='002',
+                                array='1',
+                                layers='118,126,138,142,154,162',
+                                exp='002',
+                                stringsAsFactors = F)
+sbatch_arguments$cutoff_prob <- 0.85
+sbatch_arguments$mem_per_cpu <- 8000
+sbatch_arguments$time <- '01:00:00'
+
+
+make_sbatch_get_data(sbatch_arguments, make_networks = T,
+                     prepare_infomap = T,
+                     run_Infomap = T,
+                     read_infomap_results = T,
+                     temporal_diversity = T,
+                     module_Fst = T)
+
+
 
 
 

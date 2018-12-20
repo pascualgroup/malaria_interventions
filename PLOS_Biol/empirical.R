@@ -218,31 +218,39 @@ for (i in 1:length(intralayer_matrices_empirical)){
 # to calculate the later, we need to look at some cumulative sum of the
 # probablities: cumulative=1-cumsum(prob)
 
-PS <- '18'
-exp <- '001'
-scenario <- 'N'
-persistence_df <- c()
-f <- paste('/media/Data/PLOS_Biol/Results/PS',PS,'_',scenario,'_E',exp,'_persistence_df.csv',sep='')
-persistence_df <- read_csv(f)
-persistence_df %>%
-  group_by(PS,scenario,type) %>%
-  count(persistence) %>% 
-  mutate(prob=n/sum(n)) %>% 
-  ggplot()+
-  geom_line(aes(x=persistence, y=prob, color=type, linetype=type),size=1)+ 
-  facet_grid(~type)+
-  scale_y_continuous(limits = c(0,1))
+get_repertoire_persistence_without_modules <- function(PS,scenario,exp,run,cutoff_prob,folder='/media/Data/PLOS_Biol/Results/'){
+  file <- paste(folder,PS,'_',scenario,'/','PS',PS,'_',scenario,'_E',exp,'_R',run,'_',cutoff_prob,'_repertoire_persistence_without_modules.txt',sep='')
+  if(file.exists(file)){
+    print(paste(PS,scenario,exp,run,cutoff_prob,sep=' | '))
+    x <- read_delim(file, delim=',', col_types = 'ciii')
+    x$PS <- PS
+    x$scenario <- scenario
+    x$exp <- exp
+    x$run <- run
+    return(x)
+  } else {
+    print(paste('File does not exist: ',file,sep=''))
+    return()
+  }
+}
 
-repertoire_persistence_prob <- persistence_df %>%
-  filter(type=='Repertoire') %>% 
-  count(persistence) %>% 
+repertoire_persistence <- c()
+for (ps in 500:599){
+  x <- get_repertoire_persistence_without_modules(ps,'N','002',1,0.85)
+  repertoire_persistence <- rbind(x,repertoire_persistence)
+}
+
+repertoire_persistence_prob <- repertoire_persistence %>%
+  count(persistence) %>%
   mutate(prob=n/sum(n))
-
+# Calculate the prob of persisting for at least a given amount of layers
 repertoire_persistence_prob$cum_prob <- 1-(c(0,cumsum(repertoire_persistence_prob$prob)[-nrow(repertoire_persistence_prob)]))
+repertoire_persistence_prob %>% print(n=Inf)
 
 ggplot(repertoire_persistence_prob)+
   geom_line(aes(x=persistence, y=cum_prob),size=1)+ 
-  scale_y_continuous(limits = c(0,1))
+  scale_y_continuous(limits = c(0,1))+
+  scale_x_continuous(limits = c(0,15), breaks = 0:15)
 
 
 # Build Infomap objects -----------------------------------------------
@@ -256,7 +264,7 @@ infomap_empirical <- build_infomap_objects(network_object = network_object, writ
 
 infomap_empirical$infomap_interlayer %>% ggplot()+
   geom_density(aes(x=w),fill='purple',alpha=0.6)+
-  geom_density(aes(x=w_rescaled),fill='#10A4EF',alpha=0.6)
+  geom_density(aes(x=w_rescaled),fill='gray',alpha=0.6)
 
 # Run Infomap -------------------------------------------------------------
 
@@ -288,7 +296,7 @@ modules$module <- as.numeric(str_split(string = modules$path, pattern = ':', sim
 modules$nodeID <- str_trim(str_split(string = x$name, pattern = '\\|', simplify = T)[,1])
 modules$layer <- as.numeric(str_trim(str_split(string = x$name, pattern = '\\|', simplify = T)[,2])) # can also use x$layer
 
-modules %>%  ggplot(aes(x=layer,y=module))+geom_point()
+# modules %>%  ggplot(aes(x=layer,y=module))+geom_point()
 
 # Rename modules because Infomap gives random names
 print('Adding information on strains...')
@@ -335,23 +343,12 @@ modules_empirical %>% group_by(module) %>% summarise(numStrains=length(strain_un
 
 
 # Proportiion of new moduels appearing after intervention
-moduleInLayer <- binarize(xtabs(~module+layer,modules_empirical))
-beginning <- apply(moduleInLayer,1, function(x) which(x!=0)[1]) # position of first non-zero element from each row.
-end <- apply(moduleInLayer,1, function(x) tail(which(x!=0),1)) # position of last non-zero element from each row.
-moduleIntervals <- data.frame(start=beginning,end=end)
-table(beginning)/nModules
-
 
 # Module/Repertoire distribution across isolates
 # Because we work with MOI=1 then the distribution of repertoires in isoaltes 
 # will always produce maximum entropy, since an isolate is a repertoire. So it 
 # remains to see how modules are distributed. The number of cases is actually
 # the number of strains (or isolates); again, becaues of MOI=1.
-
-moduleDistribution <- modules_empirical %>% group_by(layer,module) %>% summarise(numStrains=length(strain))
-diversModules <- moduleDistribution %>% group_by(layer) %>% summarise(H_normalized=vegan::diversity(numStrains)/log(length(module)+1))
-
-
 
 
 # Empirical ---------------------------------------------------------------
