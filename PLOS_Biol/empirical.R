@@ -268,7 +268,7 @@ infomap_empirical$infomap_interlayer %>% ggplot()+
 
 # Run Infomap -------------------------------------------------------------
 
-system("./Infomap_v01926 infomap_empirical.txt . -i multilayer -d -N 50 --rawdir --two-level --tree --expanded")
+system("./Infomap_v01926 infomap_empirical.txt . -i multilayer -d -N 10 --rawdir --two-level --tree --expanded")
 
 
 # Read Infomap results ----------------------------------------------------
