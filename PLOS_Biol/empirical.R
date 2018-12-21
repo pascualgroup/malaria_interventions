@@ -1,6 +1,6 @@
 # Initialize --------------------------------------------------------------
 source('/home/shai/Documents/malaria_interventions/functions.R')
-prep.packages(c("stringr","ggplot2","igraph","Matrix","dplyr","cowplot"))
+prep.packages(c("tidyverse","magrittr","data.table","igraph","Matrix","dplyr","cowplot"))
 
 setwd('/media/Data/PLOS_Biol/empirical')
 
@@ -40,8 +40,11 @@ OTU_ID <- mainData$OTU_ID
 mainData <- mainData[,-1]
 mainData <- as.matrix(mainData)
 rownames(mainData) <- OTU_ID
+dim(mainData)
 mainData[1:5,1:5]
 
+
+isolates_all <- colnames(mainData)
 
 # Get surveys for isolates
 isolates_df <- tibble(isolate_code=colnames(mainData), isolate_name=str_sub(isolates_all,3,9))
@@ -161,18 +164,118 @@ for (current_layer in 1:5){
 
 
 # Get edge weight distributions from simulations --------------------------
-edge_weights_simulated <- c()
-for (ps in 500:599){
-  print(ps)
-  x <- get_edge_disributions(PS = ps, scenario = 'S', exp = '001', run = 1,cutoff_prob = 0.85, get_inter = F)
-  x <- subset(x, value!=0)
-  edge_weights_simulated <- rbind(edge_weights_simulated, x)
-}
 
+# Run once, and then just read results from file:
+# edge_weights_simulated <- c()
+# for (ps in 500:599){
+#   print(paste('[',Sys.time(),']', ps))
+#   x <- get_edge_disributions(PS = ps, scenario = 'S', exp = '001', run = 1,cutoff_prob = 0.85, get_inter = F)
+#   # x <- subset(x, value!=0)
+#   x <- x[sample(nrow(x),round(nrow(x)*0.2),F),] # Randomly sample 20% of the edge values because there are just too many.
+#   edge_weights_simulated <- rbind(edge_weights_simulated, x)
+#   if (ps%%20==0){
+#     fwrite(edge_weights_simulated[,-c(6,7)], '/media/Data/PLOS_Biol/empirical/edge_weights_simulated.csv', append = T)
+#     edge_weights_simulated <- c()
+#   }
+# }
+edge_weights_simulated <- fread('/media/Data/PLOS_Biol/empirical/edge_weights_simulated.csv')
 edge_weights_simulated <- as.tibble(edge_weights_simulated)
 edge_weights_simulated$grp <- 'Simulated'
 
+# See where the quantile passes 0.
+quantile(edge_weights_simulated$value, probs = seq(0.85,1,0.005))
 
+ggplot(edge_weights_simulated, aes(x=value))+
+  scale_x_continuous(breaks=seq(0,1,0.05))
+  geom_density()
+
+  
+  
+# Cutoff analysis simulated data ------------------------------------------
+# Create files to run tests on Midway
+sbatch_arguments <- expand.grid(PS=sprintf('%0.3d', c(500,520,540,560,580,599)),
+                              scen=c('S'),
+                              array='1', 
+                              layers='118,126,138,142,154,162',
+                              exp='002',
+                              cutoff_prob=seq(0.95,0.99,0.005),
+                              time = '01:00:00',
+                              mem_per_cpu = 6000,
+                              stringsAsFactors = F)
+nrow(sbatch_arguments)
+make_sbatch_get_data(sbatch_arguments = sbatch_arguments,
+                     make_networks = F,
+                     prepare_infomap = T, # make network is nested in this, so no need to call it
+                     run_Infomap = T,
+                     read_infomap_results = T,
+                     temporal_diversity = F,
+                     module_Fst = F)
+
+
+# See results
+experiments <- expand.grid(PS=sprintf('%0.3d', c(500,520,540,560,580,599)),
+                           scen='S',
+                           exp='002',
+                           cutoff_prob=seq(0.95,0.99,0.005),
+                           stringsAsFactors = F)
+
+module_results_simulations <- c()
+for (i in 1:nrow(experiments)){
+  ps <- experiments$PS[i]
+  scenario <- experiments$scen[i]
+  cutoff_prob <- experiments$cutoff_prob[i]
+  x <- get_modularity_results(ps,scenario,'002',1,cutoff_prob,folder = paste('/media/Data/PLOS_Biol/Results/',ps,'_',scenario,'/',sep=''))
+  y <- readLines(paste('/media/Data/PLOS_Biol/Results/',ps,'_',scenario,'/PS',ps,'_',scenario,'_E002_R1_',cutoff_prob,'_network_info.csv',sep=''))[6]
+  x$cutoff_value <- as.numeric(y)
+  module_results_simulations <- rbind(module_results_simulations,x)
+}
+module_results_simulations <- as.tibble(module_results_simulations)
+
+
+modsize <- module_results_simulations %>% group_by(PS,cutoff_prob,module) %>% summarise(size=n())
+module_results_simulations %>% 
+  filter(PS==580) %>%
+  filter(scenario=='S') %>% 
+  distinct(PS,cutoff_prob,module, layer) %>% 
+  group_by(PS,cutoff_prob,module) %>% 
+  summarise(birth_layer=min(layer),death_layer=max(layer)+1) %>% 
+  left_join(modsize) %>% 
+  ggplot(aes(xmin=birth_layer, xmax=death_layer, ymin=module, ymax=module,color=size))+
+  geom_rect(size=2)+
+  # geom_rect(size=2, color=scenario_cols[1])+
+  scale_x_continuous(breaks=1:6)+
+  scale_color_viridis_c()+
+  facet_wrap(~cutoff_prob)
+
+
+modsize <- module_results_simulations %>% group_by(PS,cutoff_prob,layer, module) %>% summarise(size=n())
+modsize %>% 
+  filter(PS==580) %>%
+  ggplot(aes(x=layer,y=size))+
+  geom_bar(aes(fill=as.factor(module)),stat = "identity",position='stack', color='black')+
+  # geom_area(aes(color=as.factor(module), fill=as.factor(module)),position='stack')+
+  facet_wrap(~cutoff_prob)+
+  
+  mytheme+theme(legend.position='none')
+
+
+# Relative persistence
+module_persistence <- module_results_simulations %>% 
+  select(scenario, PS, run, cutoff_prob, cutoff_value, layer, module) %>% 
+  group_by(scenario, PS,run,cutoff_prob,cutoff_value,module) %>% 
+  summarise(birth_layer=min(layer), death_layer=max(layer), persistence=death_layer-birth_layer+1) %>% 
+  mutate(relative_persistence=persistence/(6-birth_layer+1))
+
+
+  
+
+cutoffs <- module_persistence %>% distinct(cutoff_prob,cutoff_value) %>% print(n=Inf)
+
+
+ggplot(module_persistence, aes(x=persistence))+geom_histogram()+facet_wrap(~cutoff_prob)
+
+
+  
 # Define cutoff -----------------------------------------------------------
 
 # # Limit the surveys
@@ -251,6 +354,9 @@ ggplot(repertoire_persistence_prob)+
   geom_line(aes(x=persistence, y=cum_prob),size=1)+ 
   scale_y_continuous(limits = c(0,1))+
   scale_x_continuous(limits = c(0,15), breaks = 0:15)
+
+# Copy that file to Midway so it can be used for the simulations
+write_csv(repertoire_persistence_prob,'/media/Data/PLOS_Biol/empirical/repertoire_persistence_prob.csv')
 
 
 # Build Infomap objects -----------------------------------------------
@@ -340,15 +446,79 @@ modules_empirical %>%
 
 modules_empirical %>% group_by(module) %>% summarise(numStrains=length(strain_unique))
 
+# Temporal diversity
+# 
+# max_layer_to_persist <- max(modules_empirical$layer)-min(modules_empirical$layer)+1 # This is important for analyses that do not have sequential number of layers (1:300), like in the empirical IRS.
+# 
+# module_persistence <- modules_empirical %>% 
+#   select(layer, module) %>% 
+#   group_by(module) %>% 
+#   summarise(birth_layer=min(layer), death_layer=max(layer), persistence=death_layer-birth_layer+1) %>% 
+#   mutate(relative_persistence=persistence/(max_layer_to_persist-birth_layer+1))
+# 
+# sampled_strains <- read_csv(file_strains, col_types = 'ccc')
+# sampled_strains <-  sampled_strains[,-3]
+# suppressMessages(modules %<>% select(scenario, PS, scenario, exp, run, cutoff_prob, module, strain_id) %>% left_join(sampled_strains))
+# allele_freq <- xtabs(~module+allele_locus, modules)
+# module_diversity <- vegan::diversity(allele_freq)/log(ncol(allele_freq))
+# 
+# module_persistence$D <- module_diversity
+# module_persistence$statistic <- module_diversity*module_persistence$relative_persistence
 
 
-# Proportiion of new moduels appearing after intervention
 
-# Module/Repertoire distribution across isolates
-# Because we work with MOI=1 then the distribution of repertoires in isoaltes 
-# will always produce maximum entropy, since an isolate is a repertoire. So it 
-# remains to see how modules are distributed. The number of cases is actually
-# the number of strains (or isolates); again, becaues of MOI=1.
+
+# Read results of simulated data ------------------------------------------
+
+module_results_simulations <- temporal_diversity_simulations <- mFst_simulations<- c()
+for (ps in 500:599){
+  for(scen in c('S','G','N')){
+    x <- get_modularity_results(ps,scen,'002',1,0.85,folder = paste('/media/Data/PLOS_Biol/Results/',ps,'_',scen,'/',sep=''))
+    module_results_simulations <- rbind(module_results_simulations,x)
+    
+    x <- get_temporal_diversity(ps,scen,'002',1,0.85,folder = paste('/media/Data/PLOS_Biol/Results/',ps,'_',scen,'/',sep=''))
+    temporal_diversity_simulations <- rbind(temporal_diversity_simulations,x)
+    
+    x <- get_mFst(ps,scen,'002',1,0.85,folder = paste('/media/Data/PLOS_Biol/Results/',ps,'_',scen,'/',sep=''))
+    mFst_simulations <- rbind(mFst_simulations,x)
+  }
+}
+module_results_simulations <- as.tibble(module_results_simulations)
+temporal_diversity_simulations <- as.tibble(temporal_diversity_simulations)
+mFst_simulations <- as.tibble(mFst_simulations)
+
+module_results_simulations %>% 
+  filter(PS==500) %>%
+  filter(scenario=='N') %>% 
+  distinct(module, layer) %>% 
+  group_by(module) %>% summarise(birth_layer=min(layer),death_layer=max(layer)+1) %>% 
+  ggplot(aes(xmin=birth_layer, xmax=death_layer, ymin=module, ymax=module))+
+  geom_rect(size=2, color=scenario_cols[1])+
+  scale_x_continuous(breaks=1:6)+
+  manuscript_theme+theme(axis.title = element_blank())
+
+
+# Relative persistence
+module_persistence <- module_results_simulations %>% 
+  select(scenario, PS, run, cutoff_prob, layer, module) %>% 
+  group_by(scenario, PS,run,cutoff_prob,module) %>% 
+  summarise(birth_layer=min(layer), death_layer=max(layer), persistence=death_layer-birth_layer+1) %>% 
+  mutate(relative_persistence=persistence/(300-birth_layer+1)) %>% 
+  mutate(type='Module') %>% 
+  rename(id=module) %>% mutate(id=as.character(id))
+
+ggplot(module_persistence)+
+  geom_density(aes(persistence,fill=scenario, y=..scaled..))
+  # geom_histogram(aes(persistence,fill=scenario), position='dodge')
+
+
+temporal_diversity_simulations %>%
+  ggplot(aes(statistic))+geom_density()
+
+
+
+
+
 
 
 # Empirical ---------------------------------------------------------------
