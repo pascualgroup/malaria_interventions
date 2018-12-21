@@ -687,35 +687,45 @@ make_sbatch_get_data <- function(sbatch_arguments,
                                  module_Fst=F,
                                  run_experiments_file='/media/Data/PLOS_Biol/parameter_files/run_experiments.sh') {
   
-  for (scenario in unique(sbatch_arguments$scen)){
-    for (ps in unique(sbatch_arguments$PS)){
-      for (e in unique(sbatch_arguments$exp)){
-        x <- readLines('~/Documents/malaria_interventions/PLOS_Biol/get_data_midway_plosbiol.sbatch')
-        str_sub(x[2],20,22) <- paste(ps,scenario,e,sep='')
-        str_sub(x[3],16,18) <- subset(sbatch_arguments, PS==ps & scen==scenario)$time
-        str_sub(x[4],31,33) <- paste(ps,scenario,e,sep='')
-        str_sub(x[5],30,32) <- paste(ps,scenario,e,sep='')
-        str_sub(x[6],17,20) <- subset(sbatch_arguments, PS==ps & scen==scenario)$array
-        str_sub(x[9],23,25) <- subset(sbatch_arguments, PS==ps & scen==scenario)$mem_per_cpu
-        str_sub(x[19],5,7) <- ps
-        str_sub(x[20],11,13) <- scenario
-        str_sub(x[21],6,8) <- e
-        str_sub(x[22],9,11) <- subset(sbatch_arguments, PS==ps & scen==scenario)$layers
-        str_sub(x[23],13,16) <- subset(sbatch_arguments, PS==ps & scen==scenario)$cutoff_prob
-        x[length(x)+1] <- ""
-        if (make_networks){x[length(x)+1] <- "Rscript $prog $PS $scenario $exp $cutoff_prob $layers 'make_networks'"}
-        if (repertoire_persistence){x[length(x)+1] <- "Rscript $prog $PS $scenario $exp $cutoff_prob $layers 'repertoire_persistence'"}
-        if (prepare_infomap){x[length(x)+1] <- "Rscript $prog $PS $scenario $exp $cutoff_prob $layers 'prepare_infomap'"}
-        if (run_Infomap){x[length(x)+1] <- "infomap_name='PS'$PS'_'$scenario'_E'$exp'_R'$SLURM_ARRAY_TASK_ID'_'$cutoff_prob'_Infomap_multilayer'"}
-        if (run_Infomap){x[length(x)+1] <- "./Infomap_v01926 $infomap_name'.txt' . -i multilayer -d -N 10 --rawdir --two-level --tree --expanded"}
-        if (read_infomap_results){x[length(x)+1] <- "Rscript $prog $PS $scenario $exp $cutoff_prob $layers 'read_infomap_results'"}
-        if (temporal_diversity){x[length(x)+1] <- "Rscript $prog $PS $scenario $exp $cutoff_prob $layers 'temporal_diversity'"}
-        if (module_Fst){x[length(x)+1] <- "Rscript $prog $PS $scenario $exp $cutoff_prob $layers 'module_Fst'"}
-        
-        writeLines(x, paste(parameter_files_path_global,'/','PS',ps,'_',scenario,'_','E',e,'_',subset(sbatch_arguments, PS==ps & scen==scenario)$cutoff_prob,'_get_data_midway.sbatch',sep=''))
-      }
-    }
+  if (detect_locale()=='Lab'){
+    setwd('/home/shai/Documents/malaria_interventions')
+    sqlite_path_global <- '/media/Data/PLOS_Biol/sqlite_S'
+    parameter_files_path_global <- '/media/Data/PLOS_Biol/parameter_files'
   }
+  if (detect_locale()=='Mac'){
+    setwd('~/GitHub/malaria_interventions')
+    sqlite_path_global <- '~/GitHub/PLOS_Biol/sqlite_S'
+    parameter_files_path_global <- '~/GitHub/PLOS_Biol/parameter_files'
+  }
+  for (i in 1:nrow(sbatch_arguments)){
+    ps <- sbatch_arguments$PS[i]
+    scenario <- sbatch_arguments$scen[i]
+    e <- sbatch_arguments$exp[i]
+    x <- readLines('~/Documents/malaria_interventions/PLOS_Biol/get_data_midway_plosbiol.sbatch')
+    str_sub(x[2],20,22) <- paste(ps,scenario,e,sep='')
+    str_sub(x[3],16,18) <- sbatch_arguments$time[i]
+    str_sub(x[4],31,33) <- paste(ps,scenario,e,sep='')
+    str_sub(x[5],30,32) <- paste(ps,scenario,e,sep='')
+    str_sub(x[6],17,20) <- sbatch_arguments$array[i]
+    str_sub(x[9],23,25) <- sbatch_arguments$mem_per_cpu[i]
+    str_sub(x[19],5,7) <- ps
+    str_sub(x[20],11,13) <- scenario
+    str_sub(x[21],6,8) <- e
+    str_sub(x[22],9,11) <- sbatch_arguments$layers[i]
+    str_sub(x[23],13,16) <- sbatch_arguments$cutoff_prob[i]
+    x[length(x)+1] <- ""
+    if (make_networks){x[length(x)+1] <- "Rscript $prog $PS $scenario $exp $cutoff_prob $layers 'make_networks'"}
+    if (repertoire_persistence){x[length(x)+1] <- "Rscript $prog $PS $scenario $exp $cutoff_prob $layers 'repertoire_persistence'"}
+    if (prepare_infomap){x[length(x)+1] <- "Rscript $prog $PS $scenario $exp $cutoff_prob $layers 'prepare_infomap'"}
+    if (run_Infomap){x[length(x)+1] <- "infomap_name='PS'$PS'_'$scenario'_E'$exp'_R'$SLURM_ARRAY_TASK_ID'_'$cutoff_prob'_Infomap_multilayer'"}
+    if (run_Infomap){x[length(x)+1] <- "./Infomap_v01926 $infomap_name'.txt' . -i multilayer -d -N 10 --rawdir --two-level --tree --expanded"}
+    if (read_infomap_results){x[length(x)+1] <- "Rscript $prog $PS $scenario $exp $cutoff_prob $layers 'read_infomap_results'"}
+    if (temporal_diversity){x[length(x)+1] <- "Rscript $prog $PS $scenario $exp $cutoff_prob $layers 'temporal_diversity'"}
+    if (module_Fst){x[length(x)+1] <- "Rscript $prog $PS $scenario $exp $cutoff_prob $layers 'module_Fst'"}
+    
+    writeLines(x, paste(parameter_files_path_global,'/','PS',ps,'_',scenario,'_','E',e,'_',sbatch_arguments$cutoff_prob[i],'_get_data_midway.sbatch',sep=''))
+  }
+  # Write a file to execute all the sbatch files
   sink(run_experiments_file)
   for (i in 1:nrow(sbatch_arguments)){
     ps <- sbatch_arguments$PS[i]
@@ -1208,7 +1218,7 @@ build_layer <- function(infection_df, unit_for_edges){
 }
 
 
-createTemporalNetwork <- function(ps, scenario, exp, run, cutoff_prob, cutoff_value=NULL, layers_to_include=NULL, sampled_infections=NULL, unit_for_edges='alleles'){
+createTemporalNetwork <- function(ps, scenario, exp, run, cutoff_prob, cutoff_value=NULL, layers_to_include=NULL, sampled_infections=NULL, unit_for_edges='alleles', repertoires_to_sample=NULL){
   # Define the sqlite file to use
   base_name <- paste('PS',ps,'_',scenario,'_E',exp,'_R',run,sep='')
   if (on_Midway()){
@@ -1257,6 +1267,11 @@ createTemporalNetwork <- function(ps, scenario, exp, run, cutoff_prob, cutoff_va
   for (l in layers_to_include){
     cat(paste('[',Sys.time(), '] building layer ',l,'\n',sep=''))
     sampled_infections_layer <- subset(sampled_infections, layer==l) # This is MUCH faster than sampled_infections_layer <- sampled_infections %>% filter(layer==l)
+    # Sub-sample repertoires (for empirical data)
+    if (!is.null(repertoires_to_sample)){
+      sampled_repertoires <- sample(unique(sampled_infections_layer$strain_id_unique),repertoires_to_sample[which(layers_to_include==l)],F)
+      sampled_infections_layer <- subset(sampled_infections_layer, strain_id_unique%in%sampled_repertoires)
+    }
     Layers[[which(layers_to_include==l)]] <- build_layer(infection_df = sampled_infections_layer, unit_for_edges)
   }
   intralayer_matrices <- lapply(Layers, function(x) x$similarity_matrix)   # Get just the matrices
@@ -1286,14 +1301,14 @@ createTemporalNetwork <- function(ps, scenario, exp, run, cutoff_prob, cutoff_va
     print(paste('Built interlayer edges for layers: ',current_layer,'-->',next_layer,sep=''))
   }
   
-  # Create cutoff
+  # Create cutoff. Note that zeroes SHOULD BE included in the distribution of edge weights
   # Cutoff is based on all the intralayer and interlayer edges.
   if (is.null(cutoff_value)){
     intralayer_edges <- unlist(sapply(intralayer_matrices, as.vector))
     interlayer_edges <- unlist(sapply(interlayer_matrices, as.vector))
     edges <- c(intralayer_edges,interlayer_edges)
     cutoff_value <- quantile(edges, probs = cutoff_prob)
-    # as.tibble(edges) %>% ggplot(aes(value))+geom_density()+geom_vline(xintercept = cutoff_value)
+    #as.tibble(edges) %>% ggplot(aes(value))+geom_density()+geom_vline(xintercept = cutoff_value)
   }
   
   # Apply cutoff to layers
@@ -2218,7 +2233,7 @@ calculate_mFst <- function(PS, scenario, exp, run, cutoff_prob, maxModule=100){
 }
 
 
-get_modularity_results <- function(PS,scenario,run,cutoff_prob,folder='/media/Data/PLOS_Biol/Results/cutoff_to_use/'){
+get_modularity_results <- function(PS,scenario,exp,run,cutoff_prob,folder='/media/Data/PLOS_Biol/Results/cutoff_to_use/'){
   file <- paste(folder,'PS',PS,'_',scenario,'_E',exp,'_R',run,'_',cutoff_prob,'_modules.csv',sep='')
   if(file.exists(file)){
     print(paste(PS,scenario,exp,run,cutoff_prob,sep=' | '))
@@ -2231,7 +2246,7 @@ get_modularity_results <- function(PS,scenario,run,cutoff_prob,folder='/media/Da
   }
 }
 
-get_temporal_diversity <- function(PS,scenario,run,cutoff_prob,folder='/media/Data/PLOS_Biol/Results/cutoff_to_use/'){
+get_temporal_diversity <- function(PS,scenario,exp,run,cutoff_prob,folder='/media/Data/PLOS_Biol/Results/cutoff_to_use/'){
   file <- paste(folder,'PS',PS,'_',scenario,'_E',exp,'_R',run,'_',cutoff_prob,'_temporal_diversity.csv',sep='')
   if(file.exists(file)){
     print(paste(PS,scenario,exp,run,cutoff_prob,sep=' | '))

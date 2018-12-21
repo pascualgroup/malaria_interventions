@@ -415,39 +415,69 @@ for (ps in ps_range){
 }
 sink.reset()
 
-# Create files to extract data
+
+# Create files to extract data on edge weights from selection
+sbatch_arguments <- expand.grid(PS=sprintf('%0.3d', 500:599),
+                                scen='S',
+                                array='1', 
+                                layers='10:100',
+                                exp='001',
+                                stringsAsFactors = F)
+sbatch_arguments$cutoff_prob <- 0.85 # This does not go into the calculation it is just needed to create files and for the function to not get stuck
+sbatch_arguments$mem_per_cpu <- 8000
+sbatch_arguments$time <- '01:00:00'
+make_sbatch_get_data(sbatch_arguments, make_networks = T)
+
+# Create files to calculate strain persistence from neutral scenario
 sbatch_arguments <- expand.grid(PS=sprintf('%0.3d', 500:599),
                                 scen='N',
                                 array='1', 
                                 layers='1:100',
                                 exp='002',
                                 stringsAsFactors = F)
-sbatch_arguments$cutoff_prob <- 0.85
-sbatch_arguments$mem_per_cpu <- 20000
+sbatch_arguments$cutoff_prob <- 0.85 # This does not go into the calculation it is just needed to create files and for the function to not get stuck
+sbatch_arguments$mem_per_cpu <- 12000 # May need up to 58000 for PS 570 and up
 sbatch_arguments$time <- '02:00:00'
-sbatch_arguments$after_job <- c(55803955:55804045,55804560,55804046,55804074,55804047:55804052)
-# use make_sbatch_get_data here
-make_sbatch_get_data(sbatch_arguments, make_networks = T)
-make_sbatch_get_data(sbatch_arguments, repertoire_persistence = T) # For neutral simulations
+make_sbatch_get_data(sbatch_arguments, repertoire_persistence = T)
 
-# Data for the intervention
+# Create data to test cutoff
+sbatch_arguments <- expand.grid(PS=sprintf('%0.3d', c(520,540,560,580,599)),
+                                scen=c('S'),
+                                array='1', 
+                                layers='118,126,138,142,154,162',
+                                exp='002',
+                                cutoff_prob=seq(0.3,0.95,0.05),
+                                time = '01:00:00',
+                                mem_per_cpu = 6000,
+                                stringsAsFactors = F)
+make_sbatch_get_data(sbatch_arguments = sbatch_arguments,
+                     make_networks = F,
+                     prepare_infomap = T, # make network is nested in this, so no need to call it
+                     run_Infomap = T,
+                     read_infomap_results = T,
+                     temporal_diversity = F,
+                     module_Fst = F)
+
+
+# Data for the modules 
 cal <- as.tibble(build_calendar(num_years = 25, 10))
 cal %>% filter(!is.na(survey)) %>% group_by(survey,layer) %>%
   summarise(first_day=min(running_day),last_day=max(running_day), year=unique(year_sim)+2002, month=unique(month_sim))
 sbatch_arguments <- expand.grid(PS=sprintf('%0.3d', 500:599),
-                                scen=c('S'),
+                                scen=c('N'),
                                 exp='002',
                                 array='1',
                                 layers='118,126,138,142,154,162',
                                 exp='002',
                                 stringsAsFactors = F)
 sbatch_arguments$cutoff_prob <- 0.85
-sbatch_arguments$mem_per_cpu <- 8000
+sbatch_arguments$mem_per_cpu <- 12000
 sbatch_arguments$time <- '01:00:00'
 
 
-make_sbatch_get_data(sbatch_arguments, make_networks = T,
-                     prepare_infomap = T,
+make_sbatch_get_data(sbatch_arguments = sbatch_arguments,
+                     make_networks = F,
+                     prepare_infomap = T, # make network is nested in this, so no need to call it
                      run_Infomap = T,
                      read_infomap_results = T,
                      temporal_diversity = T,

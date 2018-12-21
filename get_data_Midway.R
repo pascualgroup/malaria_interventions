@@ -8,7 +8,7 @@ library(igraph, quietly = T, warn.conflicts = F)
 library(data.table, quietly = T, warn.conflicts = F)
 
 if (length(commandArgs(trailingOnly=TRUE))==0) {
-  args <- c('18','S','001',0.85, '118,126,138,142,154,162')
+  args <- c('500','S','002',0.85, '118,126,138,142,154,162')
 } else {
   args <- commandArgs(trailingOnly=TRUE)
 }
@@ -18,7 +18,7 @@ job_exp <- as.character(args[3])
 # job_run <- 1
 job_run <- as.numeric(Sys.getenv('SLURM_ARRAY_TASK_ID'))
 cutoff_prob <- as.numeric(args[4])
-layers <- as.character(args[5])
+layers <- as.character(args[5]) # Layers can be in a 1:300 format for a sequence or in a '118,126,138,142,154,162' format for separate layers.
 if (str_detect(layers,'\\:')){
   layers <- seq(str_split(layers,'\\:')[[1]][1],str_split(layers,'\\:')[[1]][2],1)
 } else {
@@ -41,11 +41,10 @@ base_name <- paste('PS',job_ps,'_',job_scenario,'_E',job_exp,'_R',job_run,'_',cu
 print(base_name)
 print(layers)
 print(task)
-
+if (comparing_to_empirical){print('Comparing to empirical data')}
 
 # Make networks -----------------------------------------------------------
-
-if (task=='make_networks'){
+make_network <- function(){
   
   # Data from sqlite
   data <- get_data(parameter_space = job_ps, scenario = job_scenario, experiment = job_exp, run = job_run, host_age_structure = T, use_sqlite = T)
@@ -53,13 +52,19 @@ if (task=='make_networks'){
   write_csv(data$sampled_infections, paste(base_name,'_sampled_infections.csv',sep=''))
   
   # Network objects
-  # If experiment is not control then take the cutoff value from the control. This
-  # requires the control to be run first.
-  if (job_exp=='001' | !file.exists(paste('PS',job_ps,'_',job_scenario,'_E001_R',job_run,'_',cutoff_prob,'_network_info.csv',sep=''))){
+  if (comparing_to_empirical){
     cutoff_value <- NULL
-  } else {
-    x <- readLines(paste('PS',job_ps,'_',job_scenario,'_E001_R',job_run,'_',cutoff_prob,'_network_info.csv',sep=''))
-    cutoff_value <- x[6]
+    repertoires_to_sample <- c(90,66,65,55,114,40) #sample this number from each layer, corresponding to the size of the layers in the empirical data
+  }
+  if(!comparing_to_empirical){
+    # If experiment is not control then take the cutoff value from the control. This
+    # requires the control to be run first.
+    if (job_exp=='001' | !file.exists(paste('PS',job_ps,'_',job_scenario,'_E001_R',job_run,'_',cutoff_prob,'_network_info.csv',sep=''))){
+      cutoff_value <- NULL
+    } else {
+      x <- readLines(paste('PS',job_ps,'_',job_scenario,'_E001_R',job_run,'_',cutoff_prob,'_network_info.csv',sep=''))
+      cutoff_value <- x[6]
+    }
   }
   
   network <- createTemporalNetwork(ps = job_ps,
@@ -70,7 +75,8 @@ if (task=='make_networks'){
                                    cutoff_value = cutoff_value,
                                    layers_to_include = layers,
                                    sampled_infections = data$sampled_infections,
-                                   unit_for_edges)
+                                   unit_for_edges = unit_for_edges,
+                                   repertoires_to_sample = repertoires_to_sample)
   
   # edges <- c(network$intralayer_edges_no_cutoff, network$interlayer_edges_no_cutoff)
   # as.tibble(edges) %>% ggplot(aes(value))+geom_density()+geom_vline(xintercept = network$cutoff_value)
@@ -88,6 +94,12 @@ if (task=='make_networks'){
   
   write_csv(as.tibble(network$intralayer_edges_no_cutoff), paste(base_name,'_intralayer_no_cutoff.csv',sep=''))
   write_csv(as.tibble(network$interlayer_edges_no_cutoff), paste(base_name,'_interlayer_no_cutoff.csv',sep=''))
+  
+  return(network)
+}
+
+if (task=='make_networks'){
+  make_network()
 }
 
 
@@ -167,11 +179,12 @@ if (task=='repertoire_persistence'){
 
 
 if (task=='prepare_infomap'){
+  network <- make_network() # First make the network
   
   # Should interlayer edges be rescaled? Only if working with the 6 layers of the
   # interventions in the PS of the interventions.
-  if (comparing_to_empirical && file.exists('repertoire_persistence_prob.csv')){
-    repertoire_persistence_prob <- read_csv('repertoire_persistence_prob.csv')
+  if (comparing_to_empirical && file.exists('/scratch/midway2/pilosofs/PLOS_Biol/repertoire_persistence_prob.csv')){ # Get the file from empirical.R
+    repertoire_persistence_prob <- read_csv('/scratch/midway2/pilosofs/PLOS_Biol/repertoire_persistence_prob.csv')
     infomap <- build_infomap_objects(network_object = network, 
                                      write_to_infomap_file = T, 
                                      infomap_file_name = paste(base_name,'_Infomap_multilayer.txt',sep=''), 
