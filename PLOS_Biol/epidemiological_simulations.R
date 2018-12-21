@@ -1,55 +1,53 @@
 # Initialize --------------------------------------------------------------
 if (length(commandArgs(trailingOnly=TRUE))==0) {
-  args <- c('mtn_2',9,300,0.25,12,10,5)
+  args <- c('04','S','001',1,0.3,300,12,10,5)
 } else {
   message('Taking arguments from command line.')
   args <- commandArgs(trailingOnly=TRUE)
 }
-experiment <- as.character(args[1])
-run <- as.numeric(args[2])
-numLayers <- as.numeric(args[3]) # This is to limit the number of layers. When running the real model this should be at the maximum value. number of layers will be (MaxTime-18000)/window width, whre 18000 is the burnin time of the model and window width is in days (typically 30)
-cutoffPercentile <- as.numeric(args[4])
-time_interval <- as.numeric(args[5])
-n_hosts <- as.numeric(args[6]) # Number of naive hosts to infect
-n_samples <- as.numeric(args[7]) # Number of random starting point layers within each module
+PS <- as.character(args[1])
+scenario <- as.character(args[2])
+exp <- as.character(args[3])
+run <- as.numeric(args[4])
+cutoff_prob <- as.numeric(args[5])
+numLayers <- as.numeric(args[6]) # This is to limit the number of layers. When running the real model this should be at the maximum value. number of layers will be (MaxTime-18000)/window width, whre 18000 is the burnin time of the model and window width is in days (typically 30)
+time_interval <- as.numeric(args[7])
+n_hosts <- as.numeric(args[8]) # Number of naive hosts to infect
+n_samples <- as.numeric(args[9]) # Number of random starting point layers within each module
 
-message('Arguments passed:')
-cat('experiment: ');cat(experiment);cat('\n')
-cat('run: ');cat(run);cat('\n')
-cat('numLayers: ');cat(numLayers);cat('\n')
-cat('cutoffPercentile: ');cat(cutoffPercentile);cat('\n')
-cat('time interval: ');cat(time_interval);cat('\n')
-cat('# hosts: ');cat(n_hosts);cat('\n')
-cat('# samples: ');cat(n_samples);cat('\n')
+# message('Arguments passed:')
+# cat('experiment: ');cat(experiment);cat('\n')
+# cat('run: ');cat(run);cat('\n')
+# cat('numLayers: ');cat(numLayers);cat('\n')
+# cat('cutoffPercentile: ');cat(cutoffPercentile);cat('\n')
+# cat('time interval: ');cat(time_interval);cat('\n')
+# cat('# hosts: ');cat(n_hosts);cat('\n')
+# cat('# samples: ');cat(n_samples);cat('\n')
 
 # if (Sys.info()[4]=='ee-pascual-dell01'){source('/home/shai/Documents/malaria_temporal_networks/mtn_functions.R')}
 
-source('mtn_functions.R')
-prep.packages(c("dplyr","data.table","splitstackshape"))
+source('functions.R')
+prep.packages(c("tidyverse","data.table"))
 
-exp_run <- paste(experiment,'run',run,sep='_')
-filenameBase <- paste(experiment,'_','run_',run,'_',cutoffPercentile,'_',numLayers,sep='')
+base_name <- paste('PS',PS,'_',scenario,'_E',exp,'_R',run,'_',cutoff_prob,sep='')
 
-# if (Sys.info()[4]=='ee-pascual-dell01'){
-#   setwd('/home/shai/Documents/mtn_data/epi')
-# }
+message('Loading modules and strain compositon...')
+modules <- infomap_readTreeFile(PS, scenario, exp, run, cutoff_prob, '/media/Data/PLOS_Biol/Results/')
 
-
-message('load strain compositon')
-strainComposition <- fread(paste(filenameBase,'_strain_composition','.csv',sep=''), sep=',', header = T, colClasses = c('character','character','character'))
-
-message('Loading modules...')
-modules <- infomap_readTreeFile(paste(filenameBase,'_2level_expanded.tree',sep=''), reorganize_modules = T, remove_buggy_instances = F, max_layers = numLayers)
-names(modules)[2] <- 'strainCopy'
-modules$strainId <- splitText(modules$strainCopy, after = F)
+sampled_strains <- modules$sampled_strains
+sampled_alleles <- modules$sampled_alleles
+sampled_alleles$allele_locus <- paste(sampled_alleles$allele, sampled_alleles$locus,sep='_')
+sampled_alleles %<>% select(gene_id, allele_locus) %>% arrange(gene_id,allele_locus)
+sampled_strains %<>% left_join(sampled_alleles)
+sampled_strains$strain_id <- as.character(sampled_strains$strain_id )
+all(modules$modules$strain_id %in% sampled_strains$strain_id)
 
 message('Merging the strain composition with the module data frame...')
-modules <- inner_join(modules, strainComposition, by='strainId') %>% arrange(layer,module,strainCopy) # This is much faster
-
-rep_module_layer <- modules %>% select('strainId','module','layer') %>% distinct(strainId,module,layer)
-
+rep_module_layer <- left_join(modules$modules, sampled_strains, by='strain_id') %>% distinct(strain_id,module,layer)
+  
 duration_new_gene <- 360/60 # 360 is the naive duration of infection and 60 is the number of genes in a repertoire, both taken from the experiment parameters run in the agent-based model
 
+# !!!!!!!!!!!!!!!! Still need to do the EIR !!!!!!!!!!!!!
 
 # How many infections per layer should be performed? That would depend on the 
 # EIR parameter from the stochastic ABM which is on the units of
@@ -60,11 +58,12 @@ infections_per_layer <- ceiling(30*EIR) # need to use ceiling because for low di
 
 message('Finished initializing')
 
+# --------------------- CONTINUE FROM HERE ------
 
 # Functions ---------------------------------------------------------------
 
 sample_min_distance <- function(L, d, N){
-  # Function originally programmed in MaLab taken from here: https://stackoverflow.com/questions/31971344/generating-random-sequence-with-minimum-distance-between-elements-matlab
+  # Function originally programmed in MatLab taken from here: https://stackoverflow.com/questions/31971344/generating-random-sequence-with-minimum-distance-between-elements-matlab
   #L is length of interval
   #d is minimum distance
   #N is number of points
@@ -131,7 +130,7 @@ event_status <- function(events){
 
 build_event_queue_within_modules <- function(){
   # This selects n_hosts modules, each with time_interval layers
-  x <- rep_module_layer %>% group_by(module,layer) %>% summarise(nreps=length(strainId))
+  x <- rep_module_layer %>% group_by(module,layer) %>% summarise(nreps=length(strain_id))
   # Select the first 12 layers in each module. The trick when using top_n is to give the layer as the nverse weight to give priority to lower numbers
   event_queue <- x %>% group_by(module) %>% top_n(n=time_interval, wt=1/layer) %>% arrange(module,layer) 
   
