@@ -869,7 +869,7 @@ get_data <- function(parameter_space, scenario, experiment, run, cutoff_prob=0.9
       sqlite_file <- paste('~/GitHub/PLOS_Biol/sqlite/',base_name,'.sqlite',sep='')
     }
     if (detect_locale()=='Lab'){
-      sqlite_file <- paste('/media/Data/PLOS_Biol/sqlite_',scenario,'/',base_name,'.sqlite',sep='')
+      sqlite_file <- paste('/media/Data/PLOS_Biol/sqlite/',base_name,'.sqlite',sep='')
     }
     print(sqlite_file)
     print(file.exists(sqlite_file))
@@ -1195,7 +1195,7 @@ overlapAlleleAdj<-function(mat){
 
 
 # A function to build the similarity matrix for a single layer and calculate some summary stats
-build_layer <- function(infection_df, unit_for_edges){
+build_layer <- function(infection_df, unit_for_edges, write_to_file=F){
   infection_df %<>% group_by(strain_id) %>%
     mutate(freq = n()/120) %>% # strain frequency (the number of strain copies should be equal to the frequency)
     arrange(strain_id_unique) 
@@ -1224,7 +1224,7 @@ createTemporalNetwork <- function(ps, scenario, exp, run, cutoff_prob, cutoff_va
   if (on_Midway()){
     sqlite_file <- paste('/scratch/midway2/pilosofs/PLOS_Biol/sqlite/',base_name,'.sqlite',sep='')
   } else {
-    sqlite_file <- paste('/media/Data/PLOS_Biol/sqlite_',scenario,'/',base_name,'.sqlite',sep='')
+    sqlite_file <- paste('/media/Data/PLOS_Biol/sqlite/',base_name,'.sqlite',sep='')
   }
   
   # Extract data from sqlite. variable names correspond to table names
