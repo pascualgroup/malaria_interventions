@@ -1,8 +1,44 @@
 # Initialize --------------------------------------------------------------
 source('/home/shai/Documents/malaria_interventions/functions.R')
-prep.packages(c("tidyverse","magrittr","data.table","igraph","Matrix","dplyr","cowplot"))
+prep.packages(c("tidyverse","magrittr","data.table","igraph","Matrix","dplyr","cowplot",'sqldf'))
 
 setwd('/media/Data/PLOS_Biol/empirical')
+
+cleanSurveyData <- function(main_data, isolates_df, Survey, min.var.per.isolate=40, max.var.per.isolate=60, plotit=F){
+  
+  x <- isolates_df %>% filter(survey==Survey) %>% select(isolate_code)
+  x <- x$isolate_code
+  
+  data_survey <- main_data[,x]
+  data_survey <- bipartite::empty(data_survey)
+  
+  if(plotit){
+    require(ggplot2)
+    require(cowplot)
+    x <- tibble(vars_in_pop=rowSums(data_survey))
+    p1 <- ggplot(data = x, aes(x=vars_in_pop))+geom_histogram(fill='#1E9B95')+
+      labs(x='var types in population', title='Number of times a var type\noccurs in the host population')+
+      manuscript_theme
+    x <- tibble(vars_in_isolate=colSums(data_survey))
+    p2 <- ggplot(data = x, aes(x=vars_in_isolate))+geom_histogram(fill='#2C69C2')+
+      labs(x='var types in isolate', title='Number of var types\nin an isolate')+
+      geom_vline(xintercept = c(min.var.per.isolate,max.var.per.isolate), color='red')+
+      manuscript_theme
+    title <- ggdraw() + draw_label(Survey, size=20)
+    p <- plot_grid(p1, p2,
+                   labels = c("A", "B"),
+                   nrow = 1, ncol = 2)
+    p <- plot_grid(title, p, nrow=2, rel_heights = c(0.096,0.904))
+    print(p)
+  }
+  data_survey <- data_survey[, which(colSums(data_survey)>=min.var.per.isolate & colSums(data_survey)<=max.var.per.isolate)]  # Remove isolates by constrains on number of var genes
+  data_survey <- bipartite::empty(data_survey)
+  dim(data_survey)
+  # df <- df[which(rowSums(df)>1),] # Remove var types that appear only once
+  # df <- bipartite::empty(df)
+  cat(nrow(data_survey),' var types in ',ncol(data_survey),' isolates')
+  return(data_survey)
+}
 
 plotSurveyLayer <- function(x, zeroDiag=T, cutoff_g=NULL){
   if(zeroDiag){diag(x) <- 0}
@@ -58,42 +94,6 @@ isolates_df %<>%
 nrow(isolates_df)
 isolates_df %<>% distinct()
 nrow(isolates_df)
-
-cleanSurveyData <- function(main_data, isolates_df, Survey, min.var.per.isolate=40, max.var.per.isolate=60, plotit=F){
-  
-  x <- isolates_df %>% filter(survey==Survey) %>% select(isolate_code)
-  x <- x$isolate_code
-  
-  data_survey <- main_data[,x]
-  data_survey <- bipartite::empty(data_survey)
-  
-  if(plotit){
-    require(ggplot2)
-    require(cowplot)
-    x <- tibble(vars_in_pop=rowSums(data_survey))
-    p1 <- ggplot(data = x, aes(x=vars_in_pop))+geom_histogram(fill='#1E9B95')+
-      labs(x='var types in population', title='Number of times a var type\noccurs in the host population')+
-      manuscript_theme
-    x <- tibble(vars_in_isolate=colSums(data_survey))
-    p2 <- ggplot(data = x, aes(x=vars_in_isolate))+geom_histogram(fill='#2C69C2')+
-      labs(x='var types in isolate', title='Number of var types\nin an isolate')+
-      geom_vline(xintercept = c(min.var.per.isolate,max.var.per.isolate), color='red')+
-      manuscript_theme
-    title <- ggdraw() + draw_label(Survey, size=20)
-    p <- plot_grid(p1, p2,
-                   labels = c("A", "B"),
-                   nrow = 1, ncol = 2)
-    p <- plot_grid(title, p, nrow=2, rel_heights = c(0.096,0.904))
-    print(p)
-  }
-  data_survey <- data_survey[, which(colSums(data_survey)>=min.var.per.isolate & colSums(data_survey)<=max.var.per.isolate)]  # Remove isolates by constrains on number of var genes
-  data_survey <- bipartite::empty(data_survey)
-  dim(data_survey)
-  # df <- df[which(rowSums(df)>1),] # Remove var types that appear only once
-  # df <- bipartite::empty(df)
-  cat(nrow(data_survey),' var types in ',ncol(data_survey),' isolates')
-  return(data_survey)
-}
 
 # Limit to 60 vars (MOI=1)
 maxVarIsolate <- 55
@@ -189,9 +189,106 @@ ggplot(edge_weights_simulated, aes(x=value))+
   scale_x_continuous(breaks=seq(0,1,0.05))
   geom_density()
 
-  
-  
-# Cutoff analysis simulated data ------------------------------------------
+
+# Explore simulated data ------------------------------------------
+
+monitored_variables <- c('prevalence', 'meanMOI','n_circulating_strains', 'n_circulating_genes', 'n_alleles', 'n_total_bites')
+
+PS_range <- as.character(500:599)
+# cases <- expand.grid(ps=PS_range, scenario='S', exp=c('001','002'), run=1)
+# cases$cutoff_prob <- 0.85 # This is just for fime names. there is no cutoff because there are no modules here.
+# exploratory <- c()
+# for (i in 1:nrow(cases)){
+#   print(paste('PS: ',cases$ps[i],' | Scenario: ',cases$scenario[i],' | exp: ',cases$exp[i], ' | run: ',cases$run[i],sep=''))
+#   tmp <- get_data(parameter_space = cases$ps[i], scenario = cases$scenario[i], experiment = cases$exp[i], run = cases$run[i], cutoff_prob = cases$cutoff_prob[i], use_sqlite = T, tables_to_get = 'summary_general')[[1]]
+#   exploratory <- rbind(exploratory, tmp)
+# }
+# write_csv(exploratory, '/media/Data/PLOS_Biol/Results/exploratory.csv')
+exploratory <- read_csv('/media/Data/PLOS_Biol/Results/exploratory.csv')
+exploratory$month <- factor(exploratory$month, levels=c('Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'))
+# EIR
+exploratory %>% 
+  ggplot(aes(x=month, y=EIR))+
+  geom_boxplot()+
+  stat_summary(aes(group=exp), fun.y=mean, geom="line", size=1)+
+  facet_wrap(~exp)+
+  scale_y_continuous(breaks=seq(0,20,2))+
+  mytheme
+
+
+layers_df <- exploratory %>% distinct(time,year,month) %>% mutate(layer=1:300) %>% mutate(mylabels=paste(layer,year,month,sep='_'))
+
+exploratory_summary <- exploratory %>%
+  left_join(layers_df) %>% 
+  select(-n_infected) %>% 
+  # filter(time>time_range[1]&time<time_range[2]) %>%
+  gather(variable, value, -pop_id, -year, -month, -time, -layer, -exp, -PS, -scenario, -run, -mylabels) %>% 
+  group_by(time, layer, year, month, mylabels, exp, scenario, variable) %>%
+  summarise(value_mean=mean(value), value_sd=sd(value)) %>% # Need to average across PS
+  filter(variable %in% monitored_variables)
+# First make sure that the location of the surveys and IRS in the simulations is correct
+exploratory_summary %>% 
+  filter(layer %in% 110:180) %>%
+  filter(variable %in% c('n_total_bites')) %>% 
+  ggplot()+
+  geom_line(aes(x=layer, y=value_mean, color=exp))+
+  geom_errorbar(aes(x=layer, ymin=value_mean-value_sd,ymax=value_mean+value_sd, color=exp),width=0.2, alpha=0.3)+
+  scale_color_manual(values = c('gray50','red'))+
+  scale_x_continuous(breaks=110:180, labels = unique(subset(exploratory_summary, layer%in%110:180)$mylabels))+
+  geom_vline(xintercept = c(118,126,138,142,154,162), color='black', size=1)+
+  geom_vline(xintercept = c(131,138,145), color='black', linetype='dotted', size=1)+ # IRS
+  facet_wrap(~variable, scales='free')+
+  theme(axis.text.x = element_text(angle = 90, vjust = 0.5, size=8))
+# Now plot the variables
+exploratory_summary %>% 
+  filter(layer %in% 110:180) %>%
+  filter(variable!='n_total_bites') %>% 
+  ggplot()+
+  geom_line(aes(x=layer, y=value_mean, color=exp))+
+  geom_errorbar(aes(x=layer, ymin=value_mean-value_sd,ymax=value_mean+value_sd, color=exp),width=0.2, alpha=0.3)+
+  scale_color_manual(values = c('gray50','red'))+
+  geom_vline(xintercept = c(131,138,145), color='black', linetype='dotted', size=0.5)+ # IRS
+  geom_vline(xintercept = c(118,126,138,142,154,162), color='black', size=0.5)+
+  facet_wrap(~variable, scales='free')+
+  mytheme
+ 
+exploratory_summary %>% 
+  filter(layer %in% c(118,126,138,142,154,162)) %>% 
+  filter(exp=='002') %>% 
+  filter(variable=='n_circulating_genes')
+
+# Number of genes per survey in the simulated vs. empirical data. This is only
+# for the subsampled repertoires Do that by going directly to the node list, to
+# ensure that the genes I count belong to strains that were fed into Infomap.
+num_genes <- c()
+for (ps in 500:599){
+  print(ps)
+  sampled_strains <- read_csv(paste('/media/Data/PLOS_Biol/Results/',ps,'_S/PS',ps,'_S_E002_R1_0.85_sampled_strains.csv',sep=''))
+  sampled_strains$strain_id <- as.character(sampled_strains$strain_id)
+  sampled_alleles <- read_csv(paste('/media/Data/PLOS_Biol/Results/',ps,'_S/PS',ps,'_S_E002_R1_0.85_sampled_alleles.csv',sep=''))
+  node_list <- read_csv(paste('/media/Data/PLOS_Biol/Results/',ps,'_S/PS',ps,'_S_E002_R1_0.85_node_list.csv',sep=''))
+  node_list %<>% mutate(strain_id=str_split(nodeLabel,'_')[[1]][1])
+  x <- node_list %>% 
+    left_join(sampled_strains) %>% 
+    left_join(sampled_alleles) %>%
+    distinct(strain_id,gene_id)
+  num_genes <- c(num_genes, length(unique(x$gene_id)))
+}
+
+empirical_data_genes <- c(colnames(Data_S1),
+                          colnames(Data_S2),
+                          colnames(Data_S3),
+                          colnames(Data_S4),
+                          colnames(Data_S5),
+                          colnames(Data_S6))
+empirical_data_genes <- unique(empirical_data_genes)                    
+
+mean(num_genes)
+length(empirical_data_genes)
+
+# Cutoff sensitivity in simulated data ------------------------------------
+
+ 
 # Create files to run tests on Midway
 sbatch_arguments <- expand.grid(PS=sprintf('%0.3d', c(500,520,540,560,580,599)),
                               scen=c('S'),
@@ -212,14 +309,15 @@ make_sbatch_get_data(sbatch_arguments = sbatch_arguments,
                      module_Fst = F)
 
 
-# See results
-experiments <- expand.grid(PS=sprintf('%0.3d', c(500,520,540,560,580,599)),
+
+experiments <- expand.grid(PS=sprintf('%0.3d', c(500,510,520,540,560,580,599)),
                            scen='S',
                            exp='002',
-                           cutoff_prob=seq(0.95,0.99,0.005),
+                           cutoff_prob=c(0.85,seq(0.95,0.99,0.005)),
                            stringsAsFactors = F)
 
 module_results_simulations <- c()
+interlayer_edge_weights <- c()
 for (i in 1:nrow(experiments)){
   ps <- experiments$PS[i]
   scenario <- experiments$scen[i]
@@ -228,13 +326,19 @@ for (i in 1:nrow(experiments)){
   y <- readLines(paste('/media/Data/PLOS_Biol/Results/',ps,'_',scenario,'/PS',ps,'_',scenario,'_E002_R1_',cutoff_prob,'_network_info.csv',sep=''))[6]
   x$cutoff_value <- as.numeric(y)
   module_results_simulations <- rbind(module_results_simulations,x)
+  
+  x <- read_delim(paste('/media/Data/PLOS_Biol/Results/',ps,'_S/PS',ps,'_S_E002_R1_',cutoff_prob,'_Infomap_multilayer.txt',sep=''), delim=' ', col_names = c('layer_s','node_s','layer_t','node_t','w'))
+  x$cutoff_prob <- cutoff_prob
+  interlayer_edge_weights <- rbind(interlayer_edge_weights,x)
 }
 module_results_simulations <- as.tibble(module_results_simulations)
+
+ggplot(interlayer_edge_weights, aes(w))+geom_density()+facet_wrap(~cutoff_prob)
 
 
 modsize <- module_results_simulations %>% group_by(PS,cutoff_prob,module) %>% summarise(size=n())
 module_results_simulations %>% 
-  filter(PS==580) %>%
+  filter(PS==500) %>%
   filter(scenario=='S') %>% 
   distinct(PS,cutoff_prob,module, layer) %>% 
   group_by(PS,cutoff_prob,module) %>% 
@@ -250,7 +354,7 @@ module_results_simulations %>%
 
 modsize <- module_results_simulations %>% group_by(PS,cutoff_prob,layer, module) %>% summarise(size=n())
 modsize %>% 
-  filter(PS==580) %>%
+  filter(PS==500) %>%
   ggplot(aes(x=layer,y=size))+
   geom_bar(aes(fill=as.factor(module)),stat = "identity",position='stack', color='black')+
   # geom_area(aes(color=as.factor(module), fill=as.factor(module)),position='stack')+
@@ -265,9 +369,6 @@ module_persistence <- module_results_simulations %>%
   group_by(scenario, PS,run,cutoff_prob,cutoff_value,module) %>% 
   summarise(birth_layer=min(layer), death_layer=max(layer), persistence=death_layer-birth_layer+1) %>% 
   mutate(relative_persistence=persistence/(6-birth_layer+1))
-
-
-  
 
 cutoffs <- module_persistence %>% distinct(cutoff_prob,cutoff_value) %>% print(n=Inf)
 
