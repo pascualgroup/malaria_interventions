@@ -1195,18 +1195,18 @@ overlapAlleleAdj<-function(mat){
 
 
 # A function to build the similarity matrix for a single layer and calculate some summary stats
-build_layer <- function(infection_df, unit_for_edges, write_to_file=F){
+build_layer <- function(infection_df, unit_for_edges, write_to_files=F, base_filename=NULL){
   infection_df %<>% group_by(strain_id) %>%
     mutate(freq = n()/120) %>% # strain frequency (the number of strain copies should be equal to the frequency)
     arrange(strain_id_unique) 
   # Calculate the edges
   if (unit_for_edges=='alleles'){
-    similarity_matrix <- table(infection_df$strain_id_unique, infection_df$allele_locus)
+    bipartite_layer <- table(infection_df$strain_id_unique, infection_df$allele_locus)
   }
   if (unit_for_edges=='genes'){
-    similarity_matrix <- table(infection_df$strain_id_unique, infection_df$gene_id)/2 # divide by two beause each hene appears twice because there are two loci  
+    bipartite_layer <- table(infection_df$strain_id_unique, infection_df$gene_id)/2 # divide by two beause each hene appears twice because there are two loci  
   }
-  similarity_matrix <- overlapAlleleAdj(similarity_matrix)
+  similarity_matrix <- overlapAlleleAdj(bipartite_layer)
   # Some summary
   layer_summary <- with(infection_df, 
                         data.frame(hosts=length(unique(host_id)),
@@ -1214,11 +1214,25 @@ build_layer <- function(infection_df, unit_for_edges, write_to_file=F){
                                    repertoires_total=length(unique(strain_id_unique)),
                                    unit_for_edges=unit_for_edges
                         ))
+  if (write_to_files){
+    write.csv(as.data.frame.matrix(bipartite_layer),paste(base_filename,'_bipartite_layer.csv',sep=''), row.names = T)
+    write.csv(as.data.frame.matrix(similarity_matrix),paste(base_filename,'_similarity_layer.csv',sep=''), row.names = T)
+  }
   return(list(similarity_matrix=similarity_matrix, infections=infection_df, layer_summary=layer_summary))
 }
 
 
-createTemporalNetwork <- function(ps, scenario, exp, run, cutoff_prob, cutoff_value=NULL, layers_to_include=NULL, sampled_infections=NULL, unit_for_edges='alleles', repertoires_to_sample=NULL){
+createTemporalNetwork <- function(ps, 
+                                  scenario, 
+                                  exp, 
+                                  run, 
+                                  cutoff_prob, 
+                                  cutoff_value=NULL,
+                                  layers_to_include=NULL, 
+                                  sampled_infections=NULL, 
+                                  unit_for_edges='alleles',
+                                  repertoires_to_sample=NULL, 
+                                  write_to_files=F){
   # Define the sqlite file to use
   base_name <- paste('PS',ps,'_',scenario,'_E',exp,'_R',run,sep='')
   if (on_Midway()){
@@ -1272,7 +1286,11 @@ createTemporalNetwork <- function(ps, scenario, exp, run, cutoff_prob, cutoff_va
       sampled_repertoires <- sample(unique(sampled_infections_layer$strain_id_unique),repertoires_to_sample[which(layers_to_include==l)],F)
       sampled_infections_layer <- subset(sampled_infections_layer, strain_id_unique%in%sampled_repertoires)
     }
-    Layers[[which(layers_to_include==l)]] <- build_layer(infection_df = sampled_infections_layer, unit_for_edges)
+    # This line makes the layer
+    Layers[[which(layers_to_include==l)]] <- build_layer(infection_df = sampled_infections_layer,
+                                                         unit_for_edges = unit_for_edges,
+                                                         write_to_files = write_to_files,
+                                                         base_filename = paste(base_name,cutoff_prob,str_pad(l,3,'left','0'),sep='_'))
   }
   intralayer_matrices <- lapply(Layers, function(x) x$similarity_matrix)   # Get just the matrices
   layer_summary <- do.call(rbind, lapply(Layers, function(x) x$layer_summary)) # Get the layer summary

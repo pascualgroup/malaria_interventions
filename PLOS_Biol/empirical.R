@@ -80,6 +80,14 @@ dim(mainData)
 mainData[1:5,1:5]
 
 
+# Diversity of var genes##################
+dim(mainData)
+var_numbers <- rowSums(mainData)
+hist(var_numbers)
+vegan::diversity(var_numbers)
+vegan::diversity(rep(1,9000))
+##########################################
+
 isolates_all <- colnames(mainData)
 
 # Get surveys for isolates
@@ -164,14 +172,14 @@ for (current_layer in 1:5){
 
 
 # Get edge weight distributions from simulations --------------------------
-
 # Run once, and then just read results from file:
+# unlink('/media/Data/PLOS_Biol/empirical/edge_weights_simulated.csv')
 # edge_weights_simulated <- c()
-# for (ps in 500:599){
+# for (ps in c(520,540,560,580,599)){
 #   print(paste('[',Sys.time(),']', ps))
-#   x <- get_edge_disributions(PS = ps, scenario = 'S', exp = '001', run = 1,cutoff_prob = 0.85, get_inter = F)
+#   x <- get_edge_disributions(PS = ps, scenario = 'S', exp = '001', run = 1,cutoff_prob = 0.95, get_inter = F) # The cutoff_prob here is just for file names. it does not really matter because these ar eedge weights before cutoff is applied
 #   # x <- subset(x, value!=0)
-#   x <- x[sample(nrow(x),round(nrow(x)*0.2),F),] # Randomly sample 20% of the edge values because there are just too many.
+#   x <- x[sample(nrow(x),round(nrow(x)*0.4),F),] # Randomly sample 20% of the edge values because there are just too many.
 #   edge_weights_simulated <- rbind(edge_weights_simulated, x)
 #   if (ps%%20==0){
 #     fwrite(edge_weights_simulated[,-c(6,7)], '/media/Data/PLOS_Biol/empirical/edge_weights_simulated.csv', append = T)
@@ -186,7 +194,7 @@ edge_weights_simulated$grp <- 'Simulated'
 quantile(edge_weights_simulated$value, probs = seq(0.85,1,0.005))
 
 ggplot(edge_weights_simulated, aes(x=value))+
-  scale_x_continuous(breaks=seq(0,1,0.05))
+  scale_x_continuous(breaks=seq(0,1,0.05))+
   geom_density()
 
 
@@ -290,14 +298,14 @@ length(empirical_data_genes)
 
  
 # Create files to run tests on Midway
-sbatch_arguments <- expand.grid(PS=sprintf('%0.3d', c(500,520,540,560,580,599)),
-                              scen=c('S'),
+sbatch_arguments <- expand.grid(PS=sprintf('%0.3d', 500:599),
+                              scen=c('S','G','N'),
                               array='1', 
                               layers='118,126,138,142,154,162',
-                              exp='002',
-                              cutoff_prob=seq(0.95,0.99,0.005),
+                              exp=c('002'),
+                              cutoff_prob=0.85,
                               time = '01:00:00',
-                              mem_per_cpu = 6000,
+                              mem_per_cpu = 4000,
                               stringsAsFactors = F)
 nrow(sbatch_arguments)
 make_sbatch_get_data(sbatch_arguments = sbatch_arguments,
@@ -310,38 +318,48 @@ make_sbatch_get_data(sbatch_arguments = sbatch_arguments,
 
 
 
-experiments <- expand.grid(PS=sprintf('%0.3d', c(500,510,520,540,560,580,599)),
-                           scen='S',
-                           exp='002',
-                           cutoff_prob=c(0.85,seq(0.95,0.99,0.005)),
+experiments <- expand.grid(PS=sprintf('%0.3d', 500:599),
+                           scen=c('S','G','N'),
+                           exp=c('001','002'),
+                           # cutoff_prob=seq(0.95,0.97,0.005),
+                           cutoff_prob=0.85,
                            stringsAsFactors = F)
 
+# factorial_design_test <- tibble(option=1:4,unit=c('genes','alleles','alleles','genes'),MOI=c('1','1','All','All'),cutoff_prob=c(0.95,0.85,0.85,0.95))
+
 module_results_simulations <- c()
-interlayer_edge_weights <- c()
+# interlayer_edge_weights <- c()
 for (i in 1:nrow(experiments)){
+  print(i)
   ps <- experiments$PS[i]
   scenario <- experiments$scen[i]
   cutoff_prob <- experiments$cutoff_prob[i]
-  x <- get_modularity_results(ps,scenario,'002',1,cutoff_prob,folder = paste('/media/Data/PLOS_Biol/Results/',ps,'_',scenario,'/',sep=''))
-  y <- readLines(paste('/media/Data/PLOS_Biol/Results/',ps,'_',scenario,'/PS',ps,'_',scenario,'_E002_R1_',cutoff_prob,'_network_info.csv',sep=''))[6]
-  x$cutoff_value <- as.numeric(y)
+  exp <- experiments$exp[i]
+  x <- get_modularity_results(ps,scenario,exp,1,cutoff_prob,folder = paste('/media/Data/PLOS_Biol/Results/',ps,'_',scenario,'_3','/',sep=''))
+  # y <- readLines(paste('/media/Data/PLOS_Biol/Results/',ps,'_',scenario,'_3','/PS',ps,'_',scenario,'_E',exp,'_R1_',cutoff_prob,'_network_info.csv',sep=''))[6]
+  # x$cutoff_value <- as.numeric(y)
   module_results_simulations <- rbind(module_results_simulations,x)
   
-  x <- read_delim(paste('/media/Data/PLOS_Biol/Results/',ps,'_S/PS',ps,'_S_E002_R1_',cutoff_prob,'_Infomap_multilayer.txt',sep=''), delim=' ', col_names = c('layer_s','node_s','layer_t','node_t','w'))
-  x$cutoff_prob <- cutoff_prob
-  interlayer_edge_weights <- rbind(interlayer_edge_weights,x)
+  # x <- read_delim(paste('/media/Data/PLOS_Biol/Results/',ps,'_S/PS',ps,'_S_E',exp,'_R1_',cutoff_prob,'_Infomap_multilayer.txt',sep=''), delim=' ', col_names = c('layer_s','node_s','layer_t','node_t','w'))
+  # x$cutoff_prob <- cutoff_prob
+  # x$exp <- exp
+  # interlayer_edge_weights <- rbind(interlayer_edge_weights,x)
 }
 module_results_simulations <- as.tibble(module_results_simulations)
+module_results_simulations %>% filter(exp=='002') %>%  distinct(scenario, PS, exp)
 
-ggplot(interlayer_edge_weights, aes(w))+geom_density()+facet_wrap(~cutoff_prob)
+ggplot(interlayer_edge_weights, aes(w, fill=exp))+geom_density()+facet_wrap(~cutoff_prob, scales='free')
+interlayer_edge_weights %>% group_by(cutoff_prob,exp) %>% summarise(min_w=min(w),max_w=max(w))
 
 
-modsize <- module_results_simulations %>% group_by(PS,cutoff_prob,module) %>% summarise(size=n())
+modsize <- module_results_simulations %>% 
+  group_by(scenario,PS,exp,cutoff_prob,module) %>% summarise(size=n())
 module_results_simulations %>% 
-  filter(PS==500) %>%
-  filter(scenario=='S') %>% 
-  distinct(PS,cutoff_prob,module, layer) %>% 
-  group_by(PS,cutoff_prob,module) %>% 
+  # filter(exp=='002') %>% 
+  filter(PS==599) %>%
+  # filter(scenario=='S') %>% 
+  distinct(PS,scenario,cutoff_prob,module, layer) %>% 
+  group_by(PS,scenario,cutoff_prob,module) %>% 
   summarise(birth_layer=min(layer),death_layer=max(layer)+1) %>% 
   left_join(modsize) %>% 
   ggplot(aes(xmin=birth_layer, xmax=death_layer, ymin=module, ymax=module,color=size))+
@@ -349,34 +367,86 @@ module_results_simulations %>%
   # geom_rect(size=2, color=scenario_cols[1])+
   scale_x_continuous(breaks=1:6)+
   scale_color_viridis_c()+
-  facet_wrap(~cutoff_prob)
+  facet_grid(exp~scenario)
 
 
-modsize <- module_results_simulations %>% group_by(PS,cutoff_prob,layer, module) %>% summarise(size=n())
-modsize %>% 
-  filter(PS==500) %>%
+modsize <- module_results_simulations %>% 
+  group_by(scenario,PS,exp,cutoff_prob,layer,module) %>% summarise(size=n())
+modsize %>%
+  filter(PS==520) %>%
+  # filter(exp=='002') %>%
   ggplot(aes(x=layer,y=size))+
   geom_bar(aes(fill=as.factor(module)),stat = "identity",position='stack', color='black')+
   # geom_area(aes(color=as.factor(module), fill=as.factor(module)),position='stack')+
-  facet_wrap(~cutoff_prob)+
-  
+  facet_grid(exp~scenario)+
   mytheme+theme(legend.position='none')
 
+# cutoffs
+# cutoffs <- module_results_simulations %>% distinct(scenario, PS, exp, cutoff_prob, cutoff_value) %>% print(n=Inf)
 
-# Relative persistence
+# Persistence
 module_persistence <- module_results_simulations %>% 
-  select(scenario, PS, run, cutoff_prob, cutoff_value, layer, module) %>% 
-  group_by(scenario, PS,run,cutoff_prob,cutoff_value,module) %>% 
-  summarise(birth_layer=min(layer), death_layer=max(layer), persistence=death_layer-birth_layer+1) %>% 
-  mutate(relative_persistence=persistence/(6-birth_layer+1))
+  select(scenario, exp, PS, run, cutoff_prob, layer, module) %>% 
+  group_by(scenario, exp, PS,run,cutoff_prob,module) %>% 
+  summarise(birth_layer=min(layer), death_layer=max(layer), persistence=death_layer-birth_layer+1)
 
-cutoffs <- module_persistence %>% distinct(cutoff_prob,cutoff_value) %>% print(n=Inf)
+total_modules <- module_persistence %>% 
+  group_by(scenario, exp, PS, cutoff_prob) %>% summarise(n_modules=length(unique(module)))
+
+module_persistence %>% 
+  group_by(scenario, exp, PS, cutoff_prob) %>% 
+  count(persistence) %>% left_join(total_modules) %>% mutate(prop=n/n_modules) %>% 
+  # filter(cutoff_prob==0.95) %>% 
+  ggplot(aes(y=prop, x=persistence,fill=scenario))+
+  facet_wrap(~exp)+
+  geom_col(position='dodge')+
+  scale_fill_manual(values=c('blue','orange','red'))
+
+# Proportion of modules persisting up to S3
+module_persistence %>% 
+  filter(death_layer==3) %>% 
+  group_by(scenario, exp, PS, cutoff_prob) %>% summarise(n_1to3=n()) %>% 
+  left_join(total_modules) %>% mutate(prop=n_1to3/n_modules) %>% 
+  ggplot(aes(x=scenario,y=prop,fill=scenario))+
+  geom_boxplot()+
+  facet_wrap(~exp)+
+  scale_fill_manual(values=c('blue','orange','red'))
+
+# Proportion of modules born after layer 3
+module_persistence %>% 
+  filter(birth_layer==3) %>% 
+  group_by(scenario, exp, PS, cutoff_prob) %>% summarise(n_after_3=n()) %>% 
+  left_join(total_modules) %>% mutate(prop=n_after_3/n_modules) %>% 
+  ggplot(aes(x=scenario,y=prop,fill=scenario))+
+  geom_boxplot()+
+  facet_wrap(~exp)+
+  scale_fill_manual(values=c('blue','orange','red'))
+
+# Proportion of modules that passed layer 3
+module_persistence %>% 
+  filter(birth_layer<3, death_layer>3) %>% 
+  group_by(scenario, exp, PS, cutoff_prob) %>% summarise(n_after_3=n()) %>% 
+  left_join(total_modules) %>% mutate(prop=n_after_3/n_modules) %>% 
+  ggplot(aes(x=scenario,y=prop,fill=scenario))+
+  geom_boxplot()+
+  facet_wrap(~exp)+
+  scale_fill_manual(values=c('blue','orange','red'))
+
+# Survival analysis
+library(survival)
+library(survminer)
+x <- module_persistence
+x <- subset(x, x$birth_layer!=x$death_layer)
+x <- subset(x, birth_layer==1)
+unique(x$scenario)
+unique(x$exp)
+x$event <- ifelse(x$death_layer==6,0,1)
+
+fit <- with(x, survfit(Surv(birth_layer, death_layer, event)~scenario+exp))
+ggsurvplot_facet(fit, data=x, facet.by = 'exp', conf.int = TRUE)
+# +scale_color_manual(values=c('blue','orange','red'))
 
 
-ggplot(module_persistence, aes(x=persistence))+geom_histogram()+facet_wrap(~cutoff_prob)
-
-
-  
 # Define cutoff -----------------------------------------------------------
 
 # # Limit the surveys

@@ -363,7 +363,7 @@ design_seed_002$BITING_RATE_MEAN <- empirical_comparison_params$BITING_RATE_MEAN
 
 design <- design_seed_000 %>% bind_rows(design_seed_001) %>% bind_rows(design_seed_002)
 design$mem_per_cpu <- 32000
-design$wall_time <- '20:00:00'
+design$wall_time <- '08:00:00'
 
 
 if (detect_locale()=='Lab'){
@@ -379,26 +379,27 @@ if (detect_locale()=='Mac'){
 
 
 # Create the reference experiments (checkpoint and control)
-ps_range <- sprintf('%03d', 500:599)
-exp_range <- sprintf('%0.3d', 0:2)
+ps_range <- sprintf('%03d', c(500,520,540,560,580,599))
+exp_range <- sprintf('%0.3d', 1)
 run_range <- 1
 
 for (ps in ps_range){
-design_subset <- subset(design, PS %in% ps & scenario==work_scenario & exp %in% exp_range)
-generate_files(row_range = 1:nrow(design_subset), run_range = run_range, 
+  design_subset <- subset(design, PS %in% ps & scenario==work_scenario & exp %in% exp_range)
+  generate_files(row_range = 1:nrow(design_subset), run_range = run_range, 
                experimental_design = design_subset, 
                # The radom_seed is necessary if using CP for intervention when
                # not creating the intervention experiment parameter file at the
                # same time as the 000 file.
                #random_seed = get_random_seed(PS = 18, scenario = work_scenario, run_range = run_range, folder = '/media/Data/PLOS_Biol/parameter_files/'),
                biting_rate_file = design_subset$DAILY_BITING_RATE_DISTRIBUTION[1],
+               # only_sbatch = T,
                target_folder = parameter_files_path_global)
 }
 
 # Copy the file to Midway and unzip it, then run the run_E000.sh file for run the checkpoints:
 sink('/media/Data/PLOS_Biol/parameter_files/run_E000.sh')
 for (ps in ps_range){
-  cat('sbatch PS',ps,work_scenario,'E000.sbatch',sep='');cat('\n')
+  cat('sbatch PS',ps,work_scenario,'E001.sbatch',sep='');cat('\n')
 }
 sink.reset()
 

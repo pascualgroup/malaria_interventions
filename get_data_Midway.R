@@ -25,13 +25,11 @@ if (str_detect(layers,'\\:')){
   layers <- as.integer(str_split(layers,",")[[1]])  
 }
 
-unit_for_edges <- 'alleles'
 
 # Identify if the simulation is used to compare to empirical data
 if(job_ps %in% as.character(500:599) && length(layers)<300) {
   print('Comparing to empirical')
   comparing_to_empirical <- T
-  unit_for_edges <- 'genes'
 }
 
 task <- as.character(args[6]) # Can be: make_networks | prepare_infomap | read_infomap_results | temporal_diversity | module_Fst
@@ -54,7 +52,9 @@ make_network <- function(){
   # Network objects
   if (comparing_to_empirical){
     cutoff_value <- NULL
-    repertoires_to_sample <- c(90,66,65,55,114,40) #sample this number from each layer, corresponding to the size of the layers in the empirical data
+    unit_for_edges <- 'alleles'
+    repertoires_to_sample <- NULL #sample this number from each layer, corresponding to the size of the layers in the empirical data
+    write_to_files <- T
   }
   if(!comparing_to_empirical){
     # If experiment is not control then take the cutoff value from the control. This
@@ -65,6 +65,9 @@ make_network <- function(){
       x <- readLines(paste('PS',job_ps,'_',job_scenario,'_E001_R',job_run,'_',cutoff_prob,'_network_info.csv',sep=''))
       cutoff_value <- x[6]
     }
+    unit_for_edges <- 'alleles'
+    repertoires_to_sample <- NULL
+    write_to_files <- F
   }
   
   network <- createTemporalNetwork(ps = job_ps,
@@ -76,7 +79,8 @@ make_network <- function(){
                                    layers_to_include = layers,
                                    sampled_infections = data$sampled_infections,
                                    unit_for_edges = unit_for_edges,
-                                   repertoires_to_sample = repertoires_to_sample)
+                                   repertoires_to_sample = repertoires_to_sample,
+                                   write_to_files=write_to_files)
   
   # edges <- c(network$intralayer_edges_no_cutoff, network$interlayer_edges_no_cutoff)
   # as.tibble(edges) %>% ggplot(aes(value))+geom_density()+geom_vline(xintercept = network$cutoff_value)
