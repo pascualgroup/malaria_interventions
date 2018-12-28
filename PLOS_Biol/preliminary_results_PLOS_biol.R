@@ -365,8 +365,10 @@ module_results %>%
 
 
 # Seasonality -------------------------------------------------------------
-PS_range <- c('18')
-cases <- expand.grid(ps=PS_range, scenario='S', exp='001', run=1:10)
+monitored_variables <- c('prevalence', 'meanMOI','n_circulating_strains', 'n_circulating_genes', 'n_alleles', 'n_total_bites')
+
+PS_range <- c('500')
+cases <- expand.grid(ps=PS_range, scenario='S', exp='002', run=1)
 cases$cutoff_prob <- 0.85
 ps_comparison <- c()
 for (i in 1:nrow(cases)){
@@ -384,19 +386,21 @@ ps_comparison %>%
   scale_y_continuous(breaks=seq(0,20,2))+
   mytheme
 
-time_range <- c(28800,max(ps_comparison$time))
-
+# time_range <- c(28800,max(ps_comparison$time))
+layers_df <- tibble(time=seq(28815,37785,30),layer=1:300)
 ps_comparison %>%
+  left_join(layers_df) %>% 
   select(-year, -month, -n_infected) %>% 
-  filter(time>time_range[1]&time<time_range[2]) %>%
-  gather(variable, value, -pop_id, -time, -exp, -PS, -scenario, -run) %>% 
-  group_by(pop_id, time, exp, PS, scenario, variable) %>%
+  # filter(time>time_range[1]&time<time_range[2]) %>%
+  gather(variable, value, -pop_id, -time, -layer, -exp, -PS, -scenario, -run) %>% 
+  group_by(pop_id, time,layer, exp, PS, scenario, variable) %>%
   summarise(value_mean=mean(value), value_sd=sd(value)) %>% # Need to average across runs
   filter(variable %in% monitored_variables) %>%
   ggplot()+
-    geom_line(aes(x=time, y=value_mean, color=PS))+
-    geom_errorbar(aes(ymin=value_mean-value_sd,ymax=value_mean+value_sd,x=time),color='gray',width=0.001, alpha=0.3)+
-    scale_x_continuous(breaks=pretty(x=subset(ps_comparison, time>time_range[1]&time<time_range[2])$time,n=5))+
+    geom_line(aes(x=layer, y=value_mean, color=PS))+
+    geom_errorbar(aes(ymin=value_mean-value_sd,ymax=value_mean+value_sd,x=layer),color='gray',width=0.001, alpha=0.3)+
+    scale_x_continuous(limits = c(100,200))+
+    geom_vline(xintercept = c(118,126,138,142,154,162))+
     facet_wrap(~variable, scales='free')+
     mytheme
 

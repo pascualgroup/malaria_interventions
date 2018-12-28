@@ -10,6 +10,10 @@ do
 rsync -rav -e ssh --include '*/' --include='mtn_'$i'*.sqlite' --exclude='*' \.  \  shai@192.170.193.140:/home/shai/Documents/sqlite
 done
 
+
+rsync -rav -e ssh --include '*/' --include='PS???_S_E001_R1_0.85_temporal_diversity.csv' --exclude='*' \.  \  shai@192.170.193.140:/media/Data/PLOS_Biol/Results/sensitivity_analysis
+
+
 rsync -rav -e ssh --include '*/' --include='*.RData' --exclude='*' \.  \  pilosofs@midway.rcc.uchicago.edu:/scratch/midway/pilosofs
 
 # Comapre folders
@@ -299,6 +303,14 @@ do
 		fi
 done
 
+# Multi-rename
+for f in *;
+do
+    if [[ -d $f ]];
+    then
+		mv $f $f'_1'
+		fi
+done
 
 
 
