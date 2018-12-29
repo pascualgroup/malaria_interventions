@@ -701,7 +701,12 @@ make_sbatch_get_data <- function(sbatch_arguments,
     ps <- sbatch_arguments$PS[i]
     scenario <- sbatch_arguments$scen[i]
     e <- sbatch_arguments$exp[i]
-    x <- readLines('~/Documents/malaria_interventions/PLOS_Biol/get_data_midway_plosbiol.sbatch')
+    if (detect_locale()=='Lab'){
+      x <- readLines('~/Documents/malaria_interventions/PLOS_Biol/get_data_midway_plosbiol.sbatch')
+    }
+    if (detect_locale()=='Mac'){
+      x <- readLines('~/GitHub/malaria_interventions/PLOS_Biol/get_data_midway_plosbiol.sbatch')
+    }
     str_sub(x[2],20,22) <- paste(ps,scenario,e,sep='')
     str_sub(x[3],16,18) <- sbatch_arguments$time[i]
     str_sub(x[4],31,33) <- paste(ps,scenario,e,sep='')
