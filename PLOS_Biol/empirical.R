@@ -1,5 +1,5 @@
 # Initialize --------------------------------------------------------------
-source('/home/shai/Documents/malaria_interventions/functions.R')
+source('~/GitHub//malaria_interventions/functions.R')
 prep.packages(c("tidyverse","magrittr","data.table","igraph","Matrix","dplyr","cowplot",'sqldf'))
 
 setwd('/media/Data/PLOS_Biol/empirical')
@@ -57,8 +57,8 @@ plotSurveyLayer <- function(x, zeroDiag=T, cutoff_g=NULL){
 
 
 
-# Get and clean empirical data ---------------------------------------------------
-
+# Get and clean empirical data (GENES) ---------------------------------------------------
+setwd('~/Dropbox/Qixin_Shai_Malaria/S1-S6/')
 mainData <- data.table::fread('S1ToS6_all_renamed_otuTable_binary.txt',sep = '\t',header = T)
 names(mainData)[1] <- 'OTU_ID'
 anyDuplicated(mainData$OTU_ID)
@@ -80,13 +80,12 @@ dim(mainData)
 mainData[1:5,1:5]
 
 
-# Diversity of var genes##################
-dim(mainData)
-var_numbers <- rowSums(mainData)
-hist(var_numbers)
-vegan::diversity(var_numbers)
-vegan::diversity(rep(1,9000))
-##########################################
+# Diversity of var genes
+# dim(mainData)
+# var_numbers <- rowSums(mainData)
+# hist(var_numbers)
+# vegan::diversity(var_numbers)
+# vegan::diversity(rep(1,9000))
 
 isolates_all <- colnames(mainData)
 
@@ -125,6 +124,60 @@ Data_S6 <- t(Data_S6)
 # mainDataClean <- mainData[vars_to_include,isolates_to_include]
 # dim(mainDataClean)
 
+# Get and clean empirical data (ALLELES) ---------------------------------------------------
+
+data_allele_1 <- data.table::fread('~/Dropbox/Qixin_Shai_Malaria/S1-S6/S1ToS6_VR1_clusterMap_groupBC_table.txt',sep = '\t',header = T)
+anyDuplicated(data_allele_1$OTU_ID)
+anyDuplicated(colnames(data_allele_1))
+OTU_ID <- data_allele_1$OTU_ID
+data_allele_1 <- data_allele_1[,-1]
+data_allele_1 <- as.matrix(data_allele_1)
+rownames(data_allele_1) <- OTU_ID
+dim(data_allele_1)
+data_allele_1[1:5,1:5]
+data_allele_2 <- data.table::fread('~/Dropbox/Qixin_Shai_Malaria/S1-S6/S1ToS6_VR2_clusterMap_groupBC_table.txt',sep = '\t',header = T)
+anyDuplicated(data_allele_2$OTU_ID)
+anyDuplicated(colnames(data_allele_2))
+OTU_ID <- data_allele_2$OTU_ID
+data_allele_2 <- data_allele_2[,-1]
+data_allele_2 <- as.matrix(data_allele_2)
+rownames(data_allele_2) <- OTU_ID
+dim(data_allele_2)
+data_allele_2[1:5,1:5]
+setequal(colnames(data_allele_1),colnames(data_allele_2))
+
+data_allleles <- rbind(data_allele_1,data_allele_2)
+isolates_all <- colnames(data_allleles)
+
+# Get surveys for isolates
+isolates_df_alleles <- tibble(isolate_code=colnames(data_allleles), isolate_name=str_sub(isolates_all,3,9))
+isolates_df_alleles %<>% mutate(survey=str_sub(isolate_code, 1, str_locate(isolates_all, 'MRS')[,1]-1))
+isolates_df_alleles %>% count(survey)
+isolates_df_alleles %<>% 
+  filter(isolate_name!='MRS1011') %>% # Remove the single individual with a chronic infection
+  mutate(survey=ifelse(survey=='R2S1','S1',survey)) %>% 
+  mutate(survey=ifelse(survey=='RS1','S1',survey)) %>% 
+  mutate(survey=ifelse(survey=='RS4','S4',survey))
+nrow(isolates_df_alleles)
+isolates_df_alleles %<>% distinct()
+nrow(isolates_df_alleles)
+
+# Limit to 60 vars (MOI=1)
+maxVarIsolate <- 110
+Data_S1 <- cleanSurveyData(main_data = data_allleles, isolates_df, Survey = 'S1', min.var.per.isolate = 80, max.var.per.isolate = maxVarIsolate, plotit = F)
+Data_S2 <- cleanSurveyData(main_data = data_allleles, isolates_df, Survey = 'S2', min.var.per.isolate = 80, max.var.per.isolate = maxVarIsolate, plotit = F)
+Data_S3 <- cleanSurveyData(main_data = data_allleles, isolates_df, Survey = 'S3', min.var.per.isolate = 40, max.var.per.isolate = maxVarIsolate, plotit = F)
+Data_S4 <- cleanSurveyData(main_data = data_allleles, isolates_df, Survey = 'S4', min.var.per.isolate = 40, max.var.per.isolate = maxVarIsolate, plotit = F)
+Data_S5 <- cleanSurveyData(main_data = data_allleles, isolates_df, Survey = 'S5', min.var.per.isolate = 40, max.var.per.isolate = maxVarIsolate, plotit = F)
+Data_S6 <- cleanSurveyData(main_data = data_allleles, isolates_df, Survey = 'S6', min.var.per.isolate = 40, max.var.per.isolate = maxVarIsolate, plotit = F)
+
+# isoaltes in rows, var genes in columns
+Data_S1 <- t(Data_S1)
+Data_S2 <- t(Data_S2)
+Data_S3 <- t(Data_S3)
+Data_S4 <- t(Data_S4)
+Data_S5 <- t(Data_S5)
+Data_S6 <- t(Data_S6)
 
 # Define Layers -----------------------------------------------------------
 
@@ -346,6 +399,9 @@ for (i in 1:nrow(experiments)){
   # interlayer_edge_weights <- rbind(interlayer_edge_weights,x)
 }
 module_results_simulations <- as.tibble(module_results_simulations)
+setwd('~/GitHub//PLOS_Biol/')
+module_results_simulations <- read_csv('module_results_simulations.csv')
+write_csv(module_results_simulations,'module_results_simulations.csv')
 module_results_simulations %>% filter(exp=='002') %>%  distinct(scenario, PS, exp)
 
 ggplot(interlayer_edge_weights, aes(w, fill=exp))+geom_density()+facet_wrap(~cutoff_prob, scales='free')
@@ -443,7 +499,7 @@ unique(x$exp)
 x$event <- ifelse(x$death_layer==6,0,1)
 
 fit <- with(x, survfit(Surv(birth_layer, death_layer, event)~scenario+exp))
-ggsurvplot_facet(fit, data=x, facet.by = 'exp', conf.int = TRUE)
+ggsurvplot_facet(fit, data=x, facet.by = 'scenario', conf.int = TRUE)
 # +scale_color_manual(values=c('blue','orange','red'))
 
 
@@ -468,6 +524,12 @@ edges_empirical %<>% filter(value!=0) # remove instances with no edges
 cutoff_value <- quantile(edges_empirical$value, probs = cutoff_prob_empirical)
 
 # Plot distributions
+edges_empirical %>%
+  ggplot(aes(x=value,fill=grp))+
+  geom_density()+
+  scale_fill_manual(values=c('#8F25DD','#10A4EF'))+
+  geom_vline(xintercept = cutoff_value, color='red')
+
 edge_weights_simulated %>% 
   bind_rows(edges_empirical) %>%
   ggplot(aes(x=value,fill=grp))+
@@ -531,12 +593,13 @@ write_csv(repertoire_persistence_prob,'/media/Data/PLOS_Biol/empirical/repertoir
 
 
 # Build Infomap objects -----------------------------------------------
+repertoire_persistence_prob <- read_csv( '~/GitHub/PLOS_Biol/repertoire_persistence_prob.csv')
 network_object <- vector(mode = 'list', length = 2)
 names(network_object) <- c('intralayer_matrices','interlayer_matrices')
 network_object$intralayer_matrices <- intralayer_matrices_empirical
 network_object$interlayer_matrices <- interlayer_matrices_empirical
 infomap_empirical <- build_infomap_objects(network_object = network_object, write_to_infomap_file = T,
-                                           infomap_file_name = '/media/Data/PLOS_Biol/empirical/infomap_empirical.txt', 
+                                           infomap_file_name = '~/GitHub/PLOS_Biol/infomap_empirical.txt', 
                                           return_objects = T,repertoire_persistence_prob = repertoire_persistence_prob)
 
 infomap_empirical$infomap_interlayer %>% ggplot()+
@@ -544,14 +607,14 @@ infomap_empirical$infomap_interlayer %>% ggplot()+
   geom_density(aes(x=w_rescaled),fill='gray',alpha=0.6)
 
 # Run Infomap -------------------------------------------------------------
-
-system("./Infomap_v01926 infomap_empirical.txt . -i multilayer -d -N 10 --rawdir --two-level --tree --expanded")
+setwd('~/GitHub/PLOS_Biol/')
+system("./Infomap_mac_01925 infomap_empirical.txt . -i multilayer -d -N 10 --rawdir --two-level --tree --expanded")
 
 
 # Read Infomap results ----------------------------------------------------
 node_list <- infomap_empirical$nodeList
 print ('Reading infomap file...')
-infomap_file <- '/media/Data/PLOS_Biol/empirical/infomap_empirical_expanded.tree'
+infomap_file <- '~/GitHub//PLOS_Biol//infomap_empirical_expanded.tree'
 lines <- readLines(infomap_file)
 cat(lines[1]);cat('\n')
 # x <- fread(infomap_file, skip = 2, stringsAsFactors = F) # Read results of Infomap
@@ -608,14 +671,15 @@ modules_empirical <- modules2
 
 
 # Module analysis ---------------------------------------------------------
+modsize <- modules_empirical %>% group_by(module) %>% summarise(numStrains=length(strain_unique))
 
-modules_empirical %>% ggplot(aes(x=layer,y=module))+geom_point()
+modules_empirical %>% left_join(modsize) %>% ggplot(aes(x=layer,y=module,size=numStrains,color=numStrains))+
+  geom_point()
 
 modules_empirical %>% 
   group_by(module) %>% mutate(layer_birth=min(layer),layer_death=max(layer),persistence=layer_death-layer_birth+1) %>% 
   distinct(module,persistence)
 
-modules_empirical %>% group_by(module) %>% summarise(numStrains=length(strain_unique))
 
 # Temporal diversity
 # 
