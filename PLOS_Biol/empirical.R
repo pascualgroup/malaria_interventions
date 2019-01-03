@@ -287,7 +287,7 @@ for (i in 1:length(interlayer_matrices_empirical)){
 
 # Build Infomap objects -----------------------------------------------
 setwd('/media/Data/PLOS_Biol/empirical/')
-repertoire_persistence_prob <- read_csv( 'repertoire_persistence_prob.csv')
+repertoire_persistence_prob <- read_csv( 'repertoire_persistence_prob_700.csv')
 network_object <- vector(mode = 'list', length = 2)
 names(network_object) <- c('intralayer_matrices','interlayer_matrices')
 network_object$intralayer_matrices <- intralayer_matrices_empirical
@@ -295,7 +295,7 @@ network_object$interlayer_matrices <- interlayer_matrices_empirical
 infomap_empirical <- build_infomap_objects(network_object = network_object, write_to_infomap_file = T,
                                            infomap_file_name = 'infomap_empirical.txt', 
                                            return_objects = T,
-                                           repertoire_persistence_prob = repertoire_persistence_prob)
+                                           repertoire_persistence_prob = NULL)
 
 infomap_empirical$infomap_interlayer %>% ggplot()+
   geom_density(aes(x=w),fill='purple',alpha=0.6)+
@@ -402,20 +402,20 @@ modules_empirical %>%
 
 # Compare edge weight distributions from simulations to empirical --------------------------
 # Run once, and then just read results from file:
-# unlink('/media/Data/PLOS_Biol/empirical/edge_weights_simulated.csv')
-# edge_weights_simulated <- c()
-# for (ps in c(520,540,560,580,599)){
-#   print(paste('[',Sys.time(),']', ps))
-#   x <- get_edge_disributions(PS = ps, scenario = 'S', exp = '001', run = 1,cutoff_prob = 0.95, get_inter = F) # The cutoff_prob here is just for file names. it does not really matter because these ar eedge weights before cutoff is applied
-#   # x <- subset(x, value!=0)
-#   x <- x[sample(nrow(x),round(nrow(x)*0.4),F),] # Randomly sample 20% of the edge values because there are just too many.
-#   edge_weights_simulated <- rbind(edge_weights_simulated, x)
-#   if (ps%%20==0){
-#     fwrite(edge_weights_simulated[,-c(6,7)], '/media/Data/PLOS_Biol/empirical/edge_weights_simulated.csv', append = T)
-#     edge_weights_simulated <- c()
-#   }
-# }
-edge_weights_simulated <- fread('/media/Data/PLOS_Biol/empirical/edge_weights_simulated.csv')
+unlink('/media/Data/PLOS_Biol/empirical/edge_weights_simulated.csv')
+edge_weights_simulated <- c()
+for (ps in 750:769){
+  print(paste('[',Sys.time(),']', ps))
+  x <- get_edge_disributions(PS = ps, scenario = 'S', exp = '001', run = 1,cutoff_prob = 0.85, get_inter = F) # The cutoff_prob here is just for file names. it does not really matter because these ar eedge weights before cutoff is applied
+  # x <- subset(x, value!=0)
+  x <- x[sample(nrow(x),round(nrow(x)*0.2),F),] # Randomly sample 20% of the edge values because there are just too many.
+  edge_weights_simulated <- rbind(edge_weights_simulated, x)
+  if (ps%%20==0){
+    fwrite(edge_weights_simulated[,-c(6,7)], '/media/Data/PLOS_Biol/empirical/edge_weights_simulated_700.csv', append = T)
+    edge_weights_simulated <- c()
+  }
+}
+edge_weights_simulated <- fread('/media/Data/PLOS_Biol/empirical/edge_weights_simulated_700.csv')
 edge_weights_simulated <- as.tibble(edge_weights_simulated)
 edge_weights_simulated$grp <- 'Simulated'
 
@@ -439,7 +439,7 @@ ggplot(edge_weights_simulated, aes(x=value))+
 
 monitored_variables <- c('prevalence', 'meanMOI','n_circulating_strains', 'n_circulating_genes', 'n_alleles', 'n_total_bites')
 
-PS_range <- as.character(c(500:599,600:609))
+PS_range <- as.character(750:769)
 cases <- expand.grid(ps=PS_range, scenario='S', exp=c('001','002'), run=1)
 cases$cutoff_prob <- 0.85 # This is just for fime names. there is no cutoff because there are no modules here.
 exploratory <- c()
@@ -533,8 +533,8 @@ length(empirical_data_genes)
 
 
 # Create files to run tests on Midway
-sbatch_arguments <- expand.grid(PS=sprintf('%0.3d', 600:609),
-                                scen=c('S'),
+sbatch_arguments <- expand.grid(PS=sprintf('%0.3d', 750:769),
+                                scen=c('S','G','N'),
                                 array='1', 
                                 layers='118,126,138,142,154,162',
                                 exp=c('001','002'),
@@ -553,8 +553,8 @@ make_sbatch_get_data(sbatch_arguments = sbatch_arguments,
 
 
 
-experiments <- expand.grid(PS=sprintf('%0.3d', 600:609),
-                           scen=c('S'),
+experiments <- expand.grid(PS=sprintf('%0.3d', 750:769),
+                           scen=c('S','G','N'),
                            exp=c('001','002'),
                            # cutoff_prob=seq(0.95,0.97,0.005),
                            cutoff_prob=0.85,
@@ -565,7 +565,7 @@ experiments <- expand.grid(PS=sprintf('%0.3d', 600:609),
 module_results_simulations <- c()
 # interlayer_edge_weights <- c()
 for (i in 1:nrow(experiments)){
-  print(i)
+  print(paste(i,'/',nrow(experiments)))
   ps <- experiments$PS[i]
   scenario <- experiments$scen[i]
   cutoff_prob <- experiments$cutoff_prob[i]
@@ -581,6 +581,7 @@ for (i in 1:nrow(experiments)){
   # interlayer_edge_weights <- rbind(interlayer_edge_weights,x)
 }
 module_results_simulations <- as.tibble(module_results_simulations)
+module_results_simulations %>% group_by(scenario,PS,exp) %>% summarise(n=n())
 # setwd('~/GitHub//PLOS_Biol/')
 # module_results_simulations <- read_csv('module_results_simulations.csv')
 # write_csv(module_results_simulations,'module_results_simulations.csv')
@@ -594,7 +595,7 @@ modsize <- module_results_simulations %>%
   group_by(scenario,PS,exp,cutoff_prob,module) %>% summarise(size=n())
 module_results_simulations %>% 
   # filter(exp=='002') %>% 
-  filter(PS==600) %>%
+  filter(PS==751) %>%
   # filter(scenario=='S') %>% 
   distinct(PS,scenario,cutoff_prob,module, layer) %>% 
   group_by(PS,scenario,cutoff_prob,module) %>% 
@@ -604,7 +605,7 @@ module_results_simulations %>%
   geom_rect(size=2)+
   # geom_rect(size=2, color=scenario_cols[1])+
   scale_x_continuous(breaks=1:6)+
-  scale_color_viridis_c()+
+  scale_color_viridis_c()+ 
   facet_grid(exp~scenario)
 
 
@@ -673,7 +674,7 @@ module_persistence %>%
 # Survival analysis
 library(survival)
 library(survminer)
-x <- module_persistence
+x <- module_persistence %>% filter(scenario!='N')
 x <- subset(x, x$birth_layer!=x$death_layer)
 x <- subset(x, birth_layer==1)
 unique(x$scenario)
@@ -709,8 +710,8 @@ get_repertoire_persistence_without_modules <- function(PS,scenario,exp,run,cutof
 }
 
 repertoire_persistence <- c()
-for (ps in 500:599){
-  x <- get_repertoire_persistence_without_modules(ps,'N','002',1,0.85)
+for (ps in 750:769){
+  x <- get_repertoire_persistence_without_modules(ps,'N','001',1,0.85)
   repertoire_persistence <- rbind(x,repertoire_persistence)
 }
 
@@ -727,7 +728,7 @@ ggplot(repertoire_persistence_prob)+
   scale_x_continuous(limits = c(0,15), breaks = 0:15)
 
 # Copy that file to Midway so it can be used for the simulations
-write_csv(repertoire_persistence_prob,'/media/Data/PLOS_Biol/empirical/repertoire_persistence_prob.csv')
+write_csv(repertoire_persistence_prob,'/media/Data/PLOS_Biol/empirical/repertoire_persistence_prob_700.csv')
 
 
 

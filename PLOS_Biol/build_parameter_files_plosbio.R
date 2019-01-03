@@ -5,12 +5,12 @@ prep.packages(c('tidyverse','magrittr','sqldf','rPython','googlesheets'))
 # Create parameter and job files -------------------------------------------
 if (detect_locale()=='Lab'){
   setwd('/home/shai/Documents/malaria_interventions')
-  sqlite_path_global <- '/media/Data/PLOS_Biol/sqlite_S'
+  sqlite_path_global <- '/media/Data/PLOS_Biol/sqlite'
   parameter_files_path_global <- '/media/Data/PLOS_Biol/parameter_files'
 }
 if (detect_locale()=='Mac'){
   setwd('~/GitHub/malaria_interventions')
-  sqlite_path_global <- '~/GitHub/PLOS_Biol/sqlite_S'
+  sqlite_path_global <- '~/GitHub/PLOS_Biol/sqlite'
   parameter_files_path_global <- '~/GitHub/PLOS_Biol/parameter_files'
 }
 
@@ -116,7 +116,7 @@ system('rm *.sbatch')
 
 scenario_range <- c('S','N','G')
 exp_range <- sprintf('%0.3d', 0:2)
-ps_range <- sprintf('%0.3d', 500:599)
+ps_range <- sprintf('%0.3d', 700:799)
 
 for (ps in ps_range){
   for (scenario in scenario_range){
@@ -333,54 +333,57 @@ sbatch_arguments$time <- '05:00:00'
 
 # This code creates the design. Use that design to create the sqlite files.
 
-diversity_range <- round(seq(30000,40000,length.out = 10)) # Main analysis is 35000
+# diversity_range <- round(seq(30000,40000,length.out = 10)) # Main analysis is 35000
 biting_range <- seq(0.0001,0.0003,length.out = 10) # Main analysis is 0.00020
+diversity_range <- round(seq(10000,14000,length.out = 10)) # Main analysis is 35000
+# biting_range <- 0.0002 # Main analysis is 0.00020
 empirical_comparison_params <- expand.grid(N_GENES_INITIAL=diversity_range, BITING_RATE_MEAN=biting_range)
 empirical_comparison_params <- as.tibble(empirical_comparison_params)
 nrow(empirical_comparison_params)
-empirical_comparison_params$PS <- str_pad((1:nrow(empirical_comparison_params))+499,width = 3, side = 'left', pad = '0')
+# empirical_comparison_params$PS <- str_pad((1:nrow(empirical_comparison_params))+499,width = 3, side = 'left', pad = '0')
+empirical_comparison_params$PS <- str_pad((1:nrow(empirical_comparison_params))+699,width = 3, side = 'left', pad = '0')
 
 design <- loadExperiments_GoogleSheets(local = F, workBookName = 'PLOS_Biol_design', sheetID = 2) 
 work_scenario <- 'G'
 
-design_seed_000 <- subset(design, PS=='18' & scenario==work_scenario & exp=='000')
+design_seed_000 <- subset(design, PS=='24' & scenario==work_scenario & exp=='000')
 design_seed_000 %<>% slice(rep(1:n(), each = nrow(empirical_comparison_params)))
 design_seed_000$PS <- empirical_comparison_params$PS
 design_seed_000$N_GENES_INITIAL <- empirical_comparison_params$N_GENES_INITIAL
 design_seed_000$BITING_RATE_MEAN <- empirical_comparison_params$BITING_RATE_MEAN
 
-design_seed_001 <- subset(design, PS=='18' & scenario==work_scenario & exp=='001')
+design_seed_001 <- subset(design, PS=='24' & scenario==work_scenario & exp=='001')
 design_seed_001 %<>% slice(rep(1:n(), each = nrow(empirical_comparison_params)))
 design_seed_001$PS <- empirical_comparison_params$PS
 design_seed_001$N_GENES_INITIAL <- empirical_comparison_params$N_GENES_INITIAL
 design_seed_001$BITING_RATE_MEAN <- empirical_comparison_params$BITING_RATE_MEAN
 
-design_seed_002 <- subset(design, PS=='18' & scenario==work_scenario & exp=='002')
+design_seed_002 <- subset(design, PS=='24' & scenario==work_scenario & exp=='002')
 design_seed_002 %<>% slice(rep(1:n(), each = nrow(empirical_comparison_params)))
 design_seed_002$PS <- empirical_comparison_params$PS
 design_seed_002$N_GENES_INITIAL <- empirical_comparison_params$N_GENES_INITIAL
 design_seed_002$BITING_RATE_MEAN <- empirical_comparison_params$BITING_RATE_MEAN
 
 design <- design_seed_000 %>% bind_rows(design_seed_001) %>% bind_rows(design_seed_002)
-design$mem_per_cpu <- 32000
-design$wall_time <- '08:00:00'
+design$mem_per_cpu <- 16000
+design$wall_time <- '01:00:00'
 
 
 if (detect_locale()=='Lab'){
   setwd('/home/shai/Documents/malaria_interventions')
-  sqlite_path_global <- '/media/Data/PLOS_Biol/sqlite_S'
+  sqlite_path_global <- '/media/Data/PLOS_Biol/sqlite'
   parameter_files_path_global <- '/media/Data/PLOS_Biol/parameter_files'
 }
 if (detect_locale()=='Mac'){
   setwd('~/GitHub/malaria_interventions')
-  sqlite_path_global <- '~/GitHub/PLOS_Biol/sqlite_S'
+  sqlite_path_global <- '~/GitHub/PLOS_Biol/sqlite'
   parameter_files_path_global <- '~/GitHub/PLOS_Biol/parameter_files'
 }
 
 
 # Create the reference experiments (checkpoint and control)
-ps_range <- sprintf('%03d', c(500,520,540,560,580,599))
-exp_range <- sprintf('%0.3d', 1)
+ps_range <- sprintf('%03d', 750:769)
+exp_range <- sprintf('%0.3d', 2)
 run_range <- 1
 
 for (ps in ps_range){
@@ -390,35 +393,43 @@ for (ps in ps_range){
                # The radom_seed is necessary if using CP for intervention when
                # not creating the intervention experiment parameter file at the
                # same time as the 000 file.
-               #random_seed = get_random_seed(PS = 18, scenario = work_scenario, run_range = run_range, folder = '/media/Data/PLOS_Biol/parameter_files/'),
+               random_seed = get_random_seed(PS = ps, scenario = work_scenario, run_range = run_range, folder = '/media/Data/PLOS_Biol/parameter_files/'),
                biting_rate_file = design_subset$DAILY_BITING_RATE_DISTRIBUTION[1],
                # only_sbatch = T,
                target_folder = parameter_files_path_global)
 }
 
-# Copy the file to Midway and unzip it, then run the run_E000.sh file for run the checkpoints:
+# Copy the files to Midway, then run the run_E000.sh file for run the checkpoints:
 sink('/media/Data/PLOS_Biol/parameter_files/run_E000.sh')
 for (ps in ps_range){
-  cat('sbatch PS',ps,work_scenario,'E001.sbatch',sep='');cat('\n')
+  cat('sbatch PS',ps,work_scenario,'E000.sbatch',sep='');cat('\n')
 }
 sink.reset()
 
-jobids <- c(55805308:55805370,55805372:55805408) # from Midway after runnign run_E000.sh
+jobids <- 55957773:55957792 # from Midway after runnign run_E000.sh
 sink('/media/Data/PLOS_Biol/parameter_files/run_E001.sh')
 for (ps in ps_range){
-  cat('sbatch -d afterok:',jobids[which(ps_range==ps)],' PS',ps,work_scenario,'E001.sbatch',sep='');cat('\n')
+  if(is.null(jobids)){
+    cat('sbatch PS',ps,work_scenario,'E001.sbatch',sep='');cat('\n')
+  } else {
+    cat('sbatch -d afterok:',jobids[which(ps_range==ps)],' PS',ps,work_scenario,'E001.sbatch',sep='');cat('\n')    
+  }
 }
 sink.reset()
 
 sink('/media/Data/PLOS_Biol/parameter_files/run_E002.sh')
 for (ps in ps_range){
-  cat('sbatch -d afterok:',jobids[which(ps_range==ps)],' PS',ps,work_scenario,'E002.sbatch',sep='');cat('\n')
+  if(is.null(jobids)){
+    cat('sbatch PS',ps,work_scenario,'E002.sbatch',sep='');cat('\n')
+  } else {
+    cat('sbatch -d afterok:',jobids[which(ps_range==ps)],' PS',ps,work_scenario,'E002.sbatch',sep='');cat('\n')    
+  }
 }
 sink.reset()
 
 
 # Create files to extract data on edge weights from selection
-sbatch_arguments <- expand.grid(PS=sprintf('%0.3d', 500:599),
+sbatch_arguments <- expand.grid(PS=sprintf('%0.3d', 750:769),
                                 scen='S',
                                 array='1', 
                                 layers='10:100',
@@ -430,14 +441,14 @@ sbatch_arguments$time <- '01:00:00'
 make_sbatch_get_data(sbatch_arguments, make_networks = T)
 
 # Create files to calculate strain persistence from neutral scenario
-sbatch_arguments <- expand.grid(PS=sprintf('%0.3d', 500:599),
+sbatch_arguments <- expand.grid(PS=sprintf('%0.3d', 750:769),
                                 scen='N',
                                 array='1', 
-                                layers='1:100',
-                                exp='002',
+                                layers='10:100',
+                                exp='001',
                                 stringsAsFactors = F)
 sbatch_arguments$cutoff_prob <- 0.85 # This does not go into the calculation it is just needed to create files and for the function to not get stuck
-sbatch_arguments$mem_per_cpu <- 12000 # May need up to 58000 for PS 570 and up
+sbatch_arguments$mem_per_cpu <- 20000 # May need up to 58000 for PS 570 and up
 sbatch_arguments$time <- '02:00:00'
 make_sbatch_get_data(sbatch_arguments, repertoire_persistence = T)
 
@@ -484,6 +495,65 @@ make_sbatch_get_data(sbatch_arguments = sbatch_arguments,
                      temporal_diversity = T,
                      module_Fst = T)
 
+
+
+
+
+
+
+
+# Generate files for epidemiology simulations -----------------------------
+
+
+sbatch_arguments <- expand.grid(PS=c('04','05','06','18'),
+                                scen=c('S','G','N'),
+                                array='1', 
+                                exp='001',
+                                numLayers=300,
+                                time_interval=12,
+                                n_hosts=10,
+                                n_samples=5,
+                                stringsAsFactors = F)
+cutoff_df <- tibble(PS=c('04','05','06','18'),
+                    cutoff_prob=c(0.3,0.6,0.85,0.85),
+                    mem_per_cpu=c(2000,8000,32000,32000),
+                    time=c('01:00:00','04:00:00','10:00:00','10:00:00'))
+sbatch_arguments %<>% left_join(cutoff_df)
+
+for (i in 1:nrow(sbatch_arguments)){
+  ps <- sbatch_arguments$PS[i]
+  scenario <- sbatch_arguments$scen[i]
+  cutoff_prob <- sbatch_arguments$cutoff_prob[i]
+  base_name <- paste('PS',PS,'_',scenario,'_E',exp,'_',cutoff_prob,sep='')
+  
+  x <- list()
+  x[[1]] <- "#!/bin/bash"
+  x[[2]] <- paste('#SBATCH --job-name=epi',ps,sep='')
+  x[[3]] <- paste('#SBATCH --time=',sbatch_arguments$time[i],sep='')
+  
+  x[[4]] <- paste('#SBATCH --output=slurm_output/epi_',ps,'%A_%a.out',sep='')
+  x[[5]] <- paste('#SBATCH --error=slurm_output/epi_',ps,'%A_%a.err',sep='')
+  x[[6]] <- paste('#SBATCH --array=',sbatch_arguments$array[i],sep='')
+  x[[7]] <- '#SBATCH --tasks=1'
+  x[[8]] <- '#SBATCH --cpus-per-task=1'
+  x[[9]] <- paste('#SBATCH --mem-per-cpu=',sbatch_arguments$mem_per_cpu[i],sep='')
+  x[[10]] <- "#SBATCH --partition=broadwl"
+  x[[11]] <- ""
+  x[[12]] <- paste('PS=',ps,sep='')
+  x[[13]] <- paste('scenario=',scenario,sep='')
+  x[[14]] <- paste('exp=',exp,sep='')
+  x[[15]] <- paste('cutoff_prob=',cutoff_prob,sep='')
+  x[[16]] <- paste('numLayers=',numLayers,sep='')
+  x[[17]] <- paste('time_interval=',time_interval,sep='')
+  x[[18]] <- paste('n_hosts=',n_hosts,sep='')
+  x[[19]] <- paste('n_samples=',n_samples,sep='')
+  x[[20]] <- ""
+  x[[21]] <- "module load R"
+  x[[22]] <- ""
+  x[[23]] <- "Rscript epidemiology_simulations.R $PS $scenario $exp $cutoff_prob $numLayers $time_interval $n_hosts $n_samples"
+
+  write_lines(x, paste('/media/Data/PLOS_Biol/parameter_files/',base_name,'_epi.sbatch',sep=''))
+}
 
 
 
