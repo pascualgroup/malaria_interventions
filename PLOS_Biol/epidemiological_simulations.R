@@ -1,6 +1,6 @@
 # Initialize --------------------------------------------------------------
 if (length(commandArgs(trailingOnly=TRUE))==0) {
-  args <- c('04','S','001',1,0.3,300,12,10,5)
+  args <- c('06','S','001',0.85,300,12,10,5)
 } else {
   message('Taking arguments from command line.')
   args <- commandArgs(trailingOnly=TRUE)
@@ -8,12 +8,12 @@ if (length(commandArgs(trailingOnly=TRUE))==0) {
 PS <- as.character(args[1])
 scenario <- as.character(args[2])
 exp <- as.character(args[3])
-run <- as.numeric(args[4])
-cutoff_prob <- as.numeric(args[5])
-numLayers <- as.numeric(args[6]) # This is to limit the number of layers. When running the real model this should be at the maximum value. number of layers will be (MaxTime-18000)/window width, whre 18000 is the burnin time of the model and window width is in days (typically 30)
-time_interval <- as.numeric(args[7])
-n_hosts <- as.numeric(args[8]) # Number of naive hosts to infect
-n_samples <- as.numeric(args[9]) # Number of random starting point layers within each module
+run <- as.numeric(Sys.getenv('SLURM_ARRAY_TASK_ID'))
+cutoff_prob <- as.numeric(args[4])
+numLayers <- as.numeric(args[5]) # This is to limit the number of layers. When running the real model this should be at the maximum value. number of layers will be (MaxTime-18000)/window width, whre 18000 is the burnin time of the model and window width is in days (typically 30)
+time_interval <- as.numeric(args[6])
+n_hosts <- as.numeric(args[7]) # Number of naive hosts to infect
+n_samples <- as.numeric(args[8]) # Number of random starting point layers within each module
 
 # message('Arguments passed:')
 # cat('experiment: ');cat(experiment);cat('\n')
@@ -30,9 +30,9 @@ source('functions.R')
 prep.packages(c("tidyverse","data.table"))
 
 base_name <- paste('PS',PS,'_',scenario,'_E',exp,'_R',run,'_',cutoff_prob,sep='')
-
+message(base_name)
 message('Loading modules and strain compositon...')
-modules <- infomap_readTreeFile(PS, scenario, exp, run, cutoff_prob, '/media/Data/PLOS_Biol/Results/')
+modules <- infomap_readTreeFile(PS, scenario, exp, run, cutoff_prob, paste('/media/Data/PLOS_Biol/Results/',PS,'_',scenario,sep=''))
 
 sampled_strains <- modules$sampled_strains
 sampled_alleles <- modules$sampled_alleles
@@ -47,18 +47,13 @@ rep_module_layer <- left_join(modules$modules, sampled_strains, by='strain_id') 
   
 duration_new_gene <- 360/60 # 360 is the naive duration of infection and 60 is the number of genes in a repertoire, both taken from the experiment parameters run in the agent-based model
 
-# !!!!!!!!!!!!!!!! Still need to do the EIR !!!!!!!!!!!!!
-
 # How many infections per layer should be performed? That would depend on the 
 # EIR parameter from the stochastic ABM which is on the units of
-# infectious bites/day/person. For eample, if EIR is 0.5 then it is an infectious bite every 2
-# days. So infections_per_layer=length_of_layer*EIR
-EIR <- read.csv(paste(filenameBase,'_EIR.csv',sep=''))$eirVal/360 # need to devide by 360 because the EIR is calculated for a year
-infections_per_layer <- ceiling(30*EIR) # need to use ceiling because for low diversity/transmission EIR is < 1.
+# infectious bites/person/month. So infections_per_layer=length_of_layer*EIR
+tmp <- get_data(parameter_space = PS, scenario = scenario, experiment = exp, run = run, cutoff_prob = cutoff_prob, use_sqlite = T, tables_to_get = 'summary_general')[[1]]
+infections_per_layer <- ceiling(mean(tmp$EIR)) # need to use ceiling because for low diversity/transmission EIR is < 1.
 
 message('Finished initializing')
-
-# --------------------- CONTINUE FROM HERE ------
 
 # Functions ---------------------------------------------------------------
 
@@ -93,7 +88,6 @@ sample_min_distance <- function(L, d, N){
 }
 
 
-
 # A function to follow event queues and produce infections
 simulate_infections <- function(event){
   repertoires_seen <- c()
@@ -102,8 +96,8 @@ simulate_infections <- function(event){
   infection_queue <- data.frame(module=NULL, layer=NULL, infection_id=NULL, genes_seen=NULL, repertoires_seen=NULL, duration=NULL)
   for (i in 1:nrow(event)){
     infection_id <- infection_id+1
-    rep <- event$strainId[i]
-    rep_genes <- unique(subset(strainComposition, strainId==rep)$geneId) # Genes in the repertoire
+    rep <- event$strain_id[i]
+    rep_genes <- unique(subset(sampled_strains,strain_id==rep)$gene_id) # Genes in the repertoire
     new_genes <- sum(!rep_genes%in%genes_seen) # Genes in that repertorie which are new to the host
     duration <- new_genes*duration_new_gene
     # update history
@@ -124,7 +118,7 @@ event_status <- function(events){
   print(paste('Total events:',nrow(events)))
   print(paste('Mean infections per layer:',mean(table(events$layer))))
   print(paste('Number of distinct modules:',length(unique(events$module))))
-  print(paste('Number of distinct repertoires:',length(unique(events$strainId))))
+  print(paste('Number of distinct repertoires:',length(unique(events$strain_id))))
 }
 
 
@@ -206,11 +200,14 @@ build_event_queue_random <- function(){
 }
 
 
+# Run simulatinos ---------------------------------------------------------
+
+# results_n_samples <- NULL
 for (s in 1:n_samples){
   # Within-module simulations 
   # In the case of within-module infections each host is actually a module because
   # we follow a host for 12 layers within a module
-  mprint(paste(filenameBase,'| sample ',s,' | within',sep=''))
+  message(paste(base_name,' | sample ',s,' | within',sep=''))
   events_within <- build_event_queue_within_modules() # build event queue
   event_status(events_within)
   infection_history_within <- NULL
@@ -225,7 +222,7 @@ for (s in 1:n_samples){
   
   # Between-module simulations
   # Each host is a sequence of 10 consecutive layers
-  mprint(paste(filenameBase,'| sample ',s,' | between',sep=''))
+  message(paste(base_name,' | sample ',s,' | between',sep=''))
   events_between <- build_event_queue_between_modules() # build event queue
   event_status(events_between)
   ## Split the queue to single events (hosts)
@@ -244,7 +241,7 @@ for (s in 1:n_samples){
   
   # Random-module simulations
   # Each host is a sequence of 10 consecutive layers
-  mprint(paste(filenameBase,'| sample ',s,' | random',sep=''))
+  message(paste(base_name,' | sample ',s,' | random',sep=''))
   events_random <- build_event_queue_random() # build event queue
   event_status(events_random)
   ## Split the queue to single events (hosts)
@@ -267,19 +264,39 @@ for (s in 1:n_samples){
   infection_history_random$case <- 'R'
   results <- rbind(infection_history_between,infection_history_within,infection_history_random)
   results$sample <- s
-  
-  ## Write results to file
-  write.table(results, paste('Results/',filenameBase,'_epi_T',time_interval,'_H',n_hosts,'_sample_',s,'.csv',sep=''), sep=',')
+  results$PS <- PS
+  results$scenario <- scenario
+  results$exp <- exp
+  results$run <- run
+  results$cutoff_prob <- cutoff_prob
+
+    ## Write results to file
+  write.table(results, paste('/scratch/midway2/pilosofs/PLOS_Biol/Results/epi/',base_name,'_epi_T',time_interval,'_H',n_hosts,'_sample_',s,'.csv',sep=''), sep=',')
   
   # Write the event queues
   events_within$case <- 'W'
   events_between$case <- 'B'
   events_random$case <- 'R'
-  events <- rbind(events_within[,c("strainId","module","layer","case")],events_between,events_random)
+  events <- rbind(events_within[,c("strain_id","module","layer","case")],events_between,events_random)
   events$sample <- s
-  write.table(events, paste('Results/',filenameBase,'_epi_T',time_interval,'_H',n_hosts,'_sample_',s,'_EVENTS.csv',sep=''), sep=',')
+  events$PS <- PS
+  events$scenario <- scenario
+  events$exp <- exp
+  events$run <- run
+  events$cutoff_prob <- cutoff_prob
+  write.table(events, paste('/scratch/midway2/pilosofs/PLOS_Biol/Results/epi/',base_name,'_epi_T',time_interval,'_H',n_hosts,'_sample_',s,'_EVENTS.csv',sep=''), sep=',')
+  
+  # results_n_samples <- rbind(results_n_samples, results)
 }
 
-# results <- as_tibble(results)
-# results %>% group_by(case, infection_id) %>% summarise(d=mean(duration)) %>% 
-#   ggplot(aes(infection_id, d, color=case))+geom_point()+geom_line()+geom_vline(xintercept = seq(1,95,15))
+# results_n_samples$scenario <- 'G'
+# results_n_samples_S$scenario <- 'S'
+# 
+# as_tibble(results_n_samples) %>% 
+#   bind_rows(results_n_samples_S) %>% 
+#   group_by(scenario, case, infection_id) %>% 
+#   summarise(mean_d=mean(duration)) %>%
+#   ggplot(aes(infection_id, mean_d, color=case))+
+#   geom_point()+
+#   geom_line()+
+#   facet_wrap(~scenario)
