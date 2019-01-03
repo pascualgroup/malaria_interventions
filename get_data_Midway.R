@@ -7,8 +7,11 @@ library(magrittr, quietly = T, warn.conflicts = F)
 library(igraph, quietly = T, warn.conflicts = F)
 library(data.table, quietly = T, warn.conflicts = F)
 
+comparing_to_empirical <- F
+
 if (length(commandArgs(trailingOnly=TRUE))==0) {
-  args <- c('500','S','002',0.85, '118,126,138,142,154,162')
+  # args <- c('750','S','001',0.85, '118,126,138,142,154,162')
+  args <- c('750','S','001',0.85, '10:100')
 } else {
   args <- commandArgs(trailingOnly=TRUE)
 }
@@ -27,7 +30,7 @@ if (str_detect(layers,'\\:')){
 
 
 # Identify if the simulation is used to compare to empirical data
-if(job_ps %in% as.character(500:599) && length(layers)<300) {
+if(as.numeric(job_ps)>=500 && length(layers)==6) {
   print('Comparing to empirical')
   comparing_to_empirical <- T
 }
@@ -42,7 +45,7 @@ print(task)
 if (comparing_to_empirical){print('Comparing to empirical data')}
 
 # Make networks -----------------------------------------------------------
-make_network <- function(){
+make_network <- function(unit_for_edges, repertoires_to_sample, write_to_files, write_edge_weights){
   
   # Data from sqlite
   data <- get_data(parameter_space = job_ps, scenario = job_scenario, experiment = job_exp, run = job_run, host_age_structure = T, use_sqlite = T)
@@ -52,9 +55,10 @@ make_network <- function(){
   # Network objects
   if (comparing_to_empirical){
     cutoff_value <- NULL
-    unit_for_edges <- 'alleles'
-    repertoires_to_sample <- NULL #sample this number from each layer, corresponding to the size of the layers in the empirical data
-    write_to_files <- T
+    # unit_for_edges <- 'alleles'
+    # repertoires_to_sample <- c(98,68,69,52,115,44) #sample this number of repertoires from each layer, corresponding to the size of the layers in the empirical data
+    # repertoires_to_sample <- NULL #Use all repertoires
+    # write_to_files <- T
   }
   if(!comparing_to_empirical){
     # If experiment is not control then take the cutoff value from the control. This
@@ -65,9 +69,9 @@ make_network <- function(){
       x <- readLines(paste('PS',job_ps,'_',job_scenario,'_E001_R',job_run,'_',cutoff_prob,'_network_info.csv',sep=''))
       cutoff_value <- x[6]
     }
-    unit_for_edges <- 'alleles'
-    repertoires_to_sample <- NULL
-    write_to_files <- F
+  #   unit_for_edges <- 'alleles'
+  #   repertoires_to_sample <- NULL
+  #   write_to_files <- F
   }
   
   network <- createTemporalNetwork(ps = job_ps,
@@ -95,15 +99,15 @@ make_network <- function(){
   sink.reset()
   write_csv(network$layer_summary, paste(base_name,'_layer_summary.csv',sep=''))
   
-  
-  write_csv(as.tibble(network$intralayer_edges_no_cutoff), paste(base_name,'_intralayer_no_cutoff.csv',sep=''))
-  write_csv(as.tibble(network$interlayer_edges_no_cutoff), paste(base_name,'_interlayer_no_cutoff.csv',sep=''))
-  
+  if(write_edge_weights){
+    write_csv(as.tibble(network$intralayer_edges_no_cutoff), paste(base_name,'_intralayer_no_cutoff.csv',sep=''))
+    write_csv(as.tibble(network$interlayer_edges_no_cutoff), paste(base_name,'_interlayer_no_cutoff.csv',sep=''))
+  }
   return(network)
 }
 
 if (task=='make_networks'){
-  make_network()
+  make_network(unit_for_edges = 'alleles', repertoires_to_sample = NULL, write_to_files = F, write_edge_weights = T)
 }
 
 
@@ -183,7 +187,12 @@ if (task=='repertoire_persistence'){
 
 
 if (task=='prepare_infomap'){
-  network <- make_network() # First make the network
+  if (!comparing_to_empirical){
+    network <- make_network(unit_for_edges = 'alleles', repertoires_to_sample = NULL, write_to_files = F, write_edge_weights = F) # First make the network
+  }
+  if (comparing_to_empirical){
+    network <- make_network(unit_for_edges = 'alleles', repertoires_to_sample = c(98,68,69,52,115,44), write_to_files = T, write_edge_weights = F) # First make the network
+  }
   
   # Should interlayer edges be rescaled? Only if working with the 6 layers of the
   # interventions in the PS of the interventions.
