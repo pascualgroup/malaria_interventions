@@ -2,7 +2,7 @@
 if (length(commandArgs(trailingOnly=TRUE))==0) {
   args <- c('06','S','001',0.85,300,12,10,5)
 } else {
-  message('Taking arguments from command line.')
+  print('Taking arguments from command line.')
   args <- commandArgs(trailingOnly=TRUE)
 }
 PS <- as.character(args[1])
@@ -15,7 +15,7 @@ time_interval <- as.numeric(args[6])
 n_hosts <- as.numeric(args[7]) # Number of naive hosts to infect
 n_samples <- as.numeric(args[8]) # Number of random starting point layers within each module
 
-# message('Arguments passed:')
+# print('Arguments passed:')
 # cat('experiment: ');cat(experiment);cat('\n')
 # cat('run: ');cat(run);cat('\n')
 # cat('numLayers: ');cat(numLayers);cat('\n')
@@ -27,11 +27,11 @@ n_samples <- as.numeric(args[8]) # Number of random starting point layers within
 # if (Sys.info()[4]=='ee-pascual-dell01'){source('/home/shai/Documents/malaria_temporal_networks/mtn_functions.R')}
 
 source('functions.R')
-prep.packages(c("tidyverse","data.table"))
+prep.packages(c("tidyverse","data.table",'magrittr','sqldf'))
 
 base_name <- paste('PS',PS,'_',scenario,'_E',exp,'_R',run,'_',cutoff_prob,sep='')
-message(base_name)
-message('Loading modules and strain compositon...')
+print(base_name)
+print('Loading modules and strain compositon...')
 modules <- infomap_readTreeFile(PS, scenario, exp, run, cutoff_prob, paste('/media/Data/PLOS_Biol/Results/',PS,'_',scenario,sep=''))
 
 sampled_strains <- modules$sampled_strains
@@ -42,7 +42,7 @@ sampled_strains %<>% left_join(sampled_alleles)
 sampled_strains$strain_id <- as.character(sampled_strains$strain_id )
 all(modules$modules$strain_id %in% sampled_strains$strain_id)
 
-message('Merging the strain composition with the module data frame...')
+print('Merging the strain composition with the module data frame...')
 rep_module_layer <- left_join(modules$modules, sampled_strains, by='strain_id') %>% distinct(strain_id,module,layer)
   
 duration_new_gene <- 360/60 # 360 is the naive duration of infection and 60 is the number of genes in a repertoire, both taken from the experiment parameters run in the agent-based model
@@ -53,7 +53,7 @@ duration_new_gene <- 360/60 # 360 is the naive duration of infection and 60 is t
 tmp <- get_data(parameter_space = PS, scenario = scenario, experiment = exp, run = run, cutoff_prob = cutoff_prob, use_sqlite = T, tables_to_get = 'summary_general')[[1]]
 infections_per_layer <- ceiling(mean(tmp$EIR)) # need to use ceiling because for low diversity/transmission EIR is < 1.
 
-message('Finished initializing')
+print('Finished initializing')
 
 # Functions ---------------------------------------------------------------
 
@@ -133,7 +133,8 @@ build_event_queue_within_modules <- function(){
   event_queue <- inner_join(event_queue,y)
   # Limit to the number of modules
   if(length(unique(event_queue$module))<n_hosts){
-    warning('Number of modules smaller than n_hosts; leaving all of them')
+    message('Number of modules smaller than n_hosts; leaving all of them')
+    print('Number of modules smaller than n_hosts; leaving all of them')
   }
   if(length(unique(event_queue$module))>n_hosts){
     m <- sort(sample(unique(event_queue$module), n_hosts, F))
@@ -207,22 +208,21 @@ for (s in 1:n_samples){
   # Within-module simulations 
   # In the case of within-module infections each host is actually a module because
   # we follow a host for 12 layers within a module
-  message(paste(base_name,' | sample ',s,' | within',sep=''))
+  print(paste(base_name,' | sample ',s,' | within',sep=''))
   events_within <- build_event_queue_within_modules() # build event queue
   event_status(events_within)
   infection_history_within <- NULL
   for (e in unique(events_within$module)){
-    # print(which(unique(events_within$module)==e))
+    print(paste(Sys.time(),' | ',base_name,' | sample ',s,' | event ',which(unique(events_within$module)==e),' | within',sep=''))
     x <- subset(events_within, module==e)
     y <- simulate_infections(x)
-    infection_history_within <- rbind(infection_history_within, y)
+    infection_history_within <- bind_rows(infection_history_within, y)
   }
   # infection_history_within %>% group_by(infection_id) %>% summarise(d=mean(duration)) %>% ggplot(aes(infection_id, d))+geom_point()+geom_line()
   
   
   # Between-module simulations
   # Each host is a sequence of 10 consecutive layers
-  message(paste(base_name,' | sample ',s,' | between',sep=''))
   events_between <- build_event_queue_between_modules() # build event queue
   event_status(events_between)
   ## Split the queue to single events (hosts)
@@ -231,17 +231,17 @@ for (s in 1:n_samples){
   host_events <-  split(d, ceiling(x/time_interval))
   infection_history_between <- NULL
   for (e in 1:n_hosts){
+    print(paste(Sys.time(),' | ',base_name,' | sample ',s,' | host ',e,' | between',sep=''))
     # print(e)
     x <- subset(events_between, layer%in%host_events[[e]])
     y <- simulate_infections(x)
-    infection_history_between <- rbind(infection_history_between, y)
+    infection_history_between <- bind_rows(infection_history_between, y)
   }
   # infection_history_between %>% group_by(infection_id) %>% summarise(d=mean(duration)) %>% ggplot(aes(infection_id, d))+geom_point()+geom_line()
   
   
   # Random-module simulations
   # Each host is a sequence of 10 consecutive layers
-  message(paste(base_name,' | sample ',s,' | random',sep=''))
   events_random <- build_event_queue_random() # build event queue
   event_status(events_random)
   ## Split the queue to single events (hosts)
@@ -250,10 +250,10 @@ for (s in 1:n_samples){
   host_events <-  split(d, ceiling(x/time_interval))
   infection_history_random <- NULL
   for (e in 1:n_hosts){
-    print(e)
+    print(paste(Sys.time(),' | ',base_name,' | sample ',s,' | host ',e,' | random',sep=''))
     x <- subset(events_random, layer%in%host_events[[e]])
     y <- simulate_infections(x)
-    infection_history_random <- rbind(infection_history_random, y)
+    infection_history_random <- bind_rows(infection_history_random, y)
   }
   # infection_history_random %>% group_by(infection_id) %>% summarise(d=mean(duration)) %>% ggplot(aes(infection_id, d))+geom_point()+geom_line()
   
@@ -262,7 +262,7 @@ for (s in 1:n_samples){
   infection_history_between$case <- 'B'
   infection_history_within$case <- 'W'
   infection_history_random$case <- 'R'
-  results <- rbind(infection_history_between,infection_history_within,infection_history_random)
+  results <- bind_rows(infection_history_between,infection_history_within,infection_history_random)
   results$sample <- s
   results$PS <- PS
   results$scenario <- scenario
@@ -277,7 +277,7 @@ for (s in 1:n_samples){
   events_within$case <- 'W'
   events_between$case <- 'B'
   events_random$case <- 'R'
-  events <- rbind(events_within[,c("strain_id","module","layer","case")],events_between,events_random)
+  events <- bind_rows(events_within[,c("strain_id","module","layer","case")],events_between,events_random)
   events$sample <- s
   events$PS <- PS
   events$scenario <- scenario
