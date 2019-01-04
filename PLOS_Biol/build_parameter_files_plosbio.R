@@ -505,9 +505,9 @@ make_sbatch_get_data(sbatch_arguments = sbatch_arguments,
 # Generate files for epidemiology simulations -----------------------------
 
 
-sbatch_arguments <- expand.grid(PS=c('04','05','06','18'),
+sbatch_arguments <- expand.grid(PS=c('06'),
                                 scen=c('S','G','N'),
-                                array='1', 
+                                array='2-50', 
                                 exp='001',
                                 numLayers=300,
                                 time_interval=12,
@@ -516,23 +516,29 @@ sbatch_arguments <- expand.grid(PS=c('04','05','06','18'),
                                 stringsAsFactors = F)
 cutoff_df <- tibble(PS=c('04','05','06','18'),
                     cutoff_prob=c(0.3,0.6,0.85,0.85),
-                    mem_per_cpu=c(2000,8000,32000,32000),
-                    time=c('01:00:00','04:00:00','10:00:00','10:00:00'))
+                    mem_per_cpu=c(2000,8000,16000,16000),
+                    time=c('01:00:00','01:00:00','01:00:00','04:00:00'))
 sbatch_arguments %<>% left_join(cutoff_df)
+sbatch_arguments[(sbatch_arguments$scen=='N' & sbatch_arguments$PS=='06'),'mem_per_cpu'] <- 32000
+sbatch_arguments[(sbatch_arguments$scen=='N' & sbatch_arguments$PS=='06'),'time'] <- '08:00:00'
 
+# Change lines 21 and 27 in the sbatch file for epidemiological_simulations.R or
+# epidemiological_simulations_alleles.R
+sh_lines <- list()
 for (i in 1:nrow(sbatch_arguments)){
   ps <- sbatch_arguments$PS[i]
   scenario <- sbatch_arguments$scen[i]
+  exp <- sbatch_arguments$exp[i]
   cutoff_prob <- sbatch_arguments$cutoff_prob[i]
-  base_name <- paste('PS',PS,'_',scenario,'_E',exp,'_',cutoff_prob,sep='')
+  base_name <- paste('PS',ps,'_',scenario,'_E',exp,'_',cutoff_prob,sep='')
   
   x <- list()
   x[[1]] <- "#!/bin/bash"
-  x[[2]] <- paste('#SBATCH --job-name=epi',ps,sep='')
+  x[[2]] <- paste('#SBATCH --job-name=epi',ps,scenario,sep='')
   x[[3]] <- paste('#SBATCH --time=',sbatch_arguments$time[i],sep='')
   
-  x[[4]] <- paste('#SBATCH --output=slurm_output/epi_',ps,'%A_%a.out',sep='')
-  x[[5]] <- paste('#SBATCH --error=slurm_output/epi_',ps,'%A_%a.err',sep='')
+  x[[4]] <- paste('#SBATCH --output=slurm_output/epi',ps,scenario,'_%A_%a.out',sep='')
+  x[[5]] <- paste('#SBATCH --error=slurm_output/epi',ps,scenario,'_%A_%a.err',sep='')
   x[[6]] <- paste('#SBATCH --array=',sbatch_arguments$array[i],sep='')
   x[[7]] <- '#SBATCH --tasks=1'
   x[[8]] <- '#SBATCH --cpus-per-task=1'
@@ -543,18 +549,24 @@ for (i in 1:nrow(sbatch_arguments)){
   x[[13]] <- paste('scenario=',scenario,sep='')
   x[[14]] <- paste('exp=',exp,sep='')
   x[[15]] <- paste('cutoff_prob=',cutoff_prob,sep='')
-  x[[16]] <- paste('numLayers=',numLayers,sep='')
-  x[[17]] <- paste('time_interval=',time_interval,sep='')
-  x[[18]] <- paste('n_hosts=',n_hosts,sep='')
-  x[[19]] <- paste('n_samples=',n_samples,sep='')
+  x[[16]] <- paste('numLayers=',sbatch_arguments$numLayers[i],sep='')
+  x[[17]] <- paste('time_interval=',sbatch_arguments$time_interval[i],sep='')
+  x[[18]] <- paste('n_hosts=',sbatch_arguments$n_hosts[i],sep='')
+  x[[19]] <- paste('n_samples=',sbatch_arguments$n_samples[i],sep='')
   x[[20]] <- ""
-  x[[21]] <- "module load R"
-  x[[22]] <- ""
-  x[[23]] <- "Rscript epidemiology_simulations.R $PS $scenario $exp $cutoff_prob $numLayers $time_interval $n_hosts $n_samples"
+  x[[21]] <- "cp -n epidemiological_simulations_alleles.R '/scratch/midway2/pilosofs/PLOS_Biol/Results/'$PS'_'$scenario"
+  x[[22]] <- "cp -n functions.R '/scratch/midway2/pilosofs/PLOS_Biol/Results/'$PS'_'$scenario"
+  x[[23]] <- "cd '/scratch/midway2/pilosofs/PLOS_Biol/Results/'$PS'_'$scenario"
+  x[[24]] <- ""
+  x[[25]] <- "module load R"
+  x[[26]] <- ""
+  x[[27]] <- "Rscript epidemiological_simulations_alleles.R $PS $scenario $exp $cutoff_prob $numLayers $time_interval $n_hosts $n_samples"
 
   write_lines(x, paste('/media/Data/PLOS_Biol/parameter_files/',base_name,'_epi.sbatch',sep=''))
+  
+  sh_lines[[i]] <- paste("sbatch ",base_name,'_epi.sbatch',sep='')
 }
-
+write_lines(sh_lines, '/media/Data/PLOS_Biol/parameter_files/run_epi_experiments.sh')
 
 
 
