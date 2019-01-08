@@ -1198,6 +1198,52 @@ overlapAlleleAdj<-function(mat){
   return(newmat)  
 }
 
+# Function to calculate survival probability of repertoires between layers. This
+# is used to rescale the interlayer edges.
+calculate_rep_survival <- function(ps,
+                                   scenario,
+                                   exp,
+                                   run,
+                                   cutoff_prob,
+                                   layers_to_include){
+  
+  Gn<-function(t, z=0, r){ # # Prob of having a given frequency at time t
+    if (t<=1) {
+      return(exp(r[t]*(z-1)));
+    }else{
+      return(exp(r[t]*(Gn(t-1,z,r)-1)))
+    }
+  }
+  surprob<-function(popsizes) {
+    r<-c()
+    for (t in 2:length(popsizes)){
+      r<-c(r, popsizes[t]/popsizes[t-1])
+    }
+    return(1-Gn(length(r),0,r))
+  }
+  
+  # Get infection data
+  base_name <- paste('PS',ps,'_',scenario,'_E',exp,'_R',run,sep='')
+  if (on_Midway()){
+    sqlite_file <- paste('/scratch/midway2/pilosofs/PLOS_Biol/sqlite/',base_name,'.sqlite',sep='')
+  } else {
+    sqlite_file <- paste('/media/Data/PLOS_Biol/sqlite/',base_name,'.sqlite',sep='')
+  }
+  
+  db <- dbConnect(SQLite(), dbname = sqlite_file)
+  print('Getting genetic data from sqlite...')
+  summary_table <- as.tibble(dbGetQuery(db, 'SELECT time, n_infections FROM summary'))
+  dbDisconnect(db)
+  summary_table$layer <- group_indices(summary_table, time)
+  
+  # Calculate survival probability
+  surv_prob <- c()
+  for (l in 1:(length(layers_to_include)-1)){
+    x <- subset(summary_table, layer>=layers_to_include[l] & layer <= layers_to_include[l+1])
+    surv_prob <- c(surv_prob, surprob(x$n_infections))
+  }
+  return(surv_prob)
+}
 
 # A function to build the similarity matrix for a single layer and calculate some summary stats
 build_layer <- function(infection_df, unit_for_edges, write_to_files=F, base_filename=NULL){
@@ -1921,7 +1967,11 @@ matrix_to_infomap_interlayer <- function(l, nodeList, network_object){
 # interlayer edge lists in a format: [layer_source, node_source, layer_target node_target, weight].
 # It also returns the list of node names.
 # requires igraph
-build_infomap_objects <- function(network_object, write_to_infomap_file=T, infomap_file_name, return_objects=T, repertoire_persistence_prob=NULL){
+build_infomap_objects <- function(network_object, 
+                                  write_to_infomap_file=T, 
+                                  infomap_file_name, 
+                                  return_objects=T, 
+                                  rescale_by_survival_prob=F){
   require(data.table)
   intralayer_matrices <- network_object$intralayer_matrices
   base_name <- network_object$base_name
@@ -1944,26 +1994,48 @@ build_infomap_objects <- function(network_object, write_to_infomap_file=T, infom
   layers <- layers[-length(layers)]
   infomap_interlayer <- lapply(layers, function (x) matrix_to_infomap_interlayer(x, nodeList = nodeList, network_object = network_object))
   
-  # Rescale edges
-  if (!is.null(repertoire_persistence_prob)){
-    print('Rescaling interlayer edges...')
-    # 8 months between S1 and S2
-    # 12 months between S2 and S3
-    # 4 months between S3 and S4
-    # 12 months between S4 and S5
-    # 8 months between S5 and S6
-    rescaling_factors <- tibble(layer_s=1:5,months_gap=c(8,12,4,12,8))
-    rescaling_factors %<>% 
-      left_join(repertoire_persistence_prob, by=c('months_gap'='persistence')) %>% 
-      select(layer_s,months_gap,cum_prob)
+  if (rescale_by_survival_prob){
+    print('Rescaling interlayer edges by survival probabilities...')
+    # Rescale interlayer edges using survival probability
+    surv_prob <- calculate_rep_survival(network_object$ps, 
+                                        network_object$scenario, 
+                                        network_object$experiment, 
+                                        network_object$run, 
+                                        network_object$cutoff_prob,
+                                        network_object$layer_summary$layer)
+    rescaling_factors <- tibble(layer_s=1:5,surv_prob=surv_prob)
+    print(rescaling_factors)
     for (l in 1:5){
       # Divide edge weights by the probability of persistence. those that persisted
       # for longer will have stronger values
       x <- infomap_interlayer[[l]]
-      x %<>% left_join(rescaling_factors) %>% mutate(w_rescaled=w/cum_prob)
+      suppressMessages(x %<>% left_join(rescaling_factors) %>% mutate(w_rescaled=w/surv_prob))
       infomap_interlayer[[l]] <- x
     }
   }
+  
+  # # Rescale edges using probabilities recorded in a file, calculated from the neutral scenario
+  # if (!is.null(repertoire_persistence_prob)){
+  #   print('Rescaling interlayer edges...')
+  #   # 8 months between S1 and S2
+  #   # 12 months between S2 and S3
+  #   # 4 months between S3 and S4
+  #   # 12 months between S4 and S5
+  #   # 8 months between S5 and S6
+  #   rescaling_factors <- tibble(layer_s=1:5,months_gap=c(8,12,4,12,8))
+  #   rescaling_factors %<>% 
+  #     left_join(repertoire_persistence_prob, by=c('months_gap'='persistence')) %>% 
+  #     select(layer_s,months_gap,cum_prob)
+  #   for (l in 1:5){
+  #     # Divide edge weights by the probability of persistence. those that persisted
+  #     # for longer will have stronger values
+  #     x <- infomap_interlayer[[l]]
+  #     x %<>% left_join(rescaling_factors) %>% mutate(w_rescaled=w/cum_prob)
+  #     infomap_interlayer[[l]] <- x
+  #   }
+  # }
+  
+  
   print('Creating a DF of interlayer edges')
   infomap_interlayer <- do.call("rbind", infomap_interlayer)
   print(head(infomap_interlayer))
@@ -1976,7 +2048,7 @@ build_infomap_objects <- function(network_object, write_to_infomap_file=T, infom
     print(paste('Infomap file:',infomap_file_name))
     if (file.exists(infomap_file_name)){unlink(infomap_file_name)}
     
-    if (!is.null(repertoire_persistence_prob)){
+    if (rescale_by_survival_prob){
       x <- infomap_interlayer %>% select(layer_s,node_s,layer_t,node_t,w_rescaled) %>% rename(w=w_rescaled)
       edges_to_write <- infomap_intralayer %>% bind_rows(x)
     } else {
@@ -2063,7 +2135,7 @@ infomap_readTreeFile <- function(PS, scenario, exp, run, cutoff_prob, folder='/m
   if (on_Midway()){
     db <- dbConnect(SQLite(), dbname = paste('/scratch/midway2/pilosofs/PLOS_Biol/sqlite/','PS',PS,'_',scenario,'_E',exp,'_R',run,'.sqlite',sep=''))
   } else {
-    db <- dbConnect(SQLite(), dbname = paste('/media/Data/PLOS_Biol/sqlite_',scenario,'/','PS',PS,'_',scenario,'_E',exp,'_R',run,'.sqlite',sep=''))
+    db <- dbConnect(SQLite(), dbname = paste('/media/Data/PLOS_Biol/sqlite/','PS',PS,'_',scenario,'_E',exp,'_R',run,'.sqlite',sep=''))
   }
   
   sampled_strains <- as.tibble(dbGetQuery(db, 'SELECT id,gene_id FROM sampled_strains'))

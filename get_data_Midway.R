@@ -10,8 +10,8 @@ library(data.table, quietly = T, warn.conflicts = F)
 comparing_to_empirical <- F
 
 if (length(commandArgs(trailingOnly=TRUE))==0) {
-  # args <- c('750','S','001',0.85, '118,126,138,142,154,162')
-  args <- c('750','S','001',0.85, '10:100')
+  args <- c('550','S','001',0.85, '118,126,138,142,154,162')
+  # args <- c('550','S','001',0.85, '10:100')
 } else {
   args <- commandArgs(trailingOnly=TRUE)
 }
@@ -55,10 +55,6 @@ make_network <- function(unit_for_edges, repertoires_to_sample, write_to_files, 
   # Network objects
   if (comparing_to_empirical){
     cutoff_value <- NULL
-    # unit_for_edges <- 'alleles'
-    # repertoires_to_sample <- c(98,68,69,52,115,44) #sample this number of repertoires from each layer, corresponding to the size of the layers in the empirical data
-    # repertoires_to_sample <- NULL #Use all repertoires
-    # write_to_files <- T
   }
   if(!comparing_to_empirical){
     # If experiment is not control then take the cutoff value from the control. This
@@ -69,9 +65,6 @@ make_network <- function(unit_for_edges, repertoires_to_sample, write_to_files, 
       x <- readLines(paste('PS',job_ps,'_',job_scenario,'_E001_R',job_run,'_',cutoff_prob,'_network_info.csv',sep=''))
       cutoff_value <- x[6]
     }
-  #   unit_for_edges <- 'alleles'
-  #   repertoires_to_sample <- NULL
-  #   write_to_files <- F
   }
   
   network <- createTemporalNetwork(ps = job_ps,
@@ -196,19 +189,20 @@ if (task=='prepare_infomap'){
   
   # Should interlayer edges be rescaled? Only if working with the 6 layers of the
   # interventions in the PS of the interventions.
-  if (comparing_to_empirical && file.exists('/scratch/midway2/pilosofs/PLOS_Biol/repertoire_persistence_prob.csv')){ # Get the file from empirical.R
-    repertoire_persistence_prob <- read_csv('/scratch/midway2/pilosofs/PLOS_Biol/repertoire_persistence_prob.csv')
+  if (comparing_to_empirical){
     infomap <- build_infomap_objects(network_object = network, 
                                      write_to_infomap_file = T, 
                                      infomap_file_name = paste(base_name,'_Infomap_multilayer.txt',sep=''), 
-                                     return_objects = T,
-                                     repertoire_persistence_prob = repertoire_persistence_prob)
+                                     return_objects = T, 
+                                     rescale_by_survival_prob=T
+                                    )
   } else {
     infomap <- build_infomap_objects(network_object = network, 
                                      write_to_infomap_file = T, 
                                      infomap_file_name = paste(base_name,'_Infomap_multilayer.txt',sep=''), 
                                      return_objects = T,
-                                     repertoire_persistence_prob = NULL)
+                                     rescale_by_survival_prob=F
+                                     )
   }
   write_csv(infomap$nodeList, paste(base_name,'_node_list.csv',sep=''))
 } # End task 'prepare_infomap'
