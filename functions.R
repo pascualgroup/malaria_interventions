@@ -1971,6 +1971,7 @@ build_infomap_objects <- function(network_object,
                                   write_to_infomap_file=T, 
                                   infomap_file_name, 
                                   return_objects=T, 
+                                  repertoire_survival_prob=NULL,
                                   rescale_by_survival_prob=F){
   require(data.table)
   intralayer_matrices <- network_object$intralayer_matrices
@@ -2014,27 +2015,25 @@ build_infomap_objects <- function(network_object,
     }
   }
   
-  # # Rescale edges using probabilities recorded in a file, calculated from the neutral scenario
-  # if (!is.null(repertoire_persistence_prob)){
-  #   print('Rescaling interlayer edges...')
-  #   # 8 months between S1 and S2
-  #   # 12 months between S2 and S3
-  #   # 4 months between S3 and S4
-  #   # 12 months between S4 and S5
-  #   # 8 months between S5 and S6
-  #   rescaling_factors <- tibble(layer_s=1:5,months_gap=c(8,12,4,12,8))
-  #   rescaling_factors %<>% 
-  #     left_join(repertoire_persistence_prob, by=c('months_gap'='persistence')) %>% 
-  #     select(layer_s,months_gap,cum_prob)
-  #   for (l in 1:5){
-  #     # Divide edge weights by the probability of persistence. those that persisted
-  #     # for longer will have stronger values
-  #     x <- infomap_interlayer[[l]]
-  #     x %<>% left_join(rescaling_factors) %>% mutate(w_rescaled=w/cum_prob)
-  #     infomap_interlayer[[l]] <- x
-  #   }
-  # }
-  
+  # Rescale edges using probabilities recorded in a file, calculated from the neutral scenario
+  if (!is.null(repertoire_survival_prob)){
+    print('Rescaling interlayer edges...')
+    # 8 months between S1 and S2
+    # 12 months between S2 and S3
+    # 4 months between S3 and S4
+    # 12 months between S4 and S5
+    # 8 months between S5 and S6
+    rescaling_factors <- tibble(layer_s=1:5,surv_prob=repertoire_survival_prob)
+    print(rescaling_factors)
+    for (l in 1:5){
+      # Divide edge weights by the probability of persistence. those that persisted
+      # for longer will have stronger values
+      x <- infomap_interlayer[[l]]
+      suppressMessages(x %<>% left_join(rescaling_factors) %>% mutate(w_rescaled=w/surv_prob))
+      infomap_interlayer[[l]] <- x
+    }
+  }
+
   
   print('Creating a DF of interlayer edges')
   infomap_interlayer <- do.call("rbind", infomap_interlayer)
@@ -2048,7 +2047,7 @@ build_infomap_objects <- function(network_object,
     print(paste('Infomap file:',infomap_file_name))
     if (file.exists(infomap_file_name)){unlink(infomap_file_name)}
     
-    if (rescale_by_survival_prob){
+    if (rescale_by_survival_prob | !is.null(repertoire_survival_prob)){
       x <- infomap_interlayer %>% select(layer_s,node_s,layer_t,node_t,w_rescaled) %>% rename(w=w_rescaled)
       edges_to_write <- infomap_intralayer %>% bind_rows(x)
     } else {

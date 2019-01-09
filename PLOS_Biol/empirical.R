@@ -151,8 +151,8 @@ data_allleles <- rbind(data_allele_1,data_allele_2)
 isolates_all_allleles <- colnames(data_allleles)
 
 # Get surveys for isolates
-isolates_df_alleles <- tibble(isolate_code=colnames(data_allleles), isolate_name=str_sub(isolates_all,3,9))
-isolates_df_alleles %<>% mutate(survey=str_sub(isolate_code, 1, str_locate(isolates_all, 'MRS')[,1]-1))
+isolates_df_alleles <- tibble(isolate_code=colnames(data_allleles), isolate_name=str_sub(isolates_all_allleles,3,9))
+isolates_df_alleles %<>% mutate(survey=str_sub(isolate_code, 1, str_locate(isolates_all_allleles, 'MRS')[,1]-1))
 isolates_df_alleles %>% count(survey)
 isolates_df_alleles %<>% 
   filter(isolate_name!='MRS1011') %>% # Remove the single individual with a chronic infection
@@ -165,12 +165,12 @@ nrow(isolates_df_alleles)
 
 # Limit to 60 vars (MOI=1)
 maxVarIsolate <- 110
-Data_S1_alleles <- cleanSurveyData(main_data = data_allleles, isolates_df, Survey = 'S1', min.var.per.isolate = 80, max.var.per.isolate = maxVarIsolate, plotit = F)
-Data_S2_alleles <- cleanSurveyData(main_data = data_allleles, isolates_df, Survey = 'S2', min.var.per.isolate = 80, max.var.per.isolate = maxVarIsolate, plotit = F)
-Data_S3_alleles <- cleanSurveyData(main_data = data_allleles, isolates_df, Survey = 'S3', min.var.per.isolate = 80, max.var.per.isolate = maxVarIsolate, plotit = F)
-Data_S4_alleles <- cleanSurveyData(main_data = data_allleles, isolates_df, Survey = 'S4', min.var.per.isolate = 80, max.var.per.isolate = maxVarIsolate, plotit = F)
-Data_S5_alleles <- cleanSurveyData(main_data = data_allleles, isolates_df, Survey = 'S5', min.var.per.isolate = 80, max.var.per.isolate = maxVarIsolate, plotit = F)
-Data_S6_alleles <- cleanSurveyData(main_data = data_allleles, isolates_df, Survey = 'S6', min.var.per.isolate = 80, max.var.per.isolate = maxVarIsolate, plotit = F)
+Data_S1_alleles <- cleanSurveyData(main_data = data_allleles, isolates_df_alleles, Survey = 'S1', min.var.per.isolate = 80, max.var.per.isolate = maxVarIsolate, plotit = F)
+Data_S2_alleles <- cleanSurveyData(main_data = data_allleles, isolates_df_alleles, Survey = 'S2', min.var.per.isolate = 80, max.var.per.isolate = maxVarIsolate, plotit = F)
+Data_S3_alleles <- cleanSurveyData(main_data = data_allleles, isolates_df_alleles, Survey = 'S3', min.var.per.isolate = 80, max.var.per.isolate = maxVarIsolate, plotit = F)
+Data_S4_alleles <- cleanSurveyData(main_data = data_allleles, isolates_df_alleles, Survey = 'S4', min.var.per.isolate = 80, max.var.per.isolate = maxVarIsolate, plotit = F)
+Data_S5_alleles <- cleanSurveyData(main_data = data_allleles, isolates_df_alleles, Survey = 'S5', min.var.per.isolate = 80, max.var.per.isolate = maxVarIsolate, plotit = F)
+Data_S6_alleles <- cleanSurveyData(main_data = data_allleles, isolates_df_alleles, Survey = 'S6', min.var.per.isolate = 80, max.var.per.isolate = maxVarIsolate, plotit = F)
 
 # isoaltes in rows, var genes in columns
 Data_S1_alleles <- t(Data_S1_alleles)
@@ -229,7 +229,7 @@ for (current_layer in 1:5){
     return(NULL)
   } 
   
-  data_tmp <- bipartite::empty(mainData[,union(strain_copies_t,strain_copies_t1)])
+  data_tmp <- bipartite::empty(data_allleles[,union(strain_copies_t,strain_copies_t1)])
   x <- overlapAlleleAdj(t(data_tmp)) # This is the similarity matrix for all the repertoires in both layers.
   inter_layer_edges_matrix <- x[strain_copies_t,strain_copies_t1]# Pull only the similarity values between the repertoires from the correct layers (i.e. create a bipartite)
   interlayer_matrices_empirical[[current_layer]] <- inter_layer_edges_matrix
@@ -292,10 +292,25 @@ network_object <- vector(mode = 'list', length = 2)
 names(network_object) <- c('intralayer_matrices','interlayer_matrices')
 network_object$intralayer_matrices <- intralayer_matrices_empirical
 network_object$interlayer_matrices <- interlayer_matrices_empirical
-infomap_empirical <- build_infomap_objects(network_object = network_object, write_to_infomap_file = T,
+
+# Get the survival probability from the 002 exp in S
+layers_to_include <- c(118,126,138,142,154,162)
+surv_prob_S_002 <- NULL
+for (ps in 500:599){
+  print(ps)
+  x <- calculate_rep_survival(ps = ps, scenario = 'S', exp = '002', run = 1, cutoff_prob = 0.85, layers_to_include = layers_to_include)
+  x <- tibble(ps=ps,layer=layers_to_include[1:5],surv_prob=x)
+  surv_prob_S_002 <- rbind(surv_prob_S_002,x)
+}
+surv_prob_S_002 %>% ggplot(aes(x=as.factor(layer), group=layer, y=surv_prob))+geom_boxplot()
+surv_prob_S_002 %<>% group_by(layer) %>% summarise(surv_prob=mean(surv_prob))
+repertoire_survival_prob <- surv_prob_S_002$surv_prob
+infomap_empirical <- build_infomap_objects(network_object = network_object,  
+                                           write_to_infomap_file = T,
                                            infomap_file_name = 'infomap_empirical.txt', 
                                            return_objects = T,
-                                           repertoire_persistence_prob = NULL)
+                                           rescale_by_survival_prob = F,
+                                           repertoire_survival_prob = repertoire_survival_prob)
 
 infomap_empirical$infomap_interlayer %>% ggplot()+
   geom_density(aes(x=w),fill='purple',alpha=0.6)+
@@ -439,7 +454,7 @@ ggplot(edge_weights_simulated, aes(x=value))+
 
 monitored_variables <- c('prevalence', 'meanMOI','n_circulating_strains', 'n_circulating_genes', 'n_alleles', 'n_total_bites')
 
-PS_range <- as.character(750:769)
+PS_range <- as.character(500:599)
 cases <- expand.grid(ps=PS_range, scenario='S', exp=c('001','002'), run=1)
 cases$cutoff_prob <- 0.85 # This is just for fime names. there is no cutoff because there are no modules here.
 exploratory <- c()
@@ -553,7 +568,7 @@ make_sbatch_get_data(sbatch_arguments = sbatch_arguments,
 
 
 
-experiments <- expand.grid(PS=sprintf('%0.3d', 750:769),
+experiments <- expand.grid(PS=sprintf('%0.3d', 550:569),
                            scen=c('S','G','N'),
                            exp=c('001','002'),
                            # cutoff_prob=seq(0.95,0.97,0.005),
@@ -595,7 +610,7 @@ modsize <- module_results_simulations %>%
   group_by(scenario,PS,exp,cutoff_prob,module) %>% summarise(size=n())
 module_results_simulations %>% 
   # filter(exp=='002') %>% 
-  filter(PS==751) %>%
+  filter(PS==555) %>%
   # filter(scenario=='S') %>% 
   distinct(PS,scenario,cutoff_prob,module, layer) %>% 
   group_by(PS,scenario,cutoff_prob,module) %>% 
@@ -612,7 +627,7 @@ module_results_simulations %>%
 modsize <- module_results_simulations %>% 
   group_by(scenario,PS,exp,cutoff_prob,layer,module) %>% summarise(size=n())
 modsize %>%
-  filter(PS==609) %>%
+  filter(PS==550) %>%
   # filter(exp=='002') %>%
   ggplot(aes(x=layer,y=size))+
   geom_bar(aes(fill=as.factor(module)),stat = "identity",position='stack', color='black')+
@@ -640,6 +655,16 @@ module_persistence %>%
   facet_wrap(~exp)+
   geom_col(position='dodge')+
   scale_fill_manual(values=c('blue','orange','red'))
+
+module_persistence %>% 
+  group_by(scenario, exp, PS, cutoff_prob) %>% 
+  count(persistence) %>% left_join(total_modules) %>% mutate(prop=n/n_modules) %>% 
+  # filter(cutoff_prob==0.95) %>% 
+  ggplot(aes(y=prop, x=persistence,fill=exp))+
+  facet_wrap(~scenario)+
+  geom_col(position='dodge')+
+  scale_fill_manual(values=c('plum','#854442'))
+
 
 # Proportion of modules persisting up to S3
 module_persistence %>% 
@@ -674,7 +699,7 @@ module_persistence %>%
 # Survival analysis
 library(survival)
 library(survminer)
-x <- module_persistence %>% filter(scenario!='N')
+x <- module_persistence
 x <- subset(x, x$birth_layer!=x$death_layer)
 x <- subset(x, birth_layer==1)
 unique(x$scenario)
@@ -683,6 +708,7 @@ x$event <- ifelse(x$death_layer==6,0,1)
 
 fit <- with(x, survfit(Surv(birth_layer, death_layer, event)~scenario+exp))
 ggsurvplot_facet(fit, data=x, facet.by = 'scenario', conf.int = TRUE)
+ggsurvplot_facet(fit, data=x, facet.by = 'exp', conf.int = TRUE)
 # +scale_color_manual(values=c('blue','orange','red'))
 
 
