@@ -682,7 +682,8 @@ for (i in 1:nrow(experiments)){
   scenario <- experiments$scen[i]
   cutoff_prob <- experiments$cutoff_prob[i]
   run <- experiments$run[i]
-  tmp <- get_epidemiology_results(PS = PS,scenario = scenario,exp = '001',run = run, cutoff_prob = cutoff_prob)
+  tmp <- get_epidemiology_results(PS = PS,scenario = scenario,exp = '001',run = run, cutoff_prob = cutoff_prob, 
+                                  folder='/media/Data/PLOS_Biol/Results/epi_alleles/')
   epi_results <- rbind(epi_results, tmp)
 }
 
@@ -749,14 +750,14 @@ Fig_4 <- grid.arrange(arrangeGrob(Fig, left = y.grob, bottom = x.grob))
 # Fit epidemiological curves ----------------------------------------------
 
 # To compare between scenarios we fit the random case in which infection is
-# regardless of modules. This tests the hypothesis that the decline in duration
-# of infection is different between the scenarios. It does not test the effect
-# of within vs between module infections on doi. Yet this last effect is
-# irrelevant because in nature infections are not limited to either within or
-# between modules. The first step is to test if an exponential model fits better
-# than a linear one. It does. So the next step is to compare the exponential
-# fits of the three scenarios. We do that by comparing the b coefficient, which
-# is the one affectin gth decline.
+# regardless of modules to the first 50 infections. This tests the hypothesis
+# that the decline in duration of infection is different between the scenarios.
+# It does not test the effect of within vs between module infections on doi. Yet
+# this last effect is irrelevant because in nature infections are not limited to
+# either within or between modules. The first step is to test if an exponential
+# model fits better than a linear one. It does. So the next step is to compare
+# the exponential fits of the three scenarios. We do that by comparing the b
+# coefficient, which is the one affectin gth decline.
 
 library(minpack.lm)
 epi_results
@@ -767,12 +768,12 @@ for (scen in c('S','G','N')){
   # Model with all data ignoring group
   fit <- nlsLM(formula = duration~a*exp(-b*infection_id), 
                data = epi_results, 
-               subset = (scenario==scen & case=='R'),
+               subset = (scenario==scen & case=='R' & infection_id<=50),
                start = c(a=1, b=0))
   # Linear model to show the decay is probably exponential
   fit_lm <- lm(duration~infection_id,
                    data=epi_results,
-                   subset = (scenario==scen & case=='R'))
+                   subset = (scenario==scen & case=='R' & infection_id<=50))
   # Compare models
   AIC <- AIC(fit,fit_lm)
   AIC <- AIC[order(AIC$AIC),]
@@ -782,11 +783,11 @@ for (scen in c('S','G','N')){
 }
 model_comparison_results
 
-# Look at the best model
+# Explore the best model for each scenario
 fit_best_model_scenario <- function(scen){
   fit <- nlsLM(formula = duration~a*exp(-b*infection_id), 
                data = epi_results, 
-               subset = (scenario==scen & case=='R'),
+               subset = (scenario==scen & case=='R' & infection_id<=50),
                start = c(a=1, b=0))
   fit_summary <- summary(fit)
   a_coeff <- fit_summary$coefficients[1,1]
@@ -799,14 +800,15 @@ b_coeff_G <- fit_best_model_scenario('G')[2]
 b_coeff_N <- fit_best_model_scenario('N')[2]
 
 b_coeff_G/b_coeff_S
-b_coeff_G/b_coeff_N
 b_coeff_N/b_coeff_S
+
+
 
 a_coeff_S <- fit_best_model_scenario('S')[1]
 a_coeff_G <- fit_best_model_scenario('G')[1]
 a_coeff_N <- fit_best_model_scenario('N')[1]
 
-# Calculate the doi in a 5-months old baby. The number of infections in 5 months depends on the EIR.
+# Calculate the doi of a new infection in a 5-months old baby. The number of infections in 5 months depends on the EIR.
 EIR_df <- data.frame(scenario='',run=0,EIR_run=0,stringsAsFactors = F)
 for (i in 1:50){
   tmp <- get_data(parameter_space = '06', scenario = 'S', experiment = '001', run = i, cutoff_prob = 0.85, use_sqlite = T, tables_to_get = 'summary_general')[[1]]
@@ -819,10 +821,60 @@ for (i in 1:50){
 EIR_df <- EIR_df[-1,]
 EIR_df$EIR_run <- as.numeric(EIR_df$EIR_run)
 EIR_df <- as.tibble(EIR_df) %>% group_by(scenario) %>% summarise(EIR_mean=mean(EIR_run))
+# Calculate 
 a_coeff_S*exp(-b_coeff_S*subset(EIR_df, scenario=='S')$EIR_mean*5)
 a_coeff_G*exp(-b_coeff_G*subset(EIR_df, scenario=='G')$EIR_mean*5)
 a_coeff_N*exp(-b_coeff_N*subset(EIR_df, scenario=='N')$EIR_mean*5)
 
+
+
+# Allele accumulation in simulations --------------------------------------
+
+make_panel_allele_curve <- function(ps,scen,col){
+  panel <- epi_results %>% 
+    filter(PS==ps) %>% 
+    filter(scenario==scen) %>% 
+    group_by(case,infection_id) %>% 
+    summarise(mean_alleles=mean(alleles_seen),
+              sd_alleles=sd(alleles_seen),
+              n=length(alleles_seen),
+              CI_alleles=1.96*sd(alleles_seen)/sqrt(n)) %>% 
+    ggplot(aes(infection_id,mean_alleles,color=case))+
+    geom_line()+
+    geom_errorbar(aes(x=infection_id,ymin=mean_alleles-CI_alleles,ymax=mean_alleles+CI_alleles))+
+    # geom_smooth(method='nls',formula = y~exp(a + b * x), method.args=list(start = list(a = 0, b = 0)),se=F)+
+    scale_color_manual(values=c('black',col,'gray'))+
+    # scale_y_continuous(limits = c(0,360), breaks = seq(0,360,60))+
+    manuscript_theme+theme(axis.title = element_blank())
+  return(panel)
+}
+
+panel_A <- make_panel_allele_curve('06','S',scenario_cols[1])
+panel_B <- make_panel_allele_curve('06','G',scenario_cols[2])
+panel_C <- make_panel_allele_curve('06','N',scenario_cols[3])
+panel_D <- epi_results %>% 
+  filter(PS=='06') %>% 
+  filter(case=='R') %>% 
+  mutate(scenario=factor(scenario, levels=c('S','G','N'))) %>% 
+  group_by(scenario,infection_id) %>% 
+  summarise(mean_alleles=mean(alleles_seen),
+            sd_alleles=sd(alleles_seen),
+            n=length(alleles_seen),
+            CI_alleles=1.96*sd(alleles_seen)/sqrt(n)) %>% 
+  ggplot()+
+  geom_line(aes(infection_id,mean_alleles,color=scenario))+
+  geom_errorbar(aes(x=infection_id,ymin=mean_alleles-CI_alleles,ymax=mean_alleles+CI_alleles,color=scenario))+
+  # geom_smooth(aes(infection_id,mean_doi,color=scenario), method='nls',formula = y~exp(a + b * x), method.args=list(start = list(a = 0, b = 0)),se=F)+
+  # geom_smooth(aes(infection_id,mean_doi-CI_doi,color=scenario), method='nls',formula = y~exp(a + b * x), method.args=list(start = list(a = 0, b = 0)),se=F, alpha=0.5, linetype='dashed',size=0.5)+
+  # geom_smooth(aes(infection_id,mean_doi+CI_doi,color=scenario), method='nls',formula = y~exp(a + b * x), method.args=list(start = list(a = 0, b = 0)),se=F, alpha=0.5, linetype='dashed',size=0.5)+
+  scale_color_manual(values=scenario_cols)+
+  # scale_x_continuous(limits=c(0,min(infection_limit$infection_limit)))+
+  # scale_y_continuous(limits = c(0,360), breaks = seq(0,360,60))+
+  manuscript_theme+theme(axis.title = element_blank())
+Fig <- plot_grid(panel_A,panel_B,panel_C,panel_D, labels=c('A','B','C','D'), ncol=2, align='vh', label_size = 18, scale=0.95)
+y.grob <- textGrob("Mean # alleles accumulated", gp=gpar(fontface="bold", col="black", fontsize=16), rot=90)
+x.grob <- textGrob("Number of infections", gp=gpar(fontface="bold", col="black", fontsize=16), vjust = -0.8)
+grid.arrange(arrangeGrob(Fig, left = y.grob, bottom = x.grob))
 
 
 # fit_scearios <- nlsLM(formula = duration~

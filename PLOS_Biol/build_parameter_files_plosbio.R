@@ -505,9 +505,9 @@ make_sbatch_get_data(sbatch_arguments = sbatch_arguments,
 # Generate files for epidemiology simulations -----------------------------
 
 
-sbatch_arguments <- expand.grid(PS=c('06'),
+sbatch_arguments <- expand.grid(PS=c('18'),
                                 scen=c('S','G','N'),
-                                array='2-50', 
+                                array='1-50', 
                                 exp='001',
                                 numLayers=300,
                                 time_interval=12,
