@@ -22,13 +22,13 @@ exp='XXX' # The experiment ID
 layers='XXX'
 cutoff_prob=XXX
 base_folder='/scratch/midway2/pilosofs/PLOS_Biol/' # Where all the source files are and where the experiment folders will be created
-
+modularity_exp='XXX'
 
 # Set up
 prog='get_data_Midway.R'
 cd $base_folder # Go to base folder
-mkdir -p $base_folder'/Results/'$PS'_'$scenario
-cp -n Infomap_v01926 $base_folder'/Results/'$PS'_'$scenario
-cp -n $prog $base_folder'/Results/'$PS'_'$scenario
-cp -n functions.R $base_folder'/Results/'$PS'_'$scenario
-cd $base_folder'/Results/'$PS'_'$scenario
+mkdir -p $base_folder'/Results/'$PS'_'$scenario'_'$modularity_exp
+cp -n Infomap_v01926 $base_folder'/Results/'$PS'_'$scenario'_'$modularity_exp
+cp -n $prog $base_folder'/Results/'$PS'_'$scenario'_'$modularity_exp
+cp -n functions.R $base_folder'/Results/'$PS'_'$scenario'_'$modularity_exp
+cd $base_folder'/Results/'$PS'_'$scenario'_'$modularity_exp

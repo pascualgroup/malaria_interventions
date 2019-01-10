@@ -115,8 +115,8 @@ setwd('/media/Data/PLOS_Biol/parameter_files')
 system('rm *.sbatch')
 
 scenario_range <- c('S','N','G')
-exp_range <- sprintf('%0.3d', 0:2)
-ps_range <- sprintf('%0.3d', 700:799)
+exp_range <- sprintf('%0.3d', 0:3)
+ps_range <- sprintf('%0.3d', 500:599)
 
 for (ps in ps_range){
   for (scenario in scenario_range){
@@ -333,38 +333,57 @@ sbatch_arguments$time <- '05:00:00'
 
 # This code creates the design. Use that design to create the sqlite files.
 
-# diversity_range <- round(seq(30000,40000,length.out = 10)) # Main analysis is 35000
+# Tests 500-599 (base PS is 18)
+diversity_range <- round(seq(30000,40000,length.out = 10)) # Main analysis is 35000
 biting_range <- seq(0.0001,0.0003,length.out = 10) # Main analysis is 0.00020
-diversity_range <- round(seq(10000,14000,length.out = 10)) # Main analysis is 35000
-# biting_range <- 0.0002 # Main analysis is 0.00020
 empirical_comparison_params <- expand.grid(N_GENES_INITIAL=diversity_range, BITING_RATE_MEAN=biting_range)
 empirical_comparison_params <- as.tibble(empirical_comparison_params)
 nrow(empirical_comparison_params)
-# empirical_comparison_params$PS <- str_pad((1:nrow(empirical_comparison_params))+499,width = 3, side = 'left', pad = '0')
+empirical_comparison_params$PS <- str_pad((1:nrow(empirical_comparison_params))+499,width = 3, side = 'left', pad = '0')
+
+# Tests 700-799 (base PS is 24)
+diversity_range <- round(seq(10000,14000,length.out = 10))
+biting_range <- seq(0.0001,0.0003,length.out = 10) # Main analysis is 0.00020
+empirical_comparison_params <- expand.grid(N_GENES_INITIAL=diversity_range, BITING_RATE_MEAN=biting_range)
+empirical_comparison_params <- as.tibble(empirical_comparison_params)
+nrow(empirical_comparison_params)
 empirical_comparison_params$PS <- str_pad((1:nrow(empirical_comparison_params))+699,width = 3, side = 'left', pad = '0')
 
-design <- loadExperiments_GoogleSheets(local = F, workBookName = 'PLOS_Biol_design', sheetID = 2) 
-work_scenario <- 'G'
 
-design_seed_000 <- subset(design, PS=='24' & scenario==work_scenario & exp=='000')
+design <- loadExperiments_GoogleSheets(local = F, workBookName = 'PLOS_Biol_design', sheetID = 2) 
+work_scenario <- 'N'
+
+design_seed_000 <- subset(design, PS=='18' & scenario==work_scenario & exp=='000')
 design_seed_000 %<>% slice(rep(1:n(), each = nrow(empirical_comparison_params)))
 design_seed_000$PS <- empirical_comparison_params$PS
 design_seed_000$N_GENES_INITIAL <- empirical_comparison_params$N_GENES_INITIAL
 design_seed_000$BITING_RATE_MEAN <- empirical_comparison_params$BITING_RATE_MEAN
 
-design_seed_001 <- subset(design, PS=='24' & scenario==work_scenario & exp=='001')
+design_seed_001 <- subset(design, PS=='18' & scenario==work_scenario & exp=='001')
 design_seed_001 %<>% slice(rep(1:n(), each = nrow(empirical_comparison_params)))
 design_seed_001$PS <- empirical_comparison_params$PS
 design_seed_001$N_GENES_INITIAL <- empirical_comparison_params$N_GENES_INITIAL
 design_seed_001$BITING_RATE_MEAN <- empirical_comparison_params$BITING_RATE_MEAN
 
-design_seed_002 <- subset(design, PS=='24' & scenario==work_scenario & exp=='002')
+design_seed_002 <- subset(design, PS=='18' & scenario==work_scenario & exp=='002')
 design_seed_002 %<>% slice(rep(1:n(), each = nrow(empirical_comparison_params)))
 design_seed_002$PS <- empirical_comparison_params$PS
 design_seed_002$N_GENES_INITIAL <- empirical_comparison_params$N_GENES_INITIAL
 design_seed_002$BITING_RATE_MEAN <- empirical_comparison_params$BITING_RATE_MEAN
 
-design <- design_seed_000 %>% bind_rows(design_seed_001) %>% bind_rows(design_seed_002)
+design_seed_003 <- subset(design, PS=='18' & scenario==work_scenario & exp=='003')
+design_seed_003 %<>% slice(rep(1:n(), each = nrow(empirical_comparison_params)))
+design_seed_003$PS <- empirical_comparison_params$PS
+design_seed_003$N_GENES_INITIAL <- empirical_comparison_params$N_GENES_INITIAL
+design_seed_003$BITING_RATE_MEAN <- empirical_comparison_params$BITING_RATE_MEAN
+
+
+design <- design_seed_000 %>% 
+  bind_rows(design_seed_001) %>% 
+  bind_rows(design_seed_002) %>% 
+  bind_rows(design_seed_003)
+  
+# design <- design_seed_003
 design$mem_per_cpu <- 16000
 design$wall_time <- '01:00:00'
 
@@ -382,8 +401,8 @@ if (detect_locale()=='Mac'){
 
 
 # Create the reference experiments (checkpoint and control)
-ps_range <- sprintf('%03d', 750:769)
-exp_range <- sprintf('%0.3d', 2)
+ps_range <- sprintf('%03d', 500:599)
+exp_range <- sprintf('%0.3d', 3)
 run_range <- 1
 
 for (ps in ps_range){
@@ -427,6 +446,16 @@ for (ps in ps_range){
 }
 sink.reset()
 
+jobids <- NULL
+sink('/media/Data/PLOS_Biol/parameter_files/run_E003_N.sh')
+for (ps in ps_range){
+  if(is.null(jobids)){
+    cat('sbatch PS',ps,work_scenario,'E003.sbatch',sep='');cat('\n')
+  } else {
+    cat('sbatch -d afterok:',jobids[which(ps_range==ps)],' PS',ps,work_scenario,'E003.sbatch',sep='');cat('\n')    
+  }
+}
+sink.reset()
 
 # Create files to extract data on edge weights from selection
 sbatch_arguments <- expand.grid(PS=sprintf('%0.3d', 750:769),
@@ -644,6 +673,7 @@ for (f in file_list){
 
 # Calendar ----------------------------------------------------------------
 cal <- as.tibble(build_calendar(num_years = 25, 10))
+cal %>% filter
 cal %>% filter(!is.na(survey)) %>% group_by(survey,layer) %>%
   summarise(first_day=min(running_day),last_day=max(running_day), year=unique(year_sim)+2002, month=unique(month_sim))
 

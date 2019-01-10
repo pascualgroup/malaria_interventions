@@ -7,10 +7,8 @@ library(magrittr, quietly = T, warn.conflicts = F)
 library(igraph, quietly = T, warn.conflicts = F)
 library(data.table, quietly = T, warn.conflicts = F)
 
-comparing_to_empirical <- F
-
 if (length(commandArgs(trailingOnly=TRUE))==0) {
-  args <- c('550','S','001',0.85, '118,126,138,142,154,162')
+  args <- c('550','S','001',0.85, '118,126,138,142,154,162',3)
   # args <- c('550','S','001',0.85, '10:100')
 } else {
   args <- commandArgs(trailingOnly=TRUE)
@@ -22,27 +20,22 @@ job_exp <- as.character(args[3])
 job_run <- as.numeric(Sys.getenv('SLURM_ARRAY_TASK_ID'))
 cutoff_prob <- as.numeric(args[4])
 layers <- as.character(args[5]) # Layers can be in a 1:300 format for a sequence or in a '118,126,138,142,154,162' format for separate layers.
+task <- as.character(args[6]) # Can be: make_networks | prepare_infomap | read_infomap_results | temporal_diversity | module_Fst
+modularity_exp <-  as.numeric(args[7]) # 0: not comparing to empirical; 1: genes+MOI=1; 2: alleles+MOI=1; 3: alleles, all repertoires; 4: genes, all repertoires
+
 if (str_detect(layers,'\\:')){
   layers <- seq(str_split(layers,'\\:')[[1]][1],str_split(layers,'\\:')[[1]][2],1)
 } else {
   layers <- as.integer(str_split(layers,",")[[1]])  
 }
 
-
-# Identify if the simulation is used to compare to empirical data
-if(as.numeric(job_ps)>=500 && length(layers)==6) {
-  print('Comparing to empirical')
-  comparing_to_empirical <- T
-}
-
-task <- as.character(args[6]) # Can be: make_networks | prepare_infomap | read_infomap_results | temporal_diversity | module_Fst
-
 base_name <- paste('PS',job_ps,'_',job_scenario,'_E',job_exp,'_R',job_run,'_',cutoff_prob,sep='')
 
 print(base_name)
 print(layers)
 print(task)
-if (comparing_to_empirical){print('Comparing to empirical data')}
+print(modularity_exp)
+if (modularity_exp!=0){print('Comparing to empirical data')}
 
 # Make networks -----------------------------------------------------------
 make_network <- function(unit_for_edges, repertoires_to_sample, write_to_files, write_edge_weights){
@@ -53,10 +46,10 @@ make_network <- function(unit_for_edges, repertoires_to_sample, write_to_files, 
   write_csv(data$sampled_infections, paste(base_name,'_sampled_infections.csv',sep=''))
   
   # Network objects
-  if (comparing_to_empirical){
+  if (modularity_exp==0){
     cutoff_value <- NULL
   }
-  if(!comparing_to_empirical){
+  if(modularity_exp!=0){
     # If experiment is not control then take the cutoff value from the control. This
     # requires the control to be run first.
     if (job_exp=='001' | !file.exists(paste('PS',job_ps,'_',job_scenario,'_E001_R',job_run,'_',cutoff_prob,'_network_info.csv',sep=''))){
@@ -136,7 +129,7 @@ if (task=='repertoire_persistence'){
   strain_allele_mat <- xtabs(~strain_id+allele_locus, sampled_strains)
   strain_allele_mat[strain_allele_mat==0] <- 'A'
   strain_allele_mat[strain_allele_mat==1] <- 'G'
-  f <- paste('/scratch/midway2/pilosofs/PLOS_Biol/Results/',job_ps,'_',job_scenario,'/',base_name,'_strain_sequences_without_modules.fasta',sep='')
+  f <- paste(base_name,'_strain_sequences_without_modules.fasta',sep='')
   # f <- paste('/media/Data/PLOS_Biol/parameter_files/',base_name,'_strain_sequences_without_modules.fasta',sep='')
   sink(f, append = F)
   for (i in 1:nrow(strain_allele_mat)){
@@ -180,16 +173,24 @@ if (task=='repertoire_persistence'){
 
 
 if (task=='prepare_infomap'){
-  if (!comparing_to_empirical){
+  if (modularity_exp==0){
     network <- make_network(unit_for_edges = 'alleles', repertoires_to_sample = NULL, write_to_files = F, write_edge_weights = F) # First make the network
   }
-  if (comparing_to_empirical){
+  if (modularity_exp==1){
+    network <- make_network(unit_for_edges = 'genes', repertoires_to_sample = c(90,66,65,55,114,40), write_to_files = T, write_edge_weights = F) # First make the network
+  }
+  if (modularity_exp==2){
     network <- make_network(unit_for_edges = 'alleles', repertoires_to_sample = c(98,68,69,52,115,44), write_to_files = T, write_edge_weights = F) # First make the network
   }
-  
+  if (modularity_exp==3){
+    network <- make_network(unit_for_edges = 'alleles', repertoires_to_sample = NULL, write_to_files = T, write_edge_weights = F) # First make the network
+  }
+  if (modularity_exp==4){
+    network <- make_network(unit_for_edges = 'genes', repertoires_to_sample = NULL, write_to_files = T, write_edge_weights = F) # First make the network
+  } 
   # Should interlayer edges be rescaled? Only if working with the 6 layers of the
   # interventions in the PS of the interventions.
-  if (comparing_to_empirical){
+  if (modularity_exp!=0){
     infomap <- build_infomap_objects(network_object = network, 
                                      write_to_infomap_file = T, 
                                      infomap_file_name = paste(base_name,'_Infomap_multilayer.txt',sep=''), 
@@ -238,7 +239,7 @@ if (task=='read_infomap_results'){
   strain_allele_mat <- xtabs(~strain_id+allele_locus, sampled_strains)
   strain_allele_mat[strain_allele_mat==0] <- 'A'
   strain_allele_mat[strain_allele_mat==1] <- 'G'
-  f <- paste('/scratch/midway2/pilosofs/PLOS_Biol/Results/',job_ps,'_',job_scenario,'/',base_name,'_strain_sequences.fasta',sep='')
+  f <- paste(base_name,'_strain_sequences.fasta',sep='')
   # f <- paste('/media/Data/PLOS_Biol/parameter_files/',base_name,'_strain_sequences.fasta',sep='')
   sink(f, append = F)
   for (i in 1:nrow(strain_allele_mat)){

@@ -689,18 +689,21 @@ make_sbatch_get_data <- function(sbatch_arguments,
   
   if (detect_locale()=='Lab'){
     setwd('/home/shai/Documents/malaria_interventions')
-    sqlite_path_global <- '/media/Data/PLOS_Biol/sqlite_S'
+    sqlite_path_global <- '/media/Data/PLOS_Biol/sqlite'
     parameter_files_path_global <- '/media/Data/PLOS_Biol/parameter_files'
   }
   if (detect_locale()=='Mac'){
     setwd('~/GitHub/malaria_interventions')
-    sqlite_path_global <- '~/GitHub/PLOS_Biol/sqlite_S'
+    sqlite_path_global <- '~/GitHub/PLOS_Biol/sqlite'
     parameter_files_path_global <- '~/GitHub/PLOS_Biol/parameter_files'
   }
+  
   for (i in 1:nrow(sbatch_arguments)){
     ps <- sbatch_arguments$PS[i]
     scenario <- sbatch_arguments$scen[i]
     e <- sbatch_arguments$exp[i]
+    modularity_exp <- sbatch_arguments$modularity_exp[i]
+    cutoff_prob <- sbatch_arguments$cutoff_prob[i]
     if (detect_locale()=='Lab'){
       x <- readLines('~/Documents/malaria_interventions/PLOS_Biol/get_data_midway_plosbiol.sbatch')
     }
@@ -717,18 +720,20 @@ make_sbatch_get_data <- function(sbatch_arguments,
     str_sub(x[20],11,13) <- scenario
     str_sub(x[21],6,8) <- e
     str_sub(x[22],9,11) <- sbatch_arguments$layers[i]
-    str_sub(x[23],13,16) <- sbatch_arguments$cutoff_prob[i]
+    str_sub(x[23],13,16) <- cutoff_prob
+    str_sub(x[25],17,19) <- modularity_exp
+    
     x[length(x)+1] <- ""
-    if (make_networks){x[length(x)+1] <- "Rscript $prog $PS $scenario $exp $cutoff_prob $layers 'make_networks'"}
-    if (repertoire_persistence){x[length(x)+1] <- "Rscript $prog $PS $scenario $exp $cutoff_prob $layers 'repertoire_persistence'"}
-    if (prepare_infomap){x[length(x)+1] <- "Rscript $prog $PS $scenario $exp $cutoff_prob $layers 'prepare_infomap'"}
+    if (make_networks){x[length(x)+1] <- "Rscript $prog $PS $scenario $exp $cutoff_prob $layers 'make_networks' $modularity_exp"}
+    if (repertoire_persistence){x[length(x)+1] <- "Rscript $prog $PS $scenario $exp $cutoff_prob $layers 'repertoire_persistence' $modularity_exp"}
+    if (prepare_infomap){x[length(x)+1] <- "Rscript $prog $PS $scenario $exp $cutoff_prob $layers 'prepare_infomap' $modularity_exp"}
     if (run_Infomap){x[length(x)+1] <- "infomap_name='PS'$PS'_'$scenario'_E'$exp'_R'$SLURM_ARRAY_TASK_ID'_'$cutoff_prob'_Infomap_multilayer'"}
     if (run_Infomap){x[length(x)+1] <- "./Infomap_v01926 $infomap_name'.txt' . -i multilayer -d -N 10 --rawdir --two-level --tree --expanded"}
-    if (read_infomap_results){x[length(x)+1] <- "Rscript $prog $PS $scenario $exp $cutoff_prob $layers 'read_infomap_results'"}
-    if (temporal_diversity){x[length(x)+1] <- "Rscript $prog $PS $scenario $exp $cutoff_prob $layers 'temporal_diversity'"}
-    if (module_Fst){x[length(x)+1] <- "Rscript $prog $PS $scenario $exp $cutoff_prob $layers 'module_Fst'"}
+    if (read_infomap_results){x[length(x)+1] <- "Rscript $prog $PS $scenario $exp $cutoff_prob $layers 'read_infomap_results' $modularity_exp"}
+    if (temporal_diversity){x[length(x)+1] <- "Rscript $prog $PS $scenario $exp $cutoff_prob $layers 'temporal_diversity' $modularity_exp"}
+    if (module_Fst){x[length(x)+1] <- "Rscript $prog $PS $scenario $exp $cutoff_prob $layers 'module_Fst' $modularity_exp"}
     
-    writeLines(x, paste(parameter_files_path_global,'/','PS',ps,'_',scenario,'_','E',e,'_',sbatch_arguments$cutoff_prob[i],'_get_data_midway.sbatch',sep=''))
+    writeLines(x, paste(parameter_files_path_global,'/','PS',ps,'_',scenario,'_','E',e,'_',cutoff_prob,'_',modularity_exp,'_get_data_midway.sbatch',sep=''))
   }
   # Write a file to execute all the sbatch files
   sink(run_experiments_file)
@@ -737,10 +742,11 @@ make_sbatch_get_data <- function(sbatch_arguments,
     scenario <- sbatch_arguments$scen[i]
     cutoff_prob <- sbatch_arguments$cutoff_prob[i]
     exp <- sbatch_arguments$exp[i]
+    modularity_exp <- sbatch_arguments$modularity_exp[i]
     if ('after_job'%in%names(sbatch_arguments)){
-      cat('sbatch -d afterok:',sbatch_arguments$after_job[i], ' PS',ps,'_',scenario,'_','E',exp,'_',cutoff_prob,'_get_data_midway.sbatch',sep='');cat('\n')
+      cat('sbatch -d afterok:',sbatch_arguments$after_job[i], ' PS',ps,'_',scenario,'_','E',exp,'_',cutoff_prob,'_',modularity_exp,'_get_data_midway.sbatch',sep='');cat('\n')
     } else {
-      cat('sbatch PS',ps,'_',scenario,'_','E',exp,'_',cutoff_prob,'_get_data_midway.sbatch',sep='');cat('\n')
+      cat('sbatch PS',ps,'_',scenario,'_','E',exp,'_',cutoff_prob,'_',modularity_exp,'_get_data_midway.sbatch',sep='');cat('\n')
     }
   }
   sink.reset()
@@ -767,6 +773,24 @@ mytheme <- theme_bw() + theme(
   strip.text = element_text(size = 19)
 )
 
+mytheme_no_legend <- theme_bw() + theme(
+  legend.title  = element_text(colour = "black", size=17),
+  legend.position = "none",
+  #	legend.direction = "horizontal",
+  legend.key = element_blank(),
+  legend.text  = element_text(colour = "black", size=17),
+  panel.background = element_blank(),
+  # panel.grid.major = element_blank(),
+  # panel.grid.minor = element_blank(),
+  axis.text = element_text(color='black', family="Helvetica", size=14),
+  axis.title = element_text(color='black', family="Helvetica", size=14),
+  strip.text.x = element_text(family = "Helvetica", size = 14),
+  strip.text.y = element_text(family = "Helvetica", size = 14),
+  panel.border = element_rect(colour = "black", size=1.3),
+  axis.ticks = element_line(size = 1.3),
+  strip.background = element_rect( fill = "transparent", size = 1.3, colour = "black"  ),
+  strip.text = element_text(size = 19)
+)
 
 manuscript_theme <- theme_bw() + theme(
   legend.title  = element_text(colour = "black", size=17),
@@ -786,6 +810,7 @@ manuscript_theme <- theme_bw() + theme(
   strip.background = element_rect( fill = "transparent", size = 1.3, colour = "black"  ),
   strip.text = element_text(size = 19)
 )
+
 
 gg_color_hue <- function(n, hue_min = 10, hue_max = 280, l = 62, c = 100) {
   hues = seq(hue_min, hue_max, length=n+1)
@@ -1263,6 +1288,7 @@ build_layer <- function(infection_df, unit_for_edges, write_to_files=F, base_fil
                         data.frame(hosts=length(unique(host_id)),
                                    repertoires_unique=length(unique(strain_id)),
                                    repertoires_total=length(unique(strain_id_unique)),
+                                   num_units=ncol(as.data.frame.matrix(bipartite_layer)),
                                    unit_for_edges=unit_for_edges
                         ))
   if (write_to_files){
@@ -1400,7 +1426,7 @@ createTemporalNetwork <- function(ps,
     layer_summary$density_interlayer[i] <- sum(x>0)/(nrow(x)*ncol(x))
   }
   
-  layer_summary <- as.tibble(layer_summary) %>% select(layer, hosts, repertoires_unique, repertoires_total, density, density_interlayer)
+  layer_summary <- as.tibble(layer_summary)
   
   print('Done!')
   
