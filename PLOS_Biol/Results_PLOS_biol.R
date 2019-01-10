@@ -6,39 +6,93 @@ prep.packages(c('tidyverse','magrittr','sqldf','igraph','data.table','googleshee
 # Initialize important variables ------------------------------------------
 setwd('/media/Data/PLOS_Biol/')
 
+monitored_variables <- c('prevalence', 'meanMOI','n_circulating_strains', 'n_circulating_genes', 'n_alleles', 'n_total_bites')
+
 scenario_cols <- c('red','blue','orange') # Order is: S, N, G
-ps_cols <- c('#0A97B7','#B70A97','#97B70A')
+ps_cols <- c('#0A97B7','#B70A97','#97B70A','#873600')
 gg_labels <- as_labeller(c(`04` = 'Low',
                            `05` = 'Medium',
                            `06` = 'High',
+                           `18` = 'Seasonal (High)',
                            `S` = 'Selection',
                            `G` = 'Generalized immunity',
                            `N` = 'Complete neutrality',
+                           `prevalence` = 'Prevalence',
+                           `meanMOI` = 'MOI (mean)',
+                           `n_circulating_strains` = '# repertoires',
+                           `n_circulating_genes` = '# genes',
+                           `n_alleles` = '# alleles',
+                           `n_total_bites` = '# bites',
                            `Module` = 'Module',
                            `Repertoire` = 'Repertoire'))
 
 all_experiments <- expand.grid(PS=sprintf('%0.2d', c(4:6,18)),
                            scenario=c('S','N','G'), 
                            exp='001',
+                           run=1:50,
                            # cutoff_prob=seq(0.3,0.95,0.05),
                            stringsAsFactors = F)
 cutoff_df <- tibble(PS=sprintf('%0.2d', c(4:6,18)),cutoff_prob=c(0.3,0.6,0.85,0.85))
 all_experiments <- left_join(all_experiments,cutoff_df)
 
 
-files_list <- list.files('/media/Data/PLOS_Biol/Results/cutoff_to_use')
-files <- tibble(file=files_list,
-                PS = sapply(str_split(files_list,'_'),function (x) parse_number(x[1])),
-                scenario=sapply(str_split(files_list,'_'),function (x) x[2]),
-                experiment=sapply(str_split(files_list,'_'),function (x) str_sub(x[3],2,4)),
-                run= sapply(str_split(files_list,'_'),function (x) parse_number(x[4])),
-                cutoff_prob= sapply(str_split(files_list,'_'),function (x) parse_number(x[5])),
-                type=sapply(str_split(files_list,'_'),function (x) paste(x[6:8],collapse='_'))
-                )
-files$PS <- sprintf('%0.2d', files$PS)
-files$type <- str_remove_all(files$type,'_NA')
+# files_list <- list.files('/media/Data/PLOS_Biol/Results/cutoff_to_use')
+# files <- tibble(file=files_list,
+#                 PS = sapply(str_split(files_list,'_'),function (x) parse_number(x[1])),
+#                 scenario=sapply(str_split(files_list,'_'),function (x) x[2]),
+#                 experiment=sapply(str_split(files_list,'_'),function (x) str_sub(x[3],2,4)),
+#                 run= sapply(str_split(files_list,'_'),function (x) parse_number(x[4])),
+#                 cutoff_prob= sapply(str_split(files_list,'_'),function (x) parse_number(x[5])),
+#                 type=sapply(str_split(files_list,'_'),function (x) paste(x[6:8],collapse='_'))
+#                 )
+# files$PS <- sprintf('%0.2d', files$PS)
+# files$type <- str_remove_all(files$type,'_NA')
+# 
+# files %>% filter(type=='modules.csv') %>% group_by(PS,scenario,cutoff_prob) %>% count(type) %>% print(n=Inf)
 
-files %>% filter(type=='modules.csv') %>% group_by(PS,scenario,cutoff_prob) %>% count(type) %>% print(n=Inf)
+
+# Deiversity regimes ------------------------------------------------------
+regime_summary_data <- NULL
+for (i in 1:nrow(all_experiments)){
+  ps <- all_experiments$PS[i]
+  scenario <- all_experiments$scenario[i]
+  exp <- all_experiments$exp[i]
+  cutoff_prob <- all_experiments$cutoff_prob[i]
+  run <- all_experiments$run[i]
+  print(paste('PS: ',ps,' | Scenario: ',scenario,' | exp: ',exp, ' | run: ',run,sep=''))
+  tmp <- get_data(parameter_space = ps, scenario, experiment = exp, run, cutoff_prob, use_sqlite = F, tables_to_get = 'summary_general')[[1]]
+  regime_summary_data <- rbind(regime_summary_data,tmp)
+}
+
+regime_summary_data %>%
+  mutate(scenario=factor(scenario, levels=c('S','G','N'))) %>% 
+  select(-year, -month, -n_infected) %>% 
+  gather(variable, value, -pop_id, -time, -exp, -PS, -scenario, -run) %>% 
+  group_by(pop_id, time, exp, PS, scenario, variable) %>%
+  summarise(value_mean=mean(value), value_sd=sd(value)) %>% # Need to average across runs
+  filter(variable %in% monitored_variables) %>%
+  mutate(variable=factor(variable, levels=c('prevalence', 'meanMOI','n_alleles','n_circulating_genes','n_circulating_strains','n_total_bites'))) %>% 
+  ggplot(aes(x=scenario, y=value_mean, fill=scenario))+
+  geom_boxplot()+
+  scale_fill_manual(values=scenario_cols)+
+  facet_grid(variable~PS, scales='free',labeller = gg_labels)+
+  mytheme
+
+regime_summary_data %>% 
+  mutate(scenario=factor(scenario, levels=c('S','G','N'))) %>% 
+  ggplot(aes(x=month, y=EIR, color=scenario))+
+  geom_boxplot()+
+  # stat_summary(aes(group=scenario), fun.y=mean, geom="point", size=3)+
+  # stat_summary(aes(group=scenario), fun.y=mean, geom="line", size=0.5)+
+  facet_wrap(~PS,scales='free', labeller = gg_labels)+
+  scale_color_manual(values=scenario_cols)+
+  labs(x='Month',y='EIR')+
+  mytheme
+
+
+# Edge weight distributions ------------------------------------------------------
+
+
 
 # Fig. 2 ------------------------------------------------------------------
 # Figure has 3 scenarios in high diversity, showing the following:
