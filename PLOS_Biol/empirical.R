@@ -316,30 +316,45 @@ network_object$interlayer_matrices <- interlayer_matrices_empirical
 ## @knitr interlayer_edge_rescaling
 # layers_to_include <- c(118,126,138,142)
 layers_to_include <- c(118,126,138,142,154,162)
-surv_prob_S_003 <- NULL
-for (ps in 500:599){
-  print(ps)
-  x <- calculate_rep_survival(ps = ps, scenario = 'S', exp = '003', run = 1, cutoff_prob = 0.85, layers_to_include = layers_to_include)
-  x <- tibble(ps=ps,layer=layers_to_include[1:(length(layers_to_include)-1)],surv_prob=x)
-  # x <- tibble(ps=ps,layer=layers_to_include[1:5],surv_prob=x)
-  surv_prob_S_003 <- rbind(surv_prob_S_003,x)
-}
-png('repertoire_survival_prob.png')
-surv_prob_S_003 %>% ggplot(aes(x=as.factor(layer), group=layer, y=surv_prob))+geom_boxplot()
-dev.off()
-surv_prob_S_003 %<>% group_by(layer) %>% summarise(surv_prob=mean(surv_prob))
-repertoire_survival_prob <- surv_prob_S_003$surv_prob
+# surv_prob_S_003 <- NULL
+# for (ps in 500:599){
+#   print(ps)
+#   x <- calculate_rep_survival(ps = ps, scenario = 'S', exp = '003', run = 1, cutoff_prob = 0.85, layers_to_include = layers_to_include)
+#   x <- tibble(ps=ps,layer=layers_to_include[1:(length(layers_to_include)-1)],surv_prob=x)
+#   # x <- tibble(ps=ps,layer=layers_to_include[1:5],surv_prob=x)
+#   surv_prob_S_003 <- rbind(surv_prob_S_003,x)
+# }
+# png('repertoire_survival_prob.png')
+# surv_prob_S_003 %>% ggplot(aes(x=as.factor(layer), group=layer, y=surv_prob))+geom_boxplot()
+# dev.off()
+# surv_prob_S_003 %<>% group_by(layer) %>% summarise(surv_prob=mean(surv_prob))
+# repertoire_survival_prob <- surv_prob_S_003$surv_prob
 infomap_empirical <- build_infomap_objects(network_object = network_object,  
-                                           write_to_infomap_file = T,
+                                           write_to_infomap_file = F,
                                            infomap_file_name = 'infomap_empirical.txt', 
                                            return_objects = T,
                                            rescale_by_survival_prob = F,
                                            repertoire_survival_prob = NULL)
 
+
+infomap_empirical$infomap_interlayer <- rescale_by_divergence('569','S','003',1,layers_to_include,interlayer_edges=infomap_empirical$infomap_interlayer)
+
+quantile(infomap_empirical$infomap_interlayer$w_rescaled,probs = seq(0.8,0.99,0.005))
+cutoff_value_inter <- quantile(infomap_empirical$infomap_interlayer$w_rescaled,probs = 0.85)
 infomap_empirical$infomap_interlayer %>% ggplot()+
-  # geom_density(aes(x=w),fill='purple',alpha=0.6)+
+  geom_density(aes(x=w_rescaled),fill='purple',alpha=0.6)+
   geom_density(aes(x=w),fill='gray',alpha=0.6)+
-  facet_wrap(~layer_s, scale='free')
+  geom_vline(xintercept = cutoff_value_inter)
+infomap_empirical$infomap_interlayer %<>% 
+  filter(w_rescaled>=cutoff_value_inter)
+
+# facet_wrap(~layer_s, scale='free')
+
+if (file.exists('infomap_empirical.txt')){unlink('infomap_empirical.txt')}
+infomap_empirical$infomap_interlayer %<>% select(layer_s,node_s,layer_t,node_t,w_rescaled) %>% rename(w=w_rescaled)
+edges_to_write <- infomap_empirical$infomap_intralayer %>% bind_rows(infomap_empirical$infomap_interlayer)
+fwrite(edges_to_write, 'infomap_empirical.txt', sep=' ', col.names = F)
+
 
 
 

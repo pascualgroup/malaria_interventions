@@ -1223,6 +1223,56 @@ overlapAlleleAdj<-function(mat){
   return(newmat)  
 }
 
+
+# Function to calculate survival probability of repertoires between layers. This
+# is used to rescale the interlayer edges.
+rescale_by_divergence <- function(ps,scenario,exp,run,layers_to_include,interlayer_edges){
+  
+  ## rescale function for similarity-----------
+  ## simMat: vector of inter-layer edges similarities that needs to be rescaled
+  ## Nt0: baseline of interval poptime we are rescaling to,
+  ## for example, if baseline population size is 1000, and interval is 1 month
+  ## then Nt0 = 1000*1 = 1000
+  #   -- That would be the N_e (Harmonic mean) of the population before intervention 
+  ## popsize: a vector of population size per month between two layers
+  ## t: time intervals between two layers, if it's 4 months, then t is 4
+  divRescale<-function(simMat, Nt0, popsize, t){
+    Ne<-1/mean(1/popsize)
+    rescale_factor<-Ne*t/Nt0
+    return(1-(1-simMat)/rescale_factor)
+  }
+  
+  # Get infection data
+  base_name <- paste('PS',ps,'_',scenario,'_E',exp,'_R',run,sep='')
+  if (on_Midway()){
+    sqlite_file <- paste('/scratch/midway2/pilosofs/PLOS_Biol/sqlite/',base_name,'.sqlite',sep='')
+  } else {
+    sqlite_file <- paste('/media/Data/PLOS_Biol/sqlite/',base_name,'.sqlite',sep='')
+  }
+  
+  db <- dbConnect(SQLite(), dbname = sqlite_file)
+  print('Getting genetic data from sqlite...')
+  summary_table <- as.tibble(dbGetQuery(db, 'SELECT time, n_infections FROM summary'))
+  dbDisconnect(db)
+  summary_table$layer <- group_indices(summary_table, time)
+  
+  Nt0 <- min(summary_table$n_infections)
+  # Nt0 <- summary_table$n_infections[1:(layers_to_include[1]-1)]
+  # Nt0 <- 1/mean(1/Nt0)
+  
+  # Calculate survival probability
+  w_rescaled <- c()
+  for (l in 1:(length(layers_to_include)-1)){
+    popsize <- subset(summary_table, layer>=layers_to_include[l] & layer <= layers_to_include[l+1])$n_infections
+    t <- layers_to_include[l+1]-layers_to_include[l]
+    simMat <- subset(interlayer_edges, layer_s==l)$w
+    w_rescaled <- c(w_rescaled, divRescale(simMat, Nt0, popsize, t))
+  }
+  interlayer_edges$w_rescaled <- w_rescaled
+  return(interlayer_edges)
+}
+
+
 # Function to calculate survival probability of repertoires between layers. This
 # is used to rescale the interlayer edges.
 calculate_rep_survival <- function(ps,
