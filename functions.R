@@ -1262,6 +1262,7 @@ calculate_rep_survival <- function(ps,
   summary_table$layer <- group_indices(summary_table, time)
   
   # Calculate survival probability
+  print('Calculating survival prob...')
   surv_prob <- c()
   for (l in 1:(length(layers_to_include)-1)){
     x <- subset(summary_table, layer>=layers_to_include[l] & layer <= layers_to_include[l+1])
@@ -2030,9 +2031,9 @@ build_infomap_objects <- function(network_object,
                                         network_object$run, 
                                         network_object$cutoff_prob,
                                         network_object$layer_summary$layer)
-    rescaling_factors <- tibble(layer_s=1:5,surv_prob=surv_prob)
+    rescaling_factors <- tibble(layer_s=1:length(surv_prob),surv_prob=surv_prob)
     print(rescaling_factors)
-    for (l in 1:5){
+    for (l in 1:length(surv_prob)){
       # Divide edge weights by the probability of persistence. those that persisted
       # for longer will have stronger values
       x <- infomap_interlayer[[l]]
@@ -2049,9 +2050,9 @@ build_infomap_objects <- function(network_object,
     # 4 months between S3 and S4
     # 12 months between S4 and S5
     # 8 months between S5 and S6
-    rescaling_factors <- tibble(layer_s=1:5,surv_prob=repertoire_survival_prob)
+    rescaling_factors <- tibble(layer_s=1:length(repertoire_survival_prob),surv_prob=repertoire_survival_prob)
     print(rescaling_factors)
-    for (l in 1:5){
+    for (l in 1:length(repertoire_survival_prob)){
       # Divide edge weights by the probability of persistence. those that persisted
       # for longer will have stronger values
       x <- infomap_interlayer[[l]]

@@ -60,6 +60,9 @@ make_network <- function(unit_for_edges, repertoires_to_sample, write_to_files, 
     }
   }
   
+  
+  print('Building network...')
+  message('Building network...')
   network <- createTemporalNetwork(ps = job_ps,
                                    scenario = job_scenario,
                                    exp = job_exp, 
@@ -89,6 +92,9 @@ make_network <- function(unit_for_edges, repertoires_to_sample, write_to_files, 
     write_csv(as.tibble(network$intralayer_edges_no_cutoff), paste(base_name,'_intralayer_no_cutoff.csv',sep=''))
     write_csv(as.tibble(network$interlayer_edges_no_cutoff), paste(base_name,'_interlayer_no_cutoff.csv',sep=''))
   }
+  
+  print('Finished building network...')
+  message('Finished building network...')
   return(network)
 }
 
@@ -173,21 +179,27 @@ if (task=='repertoire_persistence'){
 
 
 if (task=='prepare_infomap'){
+
   if (modularity_exp==0){
     network <- make_network(unit_for_edges = 'alleles', repertoires_to_sample = NULL, write_to_files = F, write_edge_weights = F) # First make the network
   }
   if (modularity_exp==1){
-    network <- make_network(unit_for_edges = 'genes', repertoires_to_sample = c(90,66,65,55,114,40), write_to_files = T, write_edge_weights = F) # First make the network
+    network <- make_network(unit_for_edges = 'genes', repertoires_to_sample = c(90,66,65,55,114,40), write_to_files = T, write_edge_weights = T) # First make the network
+    # network <- make_network(unit_for_edges = 'genes', repertoires_to_sample = c(90,66,65,55), write_to_files = T, write_edge_weights = T) # First make the network
   }
   if (modularity_exp==2){
-    network <- make_network(unit_for_edges = 'alleles', repertoires_to_sample = c(98,68,69,52,115,44), write_to_files = T, write_edge_weights = F) # First make the network
+    # network <- make_network(unit_for_edges = 'alleles', repertoires_to_sample = c(98,68,69,52), write_to_files = T, write_edge_weights = T) # First make the network
+    network <- make_network(unit_for_edges = 'alleles', repertoires_to_sample = c(98,68,69,52,115,44), write_to_files = T, write_edge_weights = T) # First make the network
   }
   if (modularity_exp==3){
-    network <- make_network(unit_for_edges = 'alleles', repertoires_to_sample = NULL, write_to_files = T, write_edge_weights = F) # First make the network
+    network <- make_network(unit_for_edges = 'alleles', repertoires_to_sample = NULL, write_to_files = T, write_edge_weights = T) # First make the network
   }
   if (modularity_exp==4){
-    network <- make_network(unit_for_edges = 'genes', repertoires_to_sample = NULL, write_to_files = T, write_edge_weights = F) # First make the network
+    network <- make_network(unit_for_edges = 'genes', repertoires_to_sample = NULL, write_to_files = T, write_edge_weights = T) # First make the network
   } 
+  
+  print('Building Infomap objects...')
+  message('Building Infomap objects...')
   # Should interlayer edges be rescaled? Only if working with the 6 layers of the
   # interventions in the PS of the interventions.
   if (modularity_exp!=0){
