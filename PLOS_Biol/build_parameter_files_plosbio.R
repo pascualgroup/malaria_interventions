@@ -384,8 +384,8 @@ design <- design_seed_000 %>%
   bind_rows(design_seed_003)
   
 # design <- design_seed_003
-design$mem_per_cpu <- 16000
-design$wall_time <- '01:00:00'
+design$mem_per_cpu <- 20000
+design$wall_time <- '02:00:00'
 
 
 if (detect_locale()=='Lab'){
