@@ -1256,10 +1256,19 @@ rescale_by_divergence <- function(ps,scenario,exp,run,layers_to_include,interlay
   dbDisconnect(db)
   summary_table$layer <- group_indices(summary_table, time)
   
-  Nt0 <- min(summary_table$n_infections)
-  # Nt0 <- summary_table$n_infections[1:(layers_to_include[1]-1)]
-  # Nt0 <- 1/mean(1/Nt0)
+  # Make Nt0 the minimum Ne*t of the 5 layers
+  Nt0 <- 10^9 # Just a very large number
+  for (l in 1:(length(layers_to_include)-1)){
+    popsize <- subset(summary_table, layer>=layers_to_include[l] & layer <= layers_to_include[l+1])$n_infections
+    t <- layers_to_include[l+1]-layers_to_include[l]
+    Ne <- 1/mean(1/popsize)
+    print(Ne*t)
+    Nt0 <- ifelse(Ne*t<Nt0,Ne*t,Nt0)
+  }
   
+  # Make Nto the minimum number of infections
+  # Nt0 <- min(summary_table$n_infections)
+
   # Calculate survival probability
   w_rescaled <- c()
   for (l in 1:(length(layers_to_include)-1)){
@@ -1450,9 +1459,13 @@ createTemporalNetwork <- function(ps,
   # Create cutoff. Note that zeroes SHOULD BE included in the distribution of edge weights
   # Cutoff is based on all the intralayer and interlayer edges.
   if (is.null(cutoff_value)){
-    intralayer_edges <- unlist(sapply(intralayer_matrices, as.vector))
-    interlayer_edges <- unlist(sapply(interlayer_matrices, as.vector))
-    edges <- c(intralayer_edges,interlayer_edges)
+    # Raw values of intralayer edges, in case needed to plot edge weight distributions; and only produced when cutoff is not already defined
+    intralayer_edges_no_cutoff <- tibble(layer=rep(1:length(intralayer_matrices),times=(sapply(intralayer_matrices, function(x) nrow(x)*ncol(x)))),
+                                         w=unlist(sapply(intralayer_matrices, as.vector)))
+    # Raw values of interlayer edges, in case needed to plot edge weight distributions; and only produced when cutoff is not already defined           
+    interlayer_edges_no_cutoff <- tibble(layer=rep(1:length(interlayer_matrices),times=(sapply(interlayer_matrices, function(x) nrow(x)*ncol(x)))),
+                                         w=unlist(sapply(interlayer_matrices, as.vector)))
+    edges <- c(intralayer_edges_no_cutoff$w,interlayer_edges_no_cutoff$w)
     cutoff_value <- quantile(edges, probs = cutoff_prob)
     #as.tibble(edges) %>% ggplot(aes(value))+geom_density()+geom_vline(xintercept = cutoff_value)
   }
@@ -1480,14 +1493,6 @@ createTemporalNetwork <- function(ps,
   layer_summary <- as.tibble(layer_summary)
   
   print('Done!')
-  
-  if (exists('intralayer_edges') & exists('interlayer_edges')){
-    intralayer_edges_no_cutoff=intralayer_edges # Raw values of intralayer edges, in case needed to plot edge weight distributions; and only produced when cutoff is not already defined
-    interlayer_edges_no_cutoff=interlayer_edges # Raw values of interlayer edges, in case needed to plot edge weight distributions; and only produced when cutoff is not already defined
-  } else {
-    intralayer_edges_no_cutoff=NULL
-    interlayer_edges_no_cutoff=NULL
-  }
   
   return(list(intralayer_matrices=intralayer_matrices, 
               interlayer_matrices=interlayer_matrices,
