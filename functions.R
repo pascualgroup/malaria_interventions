@@ -1420,8 +1420,8 @@ createTemporalNetwork <- function(ps,
     sampled_infections_layer <- subset(sampled_infections, layer==l) # This is MUCH faster than sampled_infections_layer <- sampled_infections %>% filter(layer==l)
     # Sub-sample repertoires (for empirical data)
     if (!is.null(repertoires_to_sample)){
-      sampled_repertoires <- sample(unique(sampled_infections_layer$strain_id_unique),repertoires_to_sample[which(layers_to_include==l)],F)
-      sampled_infections_layer <- subset(sampled_infections_layer, strain_id_unique%in%sampled_repertoires)
+      sampled_repertoires <- sample(unique(sampled_infections_layer$strain_id),repertoires_to_sample[which(layers_to_include==l)],F)
+      sampled_infections_layer <- subset(sampled_infections_layer, strain_id%in%sampled_repertoires)
     }
     # This line makes the layer
     Layers[[which(layers_to_include==l)]] <- build_layer(infection_df = sampled_infections_layer,
