@@ -286,7 +286,7 @@ sbatch_arguments$time <- rep(c('04:00:00','05:00:00','10:00:00'),3)
 
 # This code creates the design
 diversity_range <- seq(10000,16000,1000) # Main analysis is 12000
-biting_range <- seq(0.3,0.5,0.1) # Main analysis is 0.00040
+biting_range <- seq(0.3,0.5,0.1) # Main analysis is 0.5
 naive_doi_range <- 1/(seq(180,540,120)/60) # Main analysis is 1/6
 sensitivity_params <- expand.grid(N_GENES_INITIAL=diversity_range, BITING_RATE_MEAN=biting_range, TRANSITION_RATE_NOT_IMMUNE=naive_doi_range)
 sensitivity_params <- as.tibble(sensitivity_params)
@@ -384,8 +384,8 @@ design <- design_seed_000 %>%
   bind_rows(design_seed_003)
   
 # design <- design_seed_003
-design$mem_per_cpu <- 20000
-design$wall_time <- '02:00:00'
+design$mem_per_cpu <- 24000
+design$wall_time <- '03:00:00'
 
 
 if (detect_locale()=='Lab'){
@@ -401,7 +401,7 @@ if (detect_locale()=='Mac'){
 
 
 # Create the reference experiments (checkpoint and control)
-ps_range <- sprintf('%03d', 500:599)
+ps_range <- sprintf('%03d', c(537,543,552,554:557,559,560,536:565,567:599))
 exp_range <- sprintf('%0.3d', 3)
 run_range <- 1
 

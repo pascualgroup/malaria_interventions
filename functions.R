@@ -1420,7 +1420,12 @@ createTemporalNetwork <- function(ps,
     sampled_infections_layer <- subset(sampled_infections, layer==l) # This is MUCH faster than sampled_infections_layer <- sampled_infections %>% filter(layer==l)
     # Sub-sample repertoires (for empirical data)
     if (!is.null(repertoires_to_sample)){
-      sampled_repertoires <- sample(unique(sampled_infections_layer$strain_id),repertoires_to_sample[which(layers_to_include==l)],F)
+      # If there are not enough repertoires to sample (because the intervention was too strong)
+      if(length(unique(sampled_infections_layer$strain_id))<repertoires_to_sample[which(layers_to_include==l)]){
+        sampled_repertoires <- unique(sampled_infections_layer$strain_id)
+      } else {
+        sampled_repertoires <- sample(unique(sampled_infections_layer$strain_id),repertoires_to_sample[which(layers_to_include==l)],F)
+      }
       sampled_infections_layer <- subset(sampled_infections_layer, strain_id%in%sampled_repertoires)
     }
     # This line makes the layer
@@ -2001,7 +2006,7 @@ calculateFeatures <- function(network_object, l, remove.loops=F){
 ##  A function that gets the layer as a matrix and writes it for infomap as an edge list
 # network_object is a list of matrices, each element in the list is a layer.
 # requires igraph
-matrix_to_infomap_intralayer <- function(l, nodeList, network_object){
+matrix_to_infomap_intralayer <- function(l, nodeList, network_object, remove_self_links=T){
   current_layer <- network_object$intralayer_matrices[[l]]
   if(nrow(current_layer)<2){
     print(paste('Less than 2 repertoires in layer',l,'!!! skipping layer.'))
@@ -2019,6 +2024,9 @@ matrix_to_infomap_intralayer <- function(l, nodeList, network_object){
   current_layer_el$node_s <- nodeList$nodeID[match(current_layer_el$node_s,nodeList$nodeLabel)]
   current_layer_el$node_t <- nodeList$nodeID[match(current_layer_el$node_t,nodeList$nodeLabel)]
   current_layer_el %<>% select(layer_s, node_s, layer_t, node_t, w) # Re-arrange columns for the infomap input order
+  if(remove_self_links){
+    current_layer_el %<>% filter(node_s != node_t)
+  }
   print(paste('[',Sys.time(), '] Created edge list of layer ',l,' for Infomap | ', nrow(current_layer_el),' edges',sep=''))
   return(current_layer_el)
 }

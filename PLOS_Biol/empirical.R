@@ -6,7 +6,7 @@ prep.packages(c("tidyverse","magrittr","data.table","igraph","Matrix","dplyr","c
 setwd('/media/Data/PLOS_Biol/empirical')
 
 layers_to_include <- c(118,126,138,142,154,162)
-cutoff_prob_empirical <- 0.98
+cutoff_prob_empirical <- 0.978
 
 cleanSurveyData <- function(main_data, isolates_df, Survey, min.var.per.isolate=40, max.var.per.isolate=60, plotit=F){
   
@@ -44,20 +44,7 @@ cleanSurveyData <- function(main_data, isolates_df, Survey, min.var.per.isolate=
   return(data_survey)
 }
 
-plotSurveyLayer <- function(x, zeroDiag=T, cutoff_g=NULL){
-  if(zeroDiag){diag(x) <- 0}
-  g <- graph.adjacency(x, mode = 'directed', weighted = T, diag = F)
-  if(!is.null(cutoff_g)){g <- delete_edges(g, which(E(g)$weight<quantile(E(g)$weight, cutoff_g)))} # remove all edges smaller than the cutoff
-  plot(g, 
-       vertex.color='#8F25DD',
-       vertex.size=6,
-       vertex.label=NA,
-       # edge.arrow.mode='-', 
-       edge.arrow.width=1,
-       edge.arrow.size=0.2,
-       edge.curved=0.5, 
-       edge.width=E(g)$weight*10)  
-}
+
 
 build_interlayer_empirical <- function (data_for_interlayer){
   # Build "interlayer networks"
@@ -80,6 +67,68 @@ build_interlayer_empirical <- function (data_for_interlayer){
     print(paste('Built interlayer edges for layers: ',current_layer,' (',length(strain_copies_t),' isolates with MOI=1)',' --> ',next_layer,' (',length(strain_copies_t1),' isolates with MOI=1)',sep=''))
   }
   return(interlayer_matrices_empirical)
+}
+
+read_infomap_empirical <- function(infomap_empirical, cutoff_prob_empirical, infomap_file='infomap_empirical_expanded.tree'){
+  node_list <- infomap_empirical$nodeList
+  print ('Reading infomap file...')
+  lines <- readLines(infomap_file)
+  cat(lines[1]);cat('\n')
+  # x <- fread(infomap_file, skip = 2, stringsAsFactors = F) # Read results of Infomap
+  x <- read_delim(infomap_file, 
+                  delim = ' ',
+                  col_types = list(col_character(), col_double(), col_character(), col_integer(), col_integer()), 
+                  col_names = c('path', 'flow', 'name', 'layer', 'node'),
+                  skip = 2) # Read results of Infomap
+  print(x)
+  
+  x %<>% filter(layer<=length(intralayer_matrices_empirical))
+  
+  # Create a data frame to store results
+  modules <- tibble(module=rep(NA,nrow(x)),
+                    nodeID=rep(NA,nrow(x)),
+                    layer=rep(NA,nrow(x)),
+                    path=x$path)
+  
+  print('Creating module data frame...')
+  modules$module <- as.numeric(str_split(string = modules$path, pattern = ':', simplify = T)[,1])
+  modules$nodeID <- str_trim(str_split(string = x$name, pattern = '\\|', simplify = T)[,1])
+  modules$layer <- as.numeric(str_trim(str_split(string = x$name, pattern = '\\|', simplify = T)[,2])) # can also use x$layer
+  
+  
+  # modules %>%  ggplot(aes(x=layer,y=module))+geom_point()
+  
+  # Rename modules because Infomap gives random names
+  print('Adding information on strains...')
+  modules2 <- modules %>% 
+    distinct(module,layer) %>% 
+    arrange(module,layer)
+  x <- c(1,table(modules2$module))
+  module_birth_layers <- modules2 %>% slice(cumsum(x)) %>% arrange(layer,module)
+  module_renaming <- data.frame(module=module_birth_layers$module, module_renamed = 1:max(module_birth_layers$module)) 
+  modules2 %<>% left_join(module_renaming)
+  modules2 %<>% full_join(modules) 
+  modules2 %<>% select(-module, -path)
+  names(modules2)[2] <- 'module'
+  modules2 %<>% arrange(module, layer, nodeID)
+  
+  # Change node IDs to repertoire names
+  modules2$nodeID <- as.integer(modules2$nodeID)
+  node_list$nodeID <- as.integer(node_list$nodeID)
+  print(paste('Same strains in module and the node_list strain data frames?',setequal(modules2$nodeID,node_list$nodeID)))
+  modules2 %<>% left_join(node_list) %>% 
+    rename(strain_unique=nodeLabel) %>% 
+    mutate(strain_id=str_split(strain_unique,'_', simplify = T)[,1])
+  
+  # Add information
+  modules2$PS <- 'Empirical'
+  modules2$scenario <- 'Empirical'
+  modules2$exp <- '003'
+  modules2$run <- 1
+  modules2$cutoff_prob <- cutoff_prob_empirical
+  
+  modules_empirical <- modules2
+  return(modules2)
 }
 
 # # Need to know the number of alleles in the simulations, to match the empirical
@@ -221,6 +270,8 @@ plot(as.phylo(hc), type = "fan", tip.color = cols[as.factor(isolates_moi1$survey
 # Get and clean empirical data (ALLELES) ---------------------------------------------------
 
 ## @knitr prepare_data
+
+# Values in the allele matrices are the number of genes in which the allele appears.
 data_allele_1 <- data.table::fread('~/Dropbox/Qixin_Shai_Malaria/S1-S6/S1ToS6_VR1_clusterMap_groupBC_table.txt',sep = '\t',header = T)
 # anyDuplicated(data_allele_1$OTU_ID)
 # anyDuplicated(colnames(data_allele_1))
@@ -258,7 +309,7 @@ isolates_df_alleles %<>% distinct()
 nrow(isolates_df_alleles)
 
 # Limit to 60 vars (MOI=1)
-maxVarIsolate <- 110
+maxVarIsolate <- 110 # This is double (2*55) because we have two sets of alleles.
 Data_S1_alleles <- cleanSurveyData(main_data = data_allleles, isolates_df_alleles, Survey = 'S1', min.var.per.isolate = 80, max.var.per.isolate = maxVarIsolate, plotit = F)
 Data_S2_alleles <- cleanSurveyData(main_data = data_allleles, isolates_df_alleles, Survey = 'S2', min.var.per.isolate = 80, max.var.per.isolate = maxVarIsolate, plotit = F)
 Data_S3_alleles <- cleanSurveyData(main_data = data_allleles, isolates_df_alleles, Survey = 'S3', min.var.per.isolate = 80, max.var.per.isolate = maxVarIsolate, plotit = F)
@@ -359,12 +410,12 @@ empiricalLayer_4 <- overlapAlleleAdj(t(Data_S4_alleles))
 empiricalLayer_5 <- overlapAlleleAdj(t(Data_S5_alleles))
 empiricalLayer_6 <- overlapAlleleAdj(t(Data_S6_alleles))
 
-empiricalLayer_1 <- overlapAlleleAdj(t(Data_S1_genes))
-empiricalLayer_2 <- overlapAlleleAdj(t(Data_S2_genes))
-empiricalLayer_3 <- overlapAlleleAdj(t(Data_S3_genes))
-empiricalLayer_4 <- overlapAlleleAdj(t(Data_S4_genes))
-empiricalLayer_5 <- overlapAlleleAdj(t(Data_S5_genes))
-empiricalLayer_6 <- overlapAlleleAdj(t(Data_S6_genes))
+# empiricalLayer_1 <- overlapAlleleAdj(t(Data_S1_genes))
+# empiricalLayer_2 <- overlapAlleleAdj(t(Data_S2_genes))
+# empiricalLayer_3 <- overlapAlleleAdj(t(Data_S3_genes))
+# empiricalLayer_4 <- overlapAlleleAdj(t(Data_S4_genes))
+# empiricalLayer_5 <- overlapAlleleAdj(t(Data_S5_genes))
+# empiricalLayer_6 <- overlapAlleleAdj(t(Data_S6_genes))
 
 diag(empiricalLayer_1) <- 0
 diag(empiricalLayer_2) <- 0
@@ -373,14 +424,95 @@ diag(empiricalLayer_4) <- 0
 diag(empiricalLayer_5) <- 0
 diag(empiricalLayer_6) <- 0
 
-intralayer_matrices_empirical <- list(empiricalLayer_1, empiricalLayer_2, empiricalLayer_3, empiricalLayer_4,empiricalLayer_5,empiricalLayer_6)
-# intralayer_matrices_empirical <- list(empiricalLayer_1, empiricalLayer_2, empiricalLayer_3, empiricalLayer_4)
-interlayer_matrices_empirical <- build_interlayer_empirical(data_allleles)
+# Test cutoff -------------------------------------------------------------
+modules_empirical_cutoff <- NULL
+for (cutoff_prob_empirical in seq(0.97,0.99,0.002)){
+  intralayer_matrices_empirical <- list(empiricalLayer_1, empiricalLayer_2, empiricalLayer_3, empiricalLayer_4,empiricalLayer_5,empiricalLayer_6)
+  interlayer_matrices_empirical <- build_interlayer_empirical(data_allleles)
+  
+  # Get empirical edge weights
+  intralayer_edges <- unlist(sapply(intralayer_matrices_empirical, as.vector))
+  interlayer_edges <- unlist(sapply(interlayer_matrices_empirical, as.vector))
+  edges <- c(intralayer_edges,interlayer_edges)
+  quantile(edges, probs = seq(0.85,1,0.005))
+  cutoff_value <- quantile(intralayer_edges, probs = cutoff_prob_empirical)
+  # Apply cutoff to layers
+  for (i in 1:length(intralayer_matrices_empirical)){
+    # print(i)
+    x <- intralayer_matrices_empirical[[i]]
+    x[x<cutoff_value] <- 0
+    intralayer_matrices_empirical[[i]] <- x
+  }
+  # Apply cutoff to inter-layer blocks
+  for (i in 1:length(interlayer_matrices_empirical)){
+    # print(i)
+    x <- interlayer_matrices_empirical[[i]]
+    x[x<cutoff_value] <- 0
+    interlayer_matrices_empirical[[i]] <- x
+  }
+  
+  # Build Infomap objects
+  setwd('/media/Data/PLOS_Biol/empirical/')
+  network_object <- vector(mode = 'list', length = 2)
+  names(network_object) <- c('intralayer_matrices','interlayer_matrices')
+  network_object$intralayer_matrices <- intralayer_matrices_empirical
+  network_object$interlayer_matrices <- interlayer_matrices_empirical
+  
+  infomap_empirical <- build_infomap_objects(network_object = network_object,  
+                                             write_to_infomap_file = T,
+                                             infomap_file_name = 'infomap_empirical.txt', 
+                                             return_objects = T,
+                                             rescale_by_survival_prob = F,
+                                             repertoire_survival_prob = NULL)
+  
+  
+  setwd('/media/Data/PLOS_Biol/empirical/')
+  system("./Infomap_v01926 infomap_empirical.txt . -i multilayer -d -N 50 --two-level --rawdir --tree --expanded --silent")
+  modules_empirical <- read_infomap_empirical(infomap_empirical, cutoff_prob_empirical)
+  
+  
+  modules_empirical_cutoff <- rbind(modules_empirical_cutoff, modules_empirical)
+}
 
-# plotSurveyLayer(intralayer_matrices_empirical[[3]])
+
+mod_size <- modules_empirical_cutoff %>% group_by(cutoff_prob,module) %>% summarise(num_reps=n())
+
+modules_empirical_cutoff %>% 
+  select(cutoff_prob,layer,module) %>% 
+  group_by(cutoff_prob,module) %>% 
+  mutate(birth_layer=min(layer),death_layer=max(layer),persistence=death_layer-birth_layer+1) %>% 
+  left_join(mod_size) %>% 
+  ggplot(aes(xmin=birth_layer, xmax=death_layer, ymin=module, ymax=module, color=num_reps))+
+  geom_rect(size=2)+
+  scale_colour_gradient(low="#A569BD", high = "#5B2C6F")+
+  scale_x_continuous(breaks=1:6)+
+  facet_wrap(~cutoff_prob,scales = 'free_y')+
+  mytheme
+
+# Plot persistence
+module_persistence_empirical <- modules_empirical_cutoff %>% 
+  group_by(scenario,cutoff_prob,module) %>%
+  mutate(birth_layer=min(layer),death_layer=max(layer),persistence=death_layer-birth_layer+1) %>% 
+  select(scenario,cutoff_prob,layer,module,birth_layer,death_layer,persistence)
+n_modules_df <- module_persistence_empirical %>% 
+  group_by(cutoff_prob) %>% summarise(n_modules=max(module))
+module_persistence_empirical %<>% 
+  distinct(scenario,cutoff_prob,module,persistence) %>% 
+  group_by(scenario,cutoff_prob,persistence) %>% 
+  summarise(n=n()) %>%
+  left_join(n_modules_df) %>% 
+  mutate(prop=n/n_modules)
+ggplot(module_persistence_empirical,aes(x=persistence, y=prop))+
+  scale_x_continuous(breaks=1:6, labels = 1:6)+
+  geom_col(fill='purple')+
+  facet_wrap(~cutoff_prob)+
+  mytheme
 
 
 # No rescaling ------------------------------------------------------------
+intralayer_matrices_empirical <- list(empiricalLayer_1, empiricalLayer_2, empiricalLayer_3, empiricalLayer_4,empiricalLayer_5,empiricalLayer_6)
+interlayer_matrices_empirical <- build_interlayer_empirical(data_allleles)
+
 # Get empirical edge weights
 intralayer_edges <- unlist(sapply(intralayer_matrices_empirical, as.vector))
 interlayer_edges <- unlist(sapply(interlayer_matrices_empirical, as.vector))
@@ -426,6 +558,7 @@ infomap_empirical <- build_infomap_objects(network_object = network_object,
                                            return_objects = T,
                                            rescale_by_survival_prob = F,
                                            repertoire_survival_prob = NULL)
+
 
 # Rescale by survival probability -----------------------------------------
 
@@ -481,6 +614,8 @@ infomap_empirical <- build_infomap_objects(network_object = network_object,
                                            return_objects = T,
                                            rescale_by_survival_prob = F,
                                            repertoire_survival_prob = repertoire_survival_prob)
+
+
 
 # Rescale interlayer edges by divergence ----------------------------------
 
@@ -570,79 +705,18 @@ fwrite(edges_to_write, 'infomap_empirical.txt', sep=' ', col.names = F)
 
 
 
-# Run Infomap -------------------------------------------------------------
-setwd('/media/Data/PLOS_Biol/empirical/')
-system("./Infomap_v01926 infomap_empirical.txt . -i multilayer -d -N 50 --two-level --rawdir --tree --expanded --silent")
-
-
-# Read Infomap results ----------------------------------------------------
-node_list <- infomap_empirical$nodeList
-print ('Reading infomap file...')
-infomap_file <- 'infomap_empirical_expanded.tree'
-lines <- readLines(infomap_file)
-cat(lines[1]);cat('\n')
-# x <- fread(infomap_file, skip = 2, stringsAsFactors = F) # Read results of Infomap
-x <- read_delim(infomap_file, 
-                delim = ' ',
-                col_types = list(col_character(), col_double(), col_character(), col_integer(), col_integer()), 
-                col_names = c('path', 'flow', 'name', 'layer', 'node'),
-                skip = 2) # Read results of Infomap
-print(x)
-
-x %<>% filter(layer<=length(intralayer_matrices_empirical))
-
-# Create a data frame to store results
-modules <- tibble(module=rep(NA,nrow(x)),
-                  nodeID=rep(NA,nrow(x)),
-                  layer=rep(NA,nrow(x)),
-                  path=x$path)
-
-print('Creating module data frame...')
-modules$module <- as.numeric(str_split(string = modules$path, pattern = ':', simplify = T)[,1])
-modules$nodeID <- str_trim(str_split(string = x$name, pattern = '\\|', simplify = T)[,1])
-modules$layer <- as.numeric(str_trim(str_split(string = x$name, pattern = '\\|', simplify = T)[,2])) # can also use x$layer
-
-
-# modules %>%  ggplot(aes(x=layer,y=module))+geom_point()
-
-# Rename modules because Infomap gives random names
-print('Adding information on strains...')
-modules2 <- modules %>% 
-  distinct(module,layer) %>% 
-  arrange(module,layer)
-x <- c(1,table(modules2$module))
-module_birth_layers <- modules2 %>% slice(cumsum(x)) %>% arrange(layer,module)
-module_renaming <- data.frame(module=module_birth_layers$module, module_renamed = 1:max(module_birth_layers$module)) 
-modules2 %<>% left_join(module_renaming)
-modules2 %<>% full_join(modules) 
-modules2 %<>% select(-module, -path)
-names(modules2)[2] <- 'module'
-modules2 %<>% arrange(module, layer, nodeID)
-
-# Change node IDs to repertoire names
-modules2$nodeID <- as.integer(modules2$nodeID)
-node_list$nodeID <- as.integer(node_list$nodeID)
-print(paste('Same strains in module and the node_list strain data frames?',setequal(modules2$nodeID,node_list$nodeID)))
-modules2 %<>% left_join(node_list) %>% 
-  rename(strain_unique=nodeLabel) %>% 
-  mutate(strain_id=str_split(strain_unique,'_', simplify = T)[,1])
-
-# Add information
-modules2$PS <- 'Empirical'
-modules2$scenario <- 'Empirical'
-modules2$exp <- '003'
-modules2$run <- 1
-modules2$cutoff_prob <- cutoff_prob_empirical
-
-modules_empirical <- modules2
 
 
 # Module analysis ---------------------------------------------------------
+setwd('/media/Data/PLOS_Biol/empirical/')
+system("./Infomap_v01926 infomap_empirical.txt . -i multilayer -d -N 50 --two-level --rawdir --tree --expanded --silent")
+modules_empirical <- read_infomap_empirical(infomap_empirical, cutoff_prob_empirical)
+
 mod_size <- modules_empirical %>% group_by(module) %>% summarise(num_reps=n())
 
 modules_empirical %>% 
-  select(layer,module) %>% 
-  group_by(module) %>% 
+  select(cutoff_prob,layer,module) %>% 
+  group_by(cutoff_prob,module) %>% 
   mutate(birth_layer=min(layer),death_layer=max(layer),persistence=death_layer-birth_layer+1) %>% 
   left_join(mod_size) %>% 
   ggplot(aes(xmin=birth_layer, xmax=death_layer, ymin=module, ymax=module, color=num_reps))+
@@ -651,8 +725,8 @@ modules_empirical %>%
   scale_x_continuous(breaks=1:6)
 # Plot persistence
 module_persistence_empirical <- modules_empirical %>% 
-  group_by(module) %>% mutate(birth_layer=min(layer),death_layer=max(layer),persistence=death_layer-birth_layer+1) %>% 
-  select(layer,module,birth_layer,death_layer,persistence)
+  group_by(cutoff_prob,module) %>% mutate(birth_layer=min(layer),death_layer=max(layer),persistence=death_layer-birth_layer+1) %>% 
+  select(cutoff_prob,layer,module,birth_layer,death_layer,persistence)
 n_modules <- length(unique(modules_empirical$module))
 module_persistence_empirical %>% 
   distinct(module,persistence) %>% 
@@ -695,10 +769,13 @@ module_persistence_empirical %>%
 # module_persistence$statistic <- module_diversity*module_persistence$relative_persistence
 
 
+
 # Compare edge weight distributions from simulations to empirical --------------------------
 
 # This can be done only after running the section of Experiments in simulated
 # data.
+
+cutoff_prob_empirical <- 0.978
 
 # Get empirical distributions BEFORE CUTOFF
 intralayer_matrices_empirical <- list(empiricalLayer_1, empiricalLayer_2, empiricalLayer_3, empiricalLayer_4,empiricalLayer_5,empiricalLayer_6)
@@ -716,9 +793,9 @@ cutoff_value_empirical <- quantile(empirical_edge_weights$w, probs = cutoff_prob
 
 # Get simulated distributions BEFORE CUTOFF
 experiments <- expand.grid(PS=sprintf('%0.3d', 550:569),
-                           scen=c('S'),
+                           scen=c('S','G','N'),
                            exp=c('003'),
-                           cutoff_prob=0.98, # The value here does not really matter because it is before cutoff. It's for the file names
+                           cutoff_prob=cutoff_prob_empirical, # The value here does not really matter because it is before cutoff. It's for the file names
                            modularity_exp=c(2),
                            stringsAsFactors = F)
 simulated_edge_weights <- c()
@@ -741,12 +818,15 @@ for (i in 1:nrow(experiments)){
   x$modularity_exp <- modularity_exp
   simulated_edge_weights <- rbind(simulated_edge_weights,x)
 }
-
-quantile(simulated_edge_weights$w, probs=seq(0.9,0.99,0.002))
 cutoff_value_simulated <- quantile(simulated_edge_weights$w, probs = cutoff_prob_empirical)
 
-empirical_edge_weights %>% 
-  bind_rows(simulated_edge_weights) %>% 
+quantile(empirical_edge_weights$w, probs=seq(0.97,0.99,0.002))
+quantile(simulated_edge_weights$w, probs=seq(0.97,0.99,0.002))
+
+
+simulated_edge_weights %>% 
+  filter(PS==569) %>% 
+  bind_rows(empirical_edge_weights) %>% 
   filter(w!=0) %>% 
   ggplot(aes(w, fill=scenario))+
   geom_histogram(binwidth=0.02)+
@@ -801,7 +881,7 @@ monitored_variables <- c('prevalence', 'meanMOI','n_circulating_strains', 'n_cir
 exp_colors <- c('gray50','#873600','#16A085')
 
 PS_range <- as.character(500:599)
-cases <- expand.grid(ps=PS_range, scenario='S', exp=c('001','003'), run=1)
+cases <- expand.grid(ps=PS_range, scenario='N', exp=c('001','003'), run=1)
 cases$cutoff_prob <- 0.85 # This is just for fime names. there is no cutoff because there are no modules here.
 exploratory <- c()
 for (i in 1:nrow(cases)){
@@ -912,16 +992,17 @@ for (ps in 500:599){
 
 # Create files to run tests on Midway
 experiments <- expand.grid(PS=sprintf('%0.3d', 550:569),
-                                scen=c('S','G'),
+                                scen=c('N'),
                                 array='1', 
                                 layers='118,126,138,142,154,162',
-                                exp=c('001','003'),
-                                cutoff_prob=seq(0.95,0.98,0.005),
+                                exp=c('003'),
+                                cutoff_prob=seq(0.97,0.99,0.002),
                                 modularity_exp=c(2),
                                 time = '00:15:00',
                                 mem_per_cpu = 3500,
                                 stringsAsFactors = F)
 nrow(experiments)
+system('rm /media/Data/PLOS_Biol/parameter_files/*.sbatch')
 make_sbatch_get_data(sbatch_arguments = experiments,
                      make_networks = F,
                      prepare_infomap = T, # make network is nested in this, so no need to call it
@@ -943,6 +1024,7 @@ for (i in 1:nrow(experiments)){
   modularity_exp <- experiments$modularity_exp[i]
   x <- get_modularity_results(ps,scenario,exp,1,cutoff_prob,folder = paste('/media/Data/PLOS_Biol/Results/',ps,'_',scenario,'_',modularity_exp,'/',sep=''))
   if (!is.null(x)){
+    x <- subset(x, layer<=6)
     x$modularity_exp <- modularity_exp
     module_results_simulations <- rbind(module_results_simulations,x)
   }
@@ -950,14 +1032,22 @@ for (i in 1:nrow(experiments)){
 module_results_simulations <- as.tibble(module_results_simulations)
 module_results_simulations %>% group_by(scenario,PS,exp) %>% summarise(n=n())
 
+module_results_simulations_2 <- module_results_simulations
+module_results_simulations_3 <- module_results_simulations
+
 modsize <- module_results_simulations %>% 
   group_by(scenario,PS,exp,cutoff_prob,module) %>% summarise(size=n())
+png('/media/Data/PLOS_Biol/empirical/simulated_module_example.png',1600,1000,res = 150)
 module_results_simulations %>% 
   filter(exp=='003') %>%
-  filter(PS==569) %>%
+  # filter(scenario=='S') %>% 
+  filter(PS==559) %>%
+  filter(cutoff_prob==0.978) %>% 
   distinct(PS,scenario,cutoff_prob,module, layer) %>% 
   group_by(PS,scenario,cutoff_prob,module) %>% 
   summarise(birth_layer=min(layer),death_layer=max(layer)+1) %>% 
+  # filter(birth_layer==death_layer-1) %>% 
+  # filter(module<100) %>% 
   left_join(modsize) %>% 
   ggplot(aes(xmin=birth_layer, xmax=death_layer, ymin=module, ymax=module,color=size))+
   geom_rect(size=2)+
@@ -965,72 +1055,53 @@ module_results_simulations %>%
   scale_color_viridis_c()+ 
   facet_grid(scenario~cutoff_prob)+
   mytheme
-
-png('/media/Data/PLOS_Biol/empirical/simulated_module_example.png',1600,1000,res = 150)
-module_results_simulations %>% 
-  filter(exp=='003') %>%
-  filter(PS==550) %>%
-  # filter(scenario=='S') %>% 
-  distinct(PS,scenario,cutoff_prob,module, layer) %>% 
-  group_by(PS,scenario,cutoff_prob,module) %>% 
-  summarise(birth_layer=min(layer),death_layer=max(layer)+1) %>% 
-  left_join(modsize) %>% 
-  ggplot(aes(xmin=birth_layer, xmax=death_layer, ymin=module, ymax=module,color=size))+
-  geom_rect(size=2)+
-  # geom_rect(size=2, color=scenario_cols[1])+
-  scale_x_continuous(breaks=1:6)+
-  scale_color_viridis_c()+ 
-  facet_grid(exp~scenario)+
-  mytheme
 dev.off()
 
-
-module_results_simulations %>% 
-  filter(exp=='003') %>%
-  filter(cutoff_prob==0.99) %>% 
-  distinct(PS,scenario,cutoff_prob,module, layer) %>% 
-  group_by(PS,scenario,cutoff_prob,module) %>% 
-  summarise(birth_layer=min(layer),death_layer=max(layer)+1) %>% 
-  left_join(modsize) %>% 
-  ggplot(aes(xmin=birth_layer, xmax=death_layer, ymin=module, ymax=module,color=size))+
-  geom_rect(size=2)+
-  scale_x_continuous(breaks=1:6)+
-  scale_color_viridis_c()+ 
-  facet_wrap(~PS)+
-  mytheme
-
-
-modsize <- module_results_simulations %>% 
-  group_by(scenario,PS,exp,cutoff_prob,layer,module) %>% summarise(size=n())
-modsize %>%
-  filter(PS==550) %>%
-  # filter(exp=='002') %>%
-  ggplot(aes(x=layer,y=size))+
-  geom_bar(aes(fill=as.factor(module)),stat = "identity",position='stack', color='black')+
-  # geom_area(aes(color=as.factor(module), fill=as.factor(module)),position='stack')+
-  facet_grid(exp~scenario)+
-  mytheme+theme(legend.position='none')
+# modsize <- module_results_simulations %>% 
+#   group_by(scenario,PS,exp,cutoff_prob,layer,module) %>% summarise(size=n())
+# modsize %>%
+#   filter(PS==550) %>%
+#   # filter(exp=='002') %>%
+#   ggplot(aes(x=layer,y=size))+
+#   geom_bar(aes(fill=as.factor(module)),stat = "identity",position='stack', color='black')+
+#   # geom_area(aes(color=as.factor(module), fill=as.factor(module)),position='stack')+
+#   facet_grid(exp~scenario)+
+#   mytheme+theme(legend.position='none')
 
 # cutoffs
 # cutoffs <- module_results_simulations %>% distinct(scenario, PS, exp, cutoff_prob, cutoff_value) %>% print(n=Inf)
 
 # Persistence
-module_persistence <- module_results_simulations %>% 
+module_persistence_simulated <- module_results_simulations %>% 
   select(scenario, exp, PS, run, cutoff_prob, layer, module) %>% 
   group_by(scenario, exp, PS,run,cutoff_prob,module) %>% 
-  summarise(birth_layer=min(layer), death_layer=max(layer), persistence=death_layer-birth_layer+1)
-
-# Difference in persistence between 001 and 003
-module_persistence_comparison <- module_persistence %>% group_by(scenario,exp,cutoff_prob,persistence) %>% summarise(persistence_total=n())
-total_modules <- module_persistence %>% group_by(scenario, exp, cutoff_prob) %>% summarise(n_modules=length(module))
-module_persistence_comparison %>% 
+  summarise(birth_layer=min(layer), death_layer=max(layer), persistence=death_layer-birth_layer+1) %>% 
+  group_by(scenario,exp,cutoff_prob,persistence) %>% 
+  summarise(persistence_total=n()) # Total number of modules across PS with a given persistence
+total_modules <- module_persistence_simulated %>% group_by(scenario, exp, cutoff_prob) %>% summarise(n_modules=sum(persistence_total))
+module_persistence_simulated %<>% 
   left_join(total_modules) %>% 
-  mutate(prop=persistence_total/n_modules) %>% 
+  mutate(prop=persistence_total/n_modules)
+
+# Compare persistence of simulations to empirical
+module_persistence_empirical %>% 
+  mutate(exp='003') %>% 
+  bind_rows(module_persistence_simulated) %>% 
+  ggplot(aes(x=persistence, y=prop, fill=scenario))+
+  geom_col(position='dodge')+
+  facet_wrap(~cutoff_prob)+
+  scale_x_continuous(breaks=1:6, labels=1:6)+
+  scale_fill_manual(values = c('purple','blue','red'))
+
+
+# Compare between scenarios by calculating difference from control
+module_persistence_simulated %>% 
   group_by(scenario,cutoff_prob, persistence) %>% summarize(d=prop[2]-prop[1]) %>% 
   ggplot(aes(x=persistence, y=d, fill=scenario))+
   geom_col(position = 'dodge')+
   facet_wrap(~cutoff_prob)+
-  geom_hline(yintercept = 0)
+  scale_fill_manual(values = c('blue','red'))+
+  geom_hline(yintercept = 0)+mytheme
 
 
 
@@ -1121,6 +1192,42 @@ ggsurvplot_facet(fit, data=x, facet.by = 'exp', conf.int = TRUE)
 dev.off()
 
 # +scale_color_manual(values=c('blue','orange','red'))
+
+
+# Plot layers -------------------------------------------------------------
+plotSurveyLayer <- function(x, zeroDiag=T, cutoff_g=NULL){
+  if ("data.frame"%in%class(x)){
+    g <- graph.data.frame(x)
+    E(g)$weight <- E(g)$w
+  }
+  if('matrix' %in% class(x)){
+    if(zeroDiag){diag(x) <- 0}
+    g <- graph.adjacency(x, mode = 'directed', weighted = T, diag = F)
+  }
+  if(!is.null(cutoff_g)){g <- delete_edges(g, which(E(g)$weight<quantile(E(g)$weight, cutoff_g)))} # remove all edges smaller than the cutoff
+  plot(g, 
+       vertex.color='#8F25DD',
+       vertex.size=6,
+       vertex.label=NA,
+       # edge.arrow.mode='-', 
+       edge.arrow.width=1,
+       edge.arrow.size=0.2,
+       edge.curved=0.5, 
+       edge.width=E(g)$weight*10)  
+}
+
+plotSurveyLayer(empiricalLayer_1, cutoff_g = 0.978)
+plotSurveyLayer(empiricalLayer_2, cutoff_g = 0.978)
+plotSurveyLayer(empiricalLayer_1, cutoff_g = 0.99)
+plotSurveyLayer(empiricalLayer_1, cutoff_g = 0.99)
+plotSurveyLayer(empiricalLayer_1, cutoff_g = 0.99)
+
+x <- read_delim('/media/Data/PLOS_Biol/Results/555_S_2/PS555_S_E003_R1_0.97_Infomap_multilayer.txt', col_names = c('layer_s','node_s','layer_t','node_t','w'), delim=' ')
+x %<>% filter(node_s!=node_t, layer_s==layer_t) %>% 
+  filter(layer_s==2) %>% 
+  select(node_s,node_t,w)
+plotSurveyLayer(x)
+
 
 
 # Distribution of repertoire persistence ----------------------------------
