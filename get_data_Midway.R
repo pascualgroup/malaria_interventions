@@ -22,7 +22,8 @@ cutoff_prob <- as.numeric(args[4])
 layers <- as.character(args[5]) # Layers can be in a 1:300 format for a sequence or in a '118,126,138,142,154,162' format for separate layers.
 task <- as.character(args[6]) # Can be: make_networks | prepare_infomap | read_infomap_results | temporal_diversity | module_Fst
 modularity_exp <-  as.numeric(args[7]) # 0: not comparing to empirical; 1: genes+MOI=1; 2: alleles+MOI=1; 3: alleles, all repertoires; 4: genes, all repertoires
-
+write_edge_weights <- as.character(args[8]) # Should write the edge weights before cutoff?
+  
 if (str_detect(layers,'\\:')){
   layers <- seq(str_split(layers,'\\:')[[1]][1],str_split(layers,'\\:')[[1]][2],1)
 } else {
@@ -99,7 +100,7 @@ make_network <- function(unit_for_edges, repertoires_to_sample, write_to_files, 
 }
 
 if (task=='make_networks'){
-  make_network(unit_for_edges = 'alleles', repertoires_to_sample = NULL, write_to_files = F, write_edge_weights = T)
+  make_network(unit_for_edges = 'alleles', repertoires_to_sample = NULL, write_to_files = F, write_edge_weights = write_edge_weights)
 }
 
 
@@ -181,21 +182,21 @@ if (task=='repertoire_persistence'){
 if (task=='prepare_infomap'){
 
   if (modularity_exp==0){
-    network <- make_network(unit_for_edges = 'alleles', repertoires_to_sample = NULL, write_to_files = F, write_edge_weights = F) # First make the network
+    network <- make_network(unit_for_edges = 'alleles', repertoires_to_sample = NULL, write_to_files = F, write_edge_weights = write_edge_weights) # First make the network
   }
   if (modularity_exp==1){
-    network <- make_network(unit_for_edges = 'genes', repertoires_to_sample = c(90,68,69,52,115,44), write_to_files = F, write_edge_weights = T) # First make the network
+    network <- make_network(unit_for_edges = 'genes', repertoires_to_sample = c(90,68,69,52,115,44), write_to_files = F, write_edge_weights = write_edge_weights) # First make the network
     # network <- make_network(unit_for_edges = 'genes', repertoires_to_sample = c(90,66,65,55), write_to_files = T, write_edge_weights = T) # First make the network
   }
   if (modularity_exp==2){
     # network <- make_network(unit_for_edges = 'alleles', repertoires_to_sample = c(98,68,69,52), write_to_files = T, write_edge_weights = T) # First make the network
-    network <- make_network(unit_for_edges = 'alleles', repertoires_to_sample = c(90,68,69,52,115,44), write_to_files = F, write_edge_weights = T) # First make the network
+    network <- make_network(unit_for_edges = 'alleles', repertoires_to_sample = c(90,68,69,52,115,44), write_to_files = F, write_edge_weights = write_edge_weights) # First make the network
   }
   if (modularity_exp==3){
-    network <- make_network(unit_for_edges = 'alleles', repertoires_to_sample = NULL, write_to_files = F, write_edge_weights = T) # First make the network
+    network <- make_network(unit_for_edges = 'alleles', repertoires_to_sample = NULL, write_to_files = F, write_edge_weights = write_edge_weights) # First make the network
   }
   if (modularity_exp==4){
-    network <- make_network(unit_for_edges = 'genes', repertoires_to_sample = NULL, write_to_files = F, write_edge_weights = T) # First make the network
+    network <- make_network(unit_for_edges = 'genes', repertoires_to_sample = NULL, write_to_files = F, write_edge_weights = write_edge_weights) # First make the network
   } 
   
   print('Building Infomap objects...')

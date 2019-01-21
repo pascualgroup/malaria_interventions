@@ -24,6 +24,7 @@ cutoff_prob=XXX
 base_folder='/scratch/midway2/pilosofs/PLOS_Biol/' # Where all the source files are and where the experiment folders will be created
 modularity_exp='XXX'
 
+
 # Set up
 prog='get_data_Midway.R'
 cd $base_folder # Go to base folder

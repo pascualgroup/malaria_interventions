@@ -685,7 +685,7 @@ make_sbatch_get_data <- function(sbatch_arguments,
                                  read_infomap_results=F,
                                  temporal_diversity=F,
                                  module_Fst=F,
-                                 run_experiments_file='/media/Data/PLOS_Biol/parameter_files/run_experiments.sh') {
+                                 run_experiments_file='/media/Data/PLOS_Biol/parameter_files/run_experiments') {
   
   if (detect_locale()=='Lab'){
     setwd('/home/shai/Documents/malaria_interventions')
@@ -704,16 +704,17 @@ make_sbatch_get_data <- function(sbatch_arguments,
     e <- sbatch_arguments$exp[i]
     modularity_exp <- sbatch_arguments$modularity_exp[i]
     cutoff_prob <- sbatch_arguments$cutoff_prob[i]
+    write_edge_weights <- sbatch_arguments$write_edge_weights[i]
     if (detect_locale()=='Lab'){
       x <- readLines('~/Documents/malaria_interventions/PLOS_Biol/get_data_midway_plosbiol.sbatch')
     }
     if (detect_locale()=='Mac'){
       x <- readLines('~/GitHub/malaria_interventions/PLOS_Biol/get_data_midway_plosbiol.sbatch')
     }
-    str_sub(x[2],20,22) <- paste(ps,scenario,e,sep='')
+    str_sub(x[2],20,22) <- paste(ps,scenario,e,cutoff_prob,sep='')
     str_sub(x[3],16,18) <- sbatch_arguments$time[i]
-    str_sub(x[4],31,33) <- paste(ps,scenario,e,sep='')
-    str_sub(x[5],30,32) <- paste(ps,scenario,e,sep='')
+    str_sub(x[4],31,33) <- paste(ps,scenario,e,cutoff_prob,sep='')
+    str_sub(x[5],30,32) <- paste(ps,scenario,e,cutoff_prob,sep='')
     str_sub(x[6],17,20) <- sbatch_arguments$array[i]
     str_sub(x[9],23,25) <- sbatch_arguments$mem_per_cpu[i]
     str_sub(x[19],5,7) <- ps
@@ -722,34 +723,37 @@ make_sbatch_get_data <- function(sbatch_arguments,
     str_sub(x[22],9,11) <- sbatch_arguments$layers[i]
     str_sub(x[23],13,16) <- cutoff_prob
     str_sub(x[25],17,19) <- modularity_exp
-    
+    x[26] <- paste("write_edge_weights=",write_edge_weights,sep='')
     x[length(x)+1] <- ""
-    if (make_networks){x[length(x)+1] <- "Rscript $prog $PS $scenario $exp $cutoff_prob $layers 'make_networks' $modularity_exp"}
-    if (repertoire_persistence){x[length(x)+1] <- "Rscript $prog $PS $scenario $exp $cutoff_prob $layers 'repertoire_persistence' $modularity_exp"}
-    if (prepare_infomap){x[length(x)+1] <- "Rscript $prog $PS $scenario $exp $cutoff_prob $layers 'prepare_infomap' $modularity_exp"}
+    if (make_networks){x[length(x)+1] <- "Rscript $prog $PS $scenario $exp $cutoff_prob $layers 'make_networks' $modularity_exp $write_edge_weights"}
+    if (repertoire_persistence){x[length(x)+1] <- "Rscript $prog $PS $scenario $exp $cutoff_prob $layers 'repertoire_persistence' $modularity_exp $write_edge_weights"}
+    if (prepare_infomap){x[length(x)+1] <- "Rscript $prog $PS $scenario $exp $cutoff_prob $layers 'prepare_infomap' $modularity_exp $write_edge_weights"}
     if (run_Infomap){x[length(x)+1] <- "infomap_name='PS'$PS'_'$scenario'_E'$exp'_R'$SLURM_ARRAY_TASK_ID'_'$cutoff_prob'_Infomap_multilayer'"}
     if (run_Infomap){x[length(x)+1] <- "./Infomap_v01926 $infomap_name'.txt' . -i multilayer -d -N 10 --rawdir --two-level --tree --expanded"}
-    if (read_infomap_results){x[length(x)+1] <- "Rscript $prog $PS $scenario $exp $cutoff_prob $layers 'read_infomap_results' $modularity_exp"}
-    if (temporal_diversity){x[length(x)+1] <- "Rscript $prog $PS $scenario $exp $cutoff_prob $layers 'temporal_diversity' $modularity_exp"}
-    if (module_Fst){x[length(x)+1] <- "Rscript $prog $PS $scenario $exp $cutoff_prob $layers 'module_Fst' $modularity_exp"}
+    if (read_infomap_results){x[length(x)+1] <- "Rscript $prog $PS $scenario $exp $cutoff_prob $layers 'read_infomap_results' $modularity_exp $write_edge_weights"}
+    if (temporal_diversity){x[length(x)+1] <- "Rscript $prog $PS $scenario $exp $cutoff_prob $layers 'temporal_diversity' $modularity_exp $write_edge_weights"}
+    if (module_Fst){x[length(x)+1] <- "Rscript $prog $PS $scenario $exp $cutoff_prob $layers 'module_Fst' $modularity_exp $write_edge_weights"}
     
     writeLines(x, paste(parameter_files_path_global,'/','PS',ps,'_',scenario,'_','E',e,'_',cutoff_prob,'_',modularity_exp,'_get_data_midway.sbatch',sep=''))
   }
   # Write a file to execute all the sbatch files
-  sink(run_experiments_file)
-  for (i in 1:nrow(sbatch_arguments)){
-    ps <- sbatch_arguments$PS[i]
-    scenario <- sbatch_arguments$scen[i]
-    cutoff_prob <- sbatch_arguments$cutoff_prob[i]
-    exp <- sbatch_arguments$exp[i]
-    modularity_exp <- sbatch_arguments$modularity_exp[i]
-    if ('after_job'%in%names(sbatch_arguments)){
-      cat('sbatch -d afterok:',sbatch_arguments$after_job[i], ' PS',ps,'_',scenario,'_','E',exp,'_',cutoff_prob,'_',modularity_exp,'_get_data_midway.sbatch',sep='');cat('\n')
-    } else {
-      cat('sbatch PS',ps,'_',scenario,'_','E',exp,'_',cutoff_prob,'_',modularity_exp,'_get_data_midway.sbatch',sep='');cat('\n')
+  chunks <- split(1:nrow(sbatch_arguments), ceiling(seq_along(1:nrow(sbatch_arguments))/500))
+  for (ch in 1:length(chunks)){
+    sink(paste(run_experiments_file,'_',ch,'.sh',sep=''))    
+    for (i in chunks[[ch]]){
+      ps <- sbatch_arguments$PS[i]
+      scenario <- sbatch_arguments$scen[i]
+      cutoff_prob <- sbatch_arguments$cutoff_prob[i]
+      exp <- sbatch_arguments$exp[i]
+      modularity_exp <- sbatch_arguments$modularity_exp[i]
+      if ('after_job'%in%names(sbatch_arguments)){
+        cat('sbatch -d afterok:',sbatch_arguments$after_job[i], ' PS',ps,'_',scenario,'_','E',exp,'_',cutoff_prob,'_',modularity_exp,'_get_data_midway.sbatch',sep='');cat('\n')
+      } else {
+        cat('sbatch PS',ps,'_',scenario,'_','E',exp,'_',cutoff_prob,'_',modularity_exp,'_get_data_midway.sbatch',sep='');cat('\n')
+      }
     }
+    sink.reset()
   }
-  sink.reset()
 }
 
 # Plotting ----------------------------------------------------------------

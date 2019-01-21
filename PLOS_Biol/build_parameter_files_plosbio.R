@@ -233,9 +233,12 @@ files_py %>% filter(scenario=='G') %>% filter(as.numeric(PS)>=27) %>% distinct(P
 
 cutoff_design <- expand.grid(PS=sprintf('%0.2d', 5),
                              scenario=c('S','G','N'),
-                             cutoff_prob=seq(0.25,0.95,0.05),
-                             array='11-50',
-                             calculate_mFst=F,
+                             exp='001',
+                             cutoff_prob=c(0.4,0.85),
+                             modularity_exp=0,
+                             array='1',
+                             layers='1:300',
+                             write_edge_weights=T,
                              stringsAsFactors = F)
 cutoff_design$job_name <- paste(cutoff_design$PS, cutoff_design$scenario,'_',cutoff_design$cutoff_prob,sep='')
 cutoff_design$job_name <- gsub('\\.','',cutoff_design$job_name)
@@ -252,7 +255,18 @@ for (i in 1:nrow(cutoff_design)){
   if(cutoff_design[i,'cutoff_prob']>0.8 & cutoff_design[i,'PS']!='06'){cutoff_design$time[i] <- '10:00:00'}
 }
 
-#Use function make_sbatch_get_data()
+cutoff_design$mem_per_cpu <- 12000
+cutoff_design$time <- '04:00:00'
+system('rm /media/Data/PLOS_Biol/parameter_files/*.sbatch')
+system('rm /media/Data/PLOS_Biol/parameter_files/*.sh')
+make_sbatch_get_data(sbatch_arguments = cutoff_design,
+  make_networks=F,
+  repertoire_persistence=F,
+  prepare_infomap=T,
+  run_Infomap=T,
+  read_infomap_results=T,
+  temporal_diversity=T,
+  module_Fst=T)
 
 
 
@@ -261,15 +275,19 @@ for (i in 1:nrow(cutoff_design)){
 # Creating these files can be tricky. Pay carefult attention to combinations of
 # PS, scenario, experiment and cutoffs in the resulting sbatch files!!!
 
-sbatch_arguments <- expand.grid(PS=sprintf('%0.2d', 4:6),
+sbatch_arguments <- expand.grid(PS=sprintf('%0.2d', 5),
                                 scen=c('S','N','G'),
-                                array='11-50', 
+                                array='1', 
                                 layers='1:300',
                                 exp=c('001'),
                                 stringsAsFactors = F)
 sbatch_arguments$cutoff_prob <- rep(c(0.3,0.6,0.85),3)
 sbatch_arguments$mem_per_cpu <- rep(c(6000,12000,32000),3)
 sbatch_arguments$time <- rep(c('04:00:00','05:00:00','10:00:00'),3)
+
+sbatch_arguments$cutoff_prob <- 0.85
+sbatch_arguments$mem_per_cpu <- 12000
+sbatch_arguments$time <- '06:00:00'
 
 # sbatch_arguments <- subset(sbatch_arguments, scen=='G'&PS=='06')
 
