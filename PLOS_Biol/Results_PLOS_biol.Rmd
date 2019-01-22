@@ -1,0 +1,165 @@
+---
+title: "Manuscript Results"
+author: "Shai Pilosof"
+date: "January 18, 2019"
+output:
+  html_document: 
+    fig_height: 8
+    fig_width: 12
+---
+
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(
+	echo = FALSE,
+	message = FALSE,
+	warning = FALSE
+)
+knitr::opts_knit$set(root.dir = "/media/Data/PLOS_Biol/")
+knitr:::read_chunk('~/Documents/malaria_interventions/PLOS_Biol/Results_PLOS_biol.R')
+```
+
+```{r Initialize AND LOAD FUNCTIONS, cache=TRUE, include=FALSE}
+<<Initialize>>
+```
+
+```{r LOAD PACKAGES, include=FALSE, echo=FALSE}
+library(tidyverse)
+library(magrittr)
+library(sqldf)
+library(igraph)
+library(data.table)
+library(googlesheets)
+library(utils)
+library(cowplot)
+library(grid)
+library(gridExtra)
+```
+
+
+# 1. Benchmark simulations
+
+* Goal: Examine the persistence of modules in the three scenarios.
+
+## 1.1 Design
+
+The design of the experiments (table with parameters) can be found [here](https://docs.google.com/spreadsheets/d/1OgWI-aBrAkT7gW2lbIBxsgRdyWgYO-9mNV6n3dtclTg/edit?usp=sharing). But here is a brief description.
+
+|PS | N_GENES_INITIAL | BITING_RATE_MEAN | N_LOCI | N_ALLELES_INITIAL|
+|---|-----------------|-----------------|--------|-------------------|
+|04 |   120           |      0.1        |   2    | 12                |
+|05 |   1200          |      0.2        |   2    | 120               |  
+|06 |   12000         |      0.5        |   2    | 1200              |
+
+* **PS**: parameter space: 04,05,06 for low, medium, high diversity. These are the different diversity regimes.
+* **exp**: 000 is to run to checkpoint; 001 is the experiment itself (no seasonality)
+
+50 runs for each parameter space
+
+## 1.2 Regime description
+
+```{r diversity_regime_description AND LOAD FUNCTIONS, echo=FALSE, message=FALSE, warning=FALSE, cache=TRUE}
+<<diversity_regime_description>>
+```
+
+
+## Cutoff (SELECTION)
+Cutoff is based on the selection case. We chose cutoffs of 0.3,0.6 and 0.85 for low, medium, high.
+
+![](/media/Data/PLOS_Biol/Results/Fig_SI_cutoff_S.png)
+
+### Examples for modules
+![](/media/Data/PLOS_Biol/Results/Fig_SI_cutoff_S_modules.png)
+
+## Modules
+
+* Panels A-C depict a typical run of the ABM
+* Panels D-F: relative persistence of modules vs repertoires
+* Panels G-I: Temporal diversity, calculated as the normalized diversity of a module times relative persistence. This gives a value between 0-1, where 1 is highly diverse and highly persistent.
+
+### High diversity
+
+![](/media/Data/PLOS_Biol/Results/Fig2_PS06.png)
+
+### Medium diversity
+
+![](/media/Data/PLOS_Biol/Results/Fig2_PS05.png)
+
+### Low diversity
+
+![](/media/Data/PLOS_Biol/Results/Fig2_PS04.png)
+
+## Sensitivity
+For high diversity, we ran 84 simulations with variation in 3 main parameters:
+
+* Genetic pool: 10000 to 16000. Main analysis was 12000
+* Mean biting rate: 0.3,0.4,0.5. Main analysis is 0.5
+* Naive doi: 180,300,420 and 540 days. Main analysis is 360 days
+
+The figure shows a comparison between the main result and the sensitivity simulations for relative persistence (A) and temproal diversity (B).
+![](/media/Data/PLOS_Biol/Results/Fig_SI_sesitivity_selection.png)
+
+# 2. Seasonality
+In this seasonality regime we tried to match the EIR to that in Ghana. A 5-fold increae between dryand wet seasons. We used a gene pool of 35000 to get close to what we see in the data (~50,000). We only did this for high diversity because for low/medium we would need to change the mosquito dynamics and this is beyond the scope.
+
+![](/media/Data/PLOS_Biol/Results/Fig_SI_seasonality_EIR.png)
+
+## Regime description
+
+![](/media/Data/PLOS_Biol/Results/Fig_SI_seasonality_variables.png)
+
+## Modules
+
+![](/media/Data/PLOS_Biol/Results/Fig2_PS18.png)
+
+
+
+## Time series
+
+### Repertoires
+
+![](/media/Data/PLOS_Biol/Results/Fig2_PS18_time_series_repertoires.png)
+
+### Modules
+
+![](/media/Data/PLOS_Biol/Results/Fig2_PS18_time_series_modules.png)
+
+# 3. Epidemiological simulations
+
+* We use alleles, instead of genes.
+* The EIR in the N scenario is 4 times higher than that of S or G. That explains the excess in number of infections.
+* I fit an exponential curve of the form  $d=ae^{(-b_i)}$, where i is the number of infection and d is the duration, to the first 50 infections. Compared to S, the accumulation of immunity is 28% and 15% faster in the G and N scenarios, respetively.
+* I use the curve fits to calculate the doi of a new infection in a 5-months old baby. The number of infections in 5 months depends on the EIR. the doi is 162, 130 and 6 days in the S, G and N scenarios, respectively.
+
+![](/media/Data/PLOS_Biol/Results/Fig_4_epi.png)
+
+
+# 4. Empirical data
+
+We compare to 100 simulations that encompass the parameter space of the empirical data and mimic the IRS.
+
+
+## Persistence in empirical data
+
+Based on this analysis I selected a cutoff quantile of 0.978
+
+![](/media/Data/PLOS_Biol/Results/empirical_persistence_cutoff.png)
+
+## Comparison to simulations
+
+First we compare the distribution of edge weights. We select a cutoff value based on the 0.978 percentile.
+
+![/media/Data/PLOS_Biol/Results/empirical_simulated_edge_weight_comparison.png](/media/Data/PLOS_Biol/Results/empirical_simulated_edge_weight_comparison.png)
+
+Then we can see the persistence of modules in simulated data.
+
+![/media/Data/PLOS_Biol/Results/empirical_simulated_module_persistence.png](/media/Data/PLOS_Biol/Results/empirical_simulated_module_persistence.png)
+
+### Survival probability
+
+* For the modules that were born in the first 3 layers, we calculate **the probability that they survive for at least 3 layers**. That is, an event is defined if a module's persistence is >3.
+* We test this with a logistic regression of the form: $event=\beta_0+\beta_1x_1+\beta_2x_2+\beta_3x_3$, where $\beta_0$ is the log-odds of the empirical data and the other coefficients are for the 3 scenarios.
+* A Wald-test shows that the coefficients of S and G are significantly different.
+
+
+
