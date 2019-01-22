@@ -10,7 +10,7 @@ library(utils, quietly = T, warn.conflicts = F)
 
 
 if (length(commandArgs(trailingOnly=TRUE))==0) {
-  args <- c('S','001')
+  args <- c()
 } else {
   args <- commandArgs(trailingOnly=TRUE)
 }
@@ -19,7 +19,7 @@ PS <- str_pad(PS, 2, 'left', '0')
 scenario <- as.character(args[1]) 
 exp <- as.character(args[2]) 
 
-print(paste(PS,scenario,exp,sep=' | '))
+print(paste(PS,scenario,exp,' | '))
 
 experiments <- as.tibble(expand.grid(PS=PS,
                            scenario=scenario, 
@@ -27,9 +27,13 @@ experiments <- as.tibble(expand.grid(PS=PS,
                            run=1:50,
                            stringsAsFactors = F))
 cutoff_df <- tibble(PS=sprintf('%0.2d', c(4:6,18)),
-                    cutoff_prob=c(0.3,0.6,0.85,0.85)
-                    )
-cutoff_df$folder <- paste('/scratch/midway2/pilosofs/PLOS_Biol/Results/',cutoff_df$PS,'_',scenario,'/',sep='')
+                    cutoff_prob=c(0.3,0.6,0.85,0.85),
+                    folder=c(
+                      '/scratch/midway2/pilosofs/PLOS_Biol/Results/cutoff_to_use/',
+                      '/scratch/midway2/pilosofs/PLOS_Biol/Results/cutoff_to_use/',
+                      '/scratch/midway2/pilosofs/PLOS_Biol/Results/cutoff_to_use/',
+                      paste('/scratch/midway2/pilosofs/PLOS_Biol/Results/18_',scenario,'/',sep='')
+                    ))
 print(cutoff_df)
 
 experiments <- experiments %>% left_join(cutoff_df)
