@@ -112,7 +112,7 @@ regime_summary_data %>%
 # Module examples, Relative persistence, Temporal Diversity, mFst.
 # Number of repertoires per module is not so useful.
 
-PS_for_figure <- '18'
+PS_for_figure <- '06'
 module_results <- persistence_df <- temporal_diversity <- mFst <- c()
 experiments <- subset(all_experiments, PS==PS_for_figure)
 exp <- experiments$exp[1]
@@ -178,98 +178,190 @@ panel_D <- persistence_df %>%
   ggplot()+
   geom_density(data=subset(persistence_df, type=='Repertoire' & scenario=='S'), aes(relative_persistence),fill='gray')+
   geom_density(data=subset(persistence_df, type=='Module' & scenario=='S'), aes(relative_persistence), fill=scenario_cols[1])+
-  manuscript_theme+theme(axis.title = element_blank())
+  manuscript_theme+theme(axis.title = element_blank(),panel.grid = element_blank())
+panel_D_inset <- persistence_df %>% 
+  filter(scenario=='S') %>% 
+  mutate(type=ifelse(type=='Module','M','R')) %>% 
+  ggplot(aes(x=type, group=type, y=relative_persistence, fill=type))+
+  geom_boxplot(outlier.size = 0, size=0.3)+
+  facet_grid(~scenario)+
+  scale_fill_manual(values = c(scenario_cols[1],'gray'))+
+  labs(x='', y='Relative persistence')+
+  manuscript_theme+theme(panel.grid = element_blank())
+panel_D <- panel_D+annotation_custom(grob=ggplotGrob(panel_D_inset), xmin=0.3,xmax=1,ymin=30,ymax=60)
+
 panel_E <- persistence_df %>%
   ggplot()+
   geom_density(data=subset(persistence_df, type=='Repertoire' & scenario=='G'), aes(relative_persistence),fill='gray')+
   geom_density(data=subset(persistence_df, type=='Module' & scenario=='G'), aes(relative_persistence), fill=scenario_cols[2])+
-  manuscript_theme+theme(axis.title = element_blank())
+  manuscript_theme+theme(axis.title = element_blank(),panel.grid = element_blank())
+panel_E_inset <- persistence_df %>% 
+  filter(scenario=='G') %>% 
+  mutate(type=ifelse(type=='Module','M','R')) %>% 
+  ggplot(aes(x=type, group=type, y=relative_persistence, fill=type))+
+  geom_boxplot(outlier.size = 0, size=0.3)+
+  facet_grid(~scenario)+
+  scale_fill_manual(values = c(scenario_cols[2],'gray'))+
+  labs(x='', y='Relative persistence')+
+  manuscript_theme+theme(panel.grid = element_blank())
+panel_E <- panel_E+annotation_custom(grob=ggplotGrob(panel_E_inset), xmin=0.3,xmax=1,ymin=34,ymax=68)
+
 panel_F <- persistence_df %>%
   ggplot()+
   geom_density(data=subset(persistence_df, type=='Repertoire' & scenario=='N'), aes(relative_persistence),fill='gray')+
   geom_density(data=subset(persistence_df, type=='Module' & scenario=='N'), aes(relative_persistence), fill=scenario_cols[3])+
-  manuscript_theme+theme(axis.title = element_blank())
+  manuscript_theme+theme(axis.title = element_blank(),panel.grid = element_blank())
+panel_F_inset <- persistence_df %>% 
+  filter(scenario=='N') %>% 
+  mutate(type=ifelse(type=='Module','M','R')) %>% 
+  ggplot(aes(x=type, group=type, y=relative_persistence, fill=type))+
+  geom_boxplot(outlier.size = 0, size=0.3)+
+  facet_grid(~scenario)+
+  scale_fill_manual(values = c(scenario_cols[3],'gray'))+
+  labs(x='', y='Relative persistence')+
+  manuscript_theme+theme(panel.grid = element_blank())
+panel_F <- panel_F+annotation_custom(grob=ggplotGrob(panel_F_inset), xmin=0.3,xmax=1,ymin=80,ymax=160)
+
 Fig <- plot_grid(panel_D,panel_E,panel_F, labels=c('D','E','F'), ncol=3, align='vh', label_size = 18, scale=0.95)
 y.grob <- textGrob("Density", gp=gpar(fontface="bold", col="black", fontsize=16), rot=90)
 x.grob <- textGrob("Relative persistence", gp=gpar(fontface="bold", col="black", fontsize=16), vjust = -0.8)
 Fig_2DEF <- grid.arrange(arrangeGrob(Fig, left = y.grob, bottom = x.grob))
 
-
-panel_G <- temporal_diversity %>% 
-  filter(scenario=='S') %>% 
-  ggplot()+
-  geom_density(aes(statistic), fill=scenario_cols[1])+
-  manuscript_theme+theme(axis.title = element_blank())
-panel_H <- temporal_diversity %>% 
-  filter(scenario=='G') %>% 
-  ggplot()+
-  geom_density(aes(statistic), fill=scenario_cols[2])+
-  manuscript_theme+theme(axis.title = element_blank())
-panel_I <- temporal_diversity %>% 
-  filter(scenario=='N') %>% 
-  ggplot()+
-  geom_density(aes(statistic), fill=scenario_cols[3])+
-  manuscript_theme+theme(axis.title = element_blank())
-Fig <- plot_grid(panel_G,panel_H,panel_I, labels=c('G','H','I'), ncol=3, align='vh', label_size = 18, scale=0.95)
-y.grob <- textGrob("Density", gp=gpar(fontface="bold", col="black", fontsize=16), rot=90)
-x.grob <- textGrob("Temporal diversity", gp=gpar(fontface="bold", col="black", fontsize=16), vjust = -0.8)
-Fig_2GHI <- grid.arrange(arrangeGrob(Fig, left = y.grob, bottom = x.grob))
-
-
-panel_J <- mFst  %>% 
-  filter(scenario=='S') %>% 
-  ggplot()+
-  geom_density(aes(mFst), fill=scenario_cols[1])+
-  manuscript_theme+theme(axis.title = element_blank())
-panel_K <- mFst %>% 
-  filter(scenario=='G') %>% 
-  ggplot()+
-  geom_density(aes(mFst), fill=scenario_cols[2])+
-  manuscript_theme+theme(axis.title = element_blank())
-panel_L <- mFst %>% 
-  filter(scenario=='N') %>% 
-  ggplot()+
-  geom_density(aes(mFst), fill=scenario_cols[3])+
-  manuscript_theme+theme(axis.title = element_blank())
-Fig <- plot_grid(panel_J,panel_K,panel_L, labels=c('J','K','L'), ncol=3, align='vh', label_size = 18, scale=0.95)
-y.grob <- textGrob("Density", gp=gpar(fontface="bold", col="black", fontsize=16), rot=90)
-x.grob <- textGrob("mFst", gp=gpar(fontface="bold", col="black", fontsize=16), vjust = -0.8)
-Fig_2JKL <- grid.arrange(arrangeGrob(Fig, left = y.grob, bottom = x.grob))
-
-
-title <- ggdraw() + draw_label("High diversity", size=20)
 dev.off()
-dev.off()
-pdf('Results/Fig2_PS06.pdf', 16,12)
-plot_grid(title, Fig_2ABC,Fig_2DEF,Fig_2GHI, nrow=4, align='vh', rel_heights = c(0.096,0.32,0.32,0.32))
-# plot_grid(Fig_2JKL)
-dev.off()
-
-png('Results/Fig2_PS18.png', 1600,1200, res = 150)
-plot_grid(Fig_2ABC,Fig_2DEF,Fig_2GHI, nrow=3, align='vh')
+png('/home/shai/Dropbox/PLoS Biol/Fig_structure_high.png', 4480*1.5,4490*1.5,units = 'px', res = 600)
+pdf('/home/shai/Dropbox/PLoS Biol/Fig_structure_high.pdf', 16,12)
+# svg('/home/shai/Dropbox/PLoS Biol/Fig_structure_high.svg', 10.66667,8)
+plot_grid(Fig_2ABC,Fig_2DEF, nrow=2, align='vh')
 dev.off()
 
 
+# temporal_diversity$temp_div2 <- temporal_diversity$D/temporal_diversity$relative_persistence
+# panel_G <- temporal_diversity %>%
+#   filter(scenario=='S') %>%
+#   ggplot()+
+#   geom_density(aes(temp_div2), fill=scenario_cols[1])+
+#   manuscript_theme+theme(axis.title = element_blank())
+# panel_H <- temporal_diversity %>%
+#   filter(scenario=='G') %>%
+#   ggplot()+
+#   geom_density(aes(temp_div2), fill=scenario_cols[2])+
+#   manuscript_theme+theme(axis.title = element_blank())
+# panel_I <- temporal_diversity %>%
+#   filter(scenario=='N') %>%
+#   ggplot()+
+#   geom_density(aes(temp_div2), fill=scenario_cols[3])+
+#   manuscript_theme+theme(axis.title = element_blank())
+# Fig <- plot_grid(panel_G,panel_H,panel_I, labels=c('G','H','I'), ncol=3, align='vh', label_size = 18, scale=0.95)
+# # y.grob <- textGrob("Density", gp=gpar(fontface="bold", col="black", fontsize=16), rot=90)
+# x.grob <- textGrob("Temporal diversity", gp=gpar(fontface="bold", col="black", fontsize=16), vjust = -0.8)
+# Fig_2GHI <- grid.arrange(arrangeGrob(Fig, left = y.grob, bottom = x.grob))
+# 
+# 
+# panel_J <- mFst  %>% 
+#   filter(scenario=='S') %>% 
+#   ggplot()+
+#   geom_density(aes(mFst), fill=scenario_cols[1])+
+#   manuscript_theme+theme(axis.title = element_blank())
+# panel_K <- mFst %>% 
+#   filter(scenario=='G') %>% 
+#   ggplot()+
+#   geom_density(aes(mFst), fill=scenario_cols[2])+
+#   manuscript_theme+theme(axis.title = element_blank())
+# panel_L <- mFst %>% 
+#   filter(scenario=='N') %>% 
+#   ggplot()+
+#   geom_density(aes(mFst), fill=scenario_cols[3])+
+#   manuscript_theme+theme(axis.title = element_blank())
+# Fig <- plot_grid(panel_J,panel_K,panel_L, labels=c('J','K','L'), ncol=3, align='vh', label_size = 18, scale=0.95)
+# y.grob <- textGrob("Density", gp=gpar(fontface="bold", col="black", fontsize=16), rot=90)
+# x.grob <- textGrob("mFst", gp=gpar(fontface="bold", col="black", fontsize=16), vjust = -0.8)
+# Fig_2JKL <- grid.arrange(arrangeGrob(Fig, left = y.grob, bottom = x.grob))
 
-# Box plots
-png('Results/Fig2_PS06_relative_persistence.png', 800,400)
-persistence_df %>% 
-  ggplot(aes(x=type, group=type, y=relative_persistence, fill=scenario))+
-  geom_boxplot(alpha=0.8)+
-  facet_grid(~scenario)+
-  scale_fill_manual(values = scenario_cols)+
-  labs(x='', y='Relative persistence', title='High diversity')+
-  manuscript_theme
+
+# title <- ggdraw() + draw_label("High diversity", size=20)
+# dev.off()
+# dev.off()
+# pdf('Results/Fig2_PS06.pdf', 16,12)
+# plot_grid(title, Fig_2ABC,Fig_2DEF,Fig_2GHI, nrow=4, align='vh', rel_heights = c(0.096,0.32,0.32,0.32))
+# # plot_grid(Fig_2JKL)
+# dev.off()
+
+
+# pdf('Results/Fig2_PS06_temporal_diversity.pdf', 16,10)
+# temporal_diversity %>% 
+#   ggplot(aes(x=scenario, group=scenario, y=statistic, fill=scenario))+
+#   geom_boxplot(alpha=0.8)+
+#   scale_fill_manual(values = scenario_cols)+
+#   labs(x='', y='Temporal diversity', title='High diversity')+
+#   manuscript_theme
+# dev.off()
+
+# Evenness in modules ----------------------------------------
+calculate_evenness_per_layer <- function(scen,r){
+  x <- module_results %>% 
+    filter(scenario==scen) %>% 
+    filter(run==r)
+  evenness <- NULL
+  for (l in unique(x$layer)){
+    x_l <- subset(x, layer==l)
+    d <- xtabs(~module+strain_id,data=x_l)
+    J <- vegan::diversity(d)/log(ncol(d))
+    tmp <- tibble(scenario=scen,run=r,layer=l, module=rownames(d), J=J)
+    evenness <- rbind(evenness, tmp)
+  }
+  return(evenness)
+}
+
+
+calculate_evenness <- function(scen,r){
+  x <- module_results %>% 
+    filter(scenario==scen) %>% 
+    filter(run==r)
+  d <- xtabs(~module+strain_id,data=x)
+  J <- vegan::diversity(d)/log(ncol(d))
+  return(tibble(scenario=scen,run=r,module=rownames(d),J=J))
+}
+
+
+
+calculate_module_size_evenness_per_layer <- function(scen,r){
+  x <- module_results %>% 
+    filter(scenario==scen) %>% 
+    filter(run==r)
+  evenness <- NULL
+  for (l in unique(x$layer)){
+    x_l <- subset(x, layer==l)
+    d <- x_l %>% group_by(module) %>% summarise(n=n())
+    d <- d$n
+    J <- vegan::diversity(d)/log(length(d))
+    tmp <- tibble(scenario=scen,run=r,layer=l, n_modules=length(d), J=J)
+    evenness <- rbind(evenness, tmp)
+  }
+  return(evenness)
+}
+
+module_size_evenness_per_layer <- NULL
+for(i in 1:nrow(experiments)){
+  scen <- experiments[i,'scenario']
+  r <- experiments[i,'run']
+  print(paste(scen,'|',r))
+  y <- calculate_module_size_evenness_per_layer(scen,r)
+  module_size_evenness_per_layer <- rbind(module_size_evenness_per_layer, y)
+}
+
+png('/home/shai/Dropbox/PLoS Biol/Fig_SI_evenness.png', 4480,4490, units = 'px', res = 600)
+pdf('/home/shai/Dropbox/PLoS Biol/Fig_SI_evenness.pdf', 10,10)
+module_size_evenness_per_layer %>% 
+  mutate(scenario=factor(scenario, levels=c('S','G','N'))) %>% 
+  ggplot(aes(x=J, y=n_modules, color=scenario))+
+  geom_point(alpha=0.5)+
+  scale_color_manual(values = scenario_cols)+
+  labs(x='Evenness (J)', y='Number of modules')+
+  mytheme_no_legend
 dev.off()
 
-pdf('Results/Fig2_PS06_temporal_diversity.pdf', 16,10)
-temporal_diversity %>% 
-  ggplot(aes(x=scenario, group=scenario, y=statistic, fill=scenario))+
-  geom_boxplot(alpha=0.8)+
-  scale_fill_manual(values = scenario_cols)+
-  labs(x='', y='Temporal diversity', title='High diversity')+
-  manuscript_theme
-dev.off()
+
+
 
 # Seasonality --------------------------------------------
 experiments <- subset(all_experiments,PS=='18')
@@ -611,7 +703,7 @@ dev.off()
 
 # Sensitivity analysis ----------------------------------------------------
 
-sensitivity_experiments <- expand.grid(PS=as.character(100:183),
+sensitivity_experiments <- expand.grid(PS=as.character(100:211),
                                scenario='S', 
                                run=1,
                                cutoff_prob=0.85,
@@ -624,7 +716,7 @@ module_results_sensitivity <- c()
 exp='001'
 for (i in 1:nrow(sensitivity_experiments)){
   PS <- sensitivity_experiments$PS[i]
-  x <- get_modularity_results(PS,scenario,run,cutoff_prob, folder = '/media/Data/PLOS_Biol/Results/sensitivity_analysis/')
+  x <- get_modularity_results(PS,scenario,exp,run,cutoff_prob, folder = '/media/Data/PLOS_Biol/Results/sensitivity_analysis/')
   module_results_sensitivity <- rbind(module_results_sensitivity,x)
 }
 module_results_sensitivity$strain_cluster <- as.integer(module_results_sensitivity$strain_cluster)
@@ -684,14 +776,28 @@ persistence_df_sensitivity %<>%
 # Compare module persistence of sensitivity to observed
 panel_A <- persistence_df_sensitivity %>% 
   filter(type=='Module') %>% 
+  # filter(PS %in% c('06',as.character(172))) %>% 
   ggplot()+
-  geom_boxplot(aes(x=grp, y=relative_persistence, fill=grp), notch = T)+
+  geom_boxplot(aes(x=grp, y=relative_persistence, fill=grp), notch = F)+
   # geom_density(data=subset(persistence_df_sensitivity, PS !='06'), aes(relative_persistence), fill='#1E9B95', alpha=0.5)+
   # geom_density(data=subset(persistence_df_sensitivity, PS =='06'), aes(relative_persistence), fill=scenario_cols[1], alpha=0.5)+
-  # facet_grid(~type, scales='free_y')+
   labs(x='', y='Relative persistence')+
   manuscript_theme
 
+persistence_df_sensitivity %>% 
+  filter(type=='Repertoire') %>% 
+  ggplot()+
+  geom_density(aes(x=relative_persistence, fill=grp))+
+  labs(x='', y='Relative persistence')+
+  mytheme
+
+mean(subset(persistence_df_sensitivity, grp=='Sensitivity' & type=='Module')$relative_persistence)
+mean(subset(persistence_df_sensitivity, grp=='Main result' & type=='Module')$relative_persistence)
+median(subset(persistence_df_sensitivity, grp=='Sensitivity' & type=='Module')$relative_persistence)
+median(subset(persistence_df_sensitivity, grp=='Main result' & type=='Module')$relative_persistence)
+
+wilcox.test(x = subset(persistence_df_sensitivity, grp=='Sensitivity' & type=='Repertoire')$relative_persistence,
+            y = subset(persistence_df_sensitivity, grp=='Main result' & type=='Repertoire')$relative_persistence)
 
 # Temporal diversity
 temporal_diversity_sensitivity <- c()
@@ -703,19 +809,21 @@ for (i in 1:nrow(sensitivity_experiments)){
   x <- get_temporal_diversity(PS = PS,scenario = scenario,exp = '001', run = run,cutoff_prob = cutoff_prob,folder = '/media/Data/PLOS_Biol/Results/sensitivity_analysis/')
   temporal_diversity_sensitivity <- rbind(temporal_diversity_sensitivity,x)
 }
+temporal_diversity_sensitivity$PS <- as.character(temporal_diversity_sensitivity$PS )
 temporal_diversity_sensitivity <- as.tibble(temporal_diversity_sensitivity)
 
 temporal_diversity <- fread('/media/Data/PLOS_Biol/Results/PS06_S_E001_temporal_diversity.csv') # get the PS06 persistence results
 temporal_diversity <- as.tibble(temporal_diversity)
 temporal_diversity$PS <- str_pad(temporal_diversity$PS, width = 2, side = 'left', pad = '0')
 
+names(temporal_diversity)[10] <- 'D_normalized'
 temporal_diversity_sensitivity %<>% 
   bind_rows(temporal_diversity) %>% 
   filter(scenario=='S') %>% 
   mutate(grp=ifelse(PS=='06','Main result','Sensitivity'))
 panel_B <- temporal_diversity_sensitivity %>% 
   ggplot()+
-  geom_boxplot(aes(x=grp, y=statistic, fill=grp), notch = T)+
+  geom_boxplot(aes(x=grp, y=D_normalized, fill=grp), notch = T)+
   # geom_density(data=subset(temporal_diversity_sensitivity, PS !='06'), aes(statistic), fill='#1E9B95', alpha=0.5)+
   # geom_density(data=subset(temporal_diversity_sensitivity, PS =='06'), aes(statistic), fill=scenario_cols[1], alpha=0.5)+
   labs(x='', y='Temporal diversity')+
