@@ -2270,10 +2270,12 @@ calculate_module_diversity <- function(PS, scenario, exp, run, cutoff_prob){
     sampled_strains <-  sampled_strains[,-3]
     suppressMessages(modules %<>% select(scenario, PS, scenario, exp, run, cutoff_prob, module, strain_id) %>% left_join(sampled_strains))
     allele_freq <- xtabs(~module+allele_locus, modules)
-    module_diversity <- vegan::diversity(allele_freq)/log(ncol(allele_freq))
+    module_diversity <- vegan::diversity(allele_freq)
+    module_diversity_normalized <- vegan::diversity(allele_freq)/log(ncol(allele_freq))
     
     module_persistence$D <- module_diversity
-    module_persistence$statistic <- module_diversity*module_persistence$relative_persistence
+    module_persistence$D_normalized <- module_diversity_normalized
+    module_persistence$statistic <- module_diversity_normalized/module_persistence$relative_persistence
     return(module_persistence)
   } else {
     print(paste('One file does not exist:',file_modules,file_strains))
@@ -2438,7 +2440,8 @@ get_temporal_diversity <- function(PS,scenario,exp,run,cutoff_prob,folder='/medi
   file <- paste(folder,'PS',PS,'_',scenario,'_E',exp,'_R',run,'_',cutoff_prob,'_temporal_diversity.csv',sep='')
   if(file.exists(file)){
     print(paste(PS,scenario,exp,run,cutoff_prob,sep=' | '))
-    x <- fread(file, colClasses=c('character','character','integer','double','integer','integer','integer','integer','double','double','double'))
+    # x <- fread(file, colClasses=c('character','character','integer','double','integer','integer','integer','integer','double','double','double'))
+    x <- fread(file)
     return(x)
   } else {
     print(paste('File does not exist: ',file,sep=''))

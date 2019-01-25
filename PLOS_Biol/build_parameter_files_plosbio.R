@@ -115,8 +115,8 @@ setwd('/media/Data/PLOS_Biol/parameter_files')
 system('rm *.sbatch')
 
 scenario_range <- c('S','N','G')
-exp_range <- sprintf('%0.3d', 0:3)
-ps_range <- sprintf('%0.3d', 500:599)
+exp_range <- sprintf('%0.3d', 0:1)
+ps_range <- sprintf('%0.3d', 100:211)
 
 for (ps in ps_range){
   for (scenario in scenario_range){
@@ -275,24 +275,28 @@ make_sbatch_get_data(sbatch_arguments = cutoff_design,
 # Creating these files can be tricky. Pay carefult attention to combinations of
 # PS, scenario, experiment and cutoffs in the resulting sbatch files!!!
 
-sbatch_arguments <- expand.grid(PS=sprintf('%0.2d', 5),
+sbatch_arguments <- expand.grid(PS=sprintf('%0.2d', 4:6),
                                 scen=c('S','N','G'),
                                 array='1', 
                                 layers='1:300',
                                 exp=c('001'),
+                                modularity_exp=0,
+                                write_edge_weights=F,
                                 stringsAsFactors = F)
 sbatch_arguments$cutoff_prob <- rep(c(0.3,0.6,0.85),3)
 sbatch_arguments$mem_per_cpu <- rep(c(6000,12000,32000),3)
+sbatch_arguments$mem_per_cpu <- rep(c(1000,3000,6000),3)
 sbatch_arguments$time <- rep(c('04:00:00','05:00:00','10:00:00'),3)
+sbatch_arguments$time <- rep(c('00:15:00','01:00:00','01:00:00'),3)
 
-sbatch_arguments$cutoff_prob <- 0.85
-sbatch_arguments$mem_per_cpu <- 12000
-sbatch_arguments$time <- '06:00:00'
+# sbatch_arguments$cutoff_prob <- 0.85
+# sbatch_arguments$mem_per_cpu <- 12000
+# sbatch_arguments$time <- '06:00:00'
 
 # sbatch_arguments <- subset(sbatch_arguments, scen=='G'&PS=='06')
 
 
-#Use function make_sbatch_get_data()
+make_sbatch_get_data(sbatch_arguments = sbatch_arguments,temporal_diversity = T)
 
 
 # Generate files for sensitivity analysis of main results ---------------------------------
@@ -304,22 +308,24 @@ sbatch_arguments$time <- '06:00:00'
 
 # This code creates the design
 diversity_range <- seq(10000,16000,1000) # Main analysis is 12000
-biting_range <- seq(0.3,0.5,0.1) # Main analysis is 0.5
+biting_range <- seq(0.3,0.6,0.1) # Main analysis is 0.5
 naive_doi_range <- 1/(seq(180,540,120)/60) # Main analysis is 1/6
 sensitivity_params <- expand.grid(N_GENES_INITIAL=diversity_range, BITING_RATE_MEAN=biting_range, TRANSITION_RATE_NOT_IMMUNE=naive_doi_range)
-sensitivity_params <- as.tibble(sensitivity_params)
+# sensitivity_params <- as.tibble(sensitivity_params)
 nrow(sensitivity_params)
 sensitivity_params$PS <- str_pad((1:nrow(sensitivity_params))+99,width = 3, side = 'left', pad = '0')
 
 design <- loadExperiments_GoogleSheets(local = F, workBookName = 'PLOS_Biol_design', sheetID = 2) 
-design_seed_000 <- subset(design, PS=='06' & scenario=='S' & exp=='000')
+work_scenario <- 'N'
+
+design_seed_000 <- subset(design, PS=='06' & scenario==work_scenario & exp=='000')
 design_seed_000 %<>% slice(rep(1:n(), each = nrow(sensitivity_params)))
 design_seed_000$PS <- sensitivity_params$PS
 design_seed_000$N_GENES_INITIAL <- sensitivity_params$N_GENES_INITIAL
 design_seed_000$BITING_RATE_MEAN <- sensitivity_params$BITING_RATE_MEAN
 design_seed_000$TRANSITION_RATE_NOT_IMMUNE <- sensitivity_params$TRANSITION_RATE_NOT_IMMUNE
 
-design_seed_001 <- subset(design, PS=='06' & scenario=='S' & exp=='001')
+design_seed_001 <- subset(design, PS=='06' & scenario==work_scenario & exp=='001')
 design_seed_001 %<>% slice(rep(1:n(), each = nrow(sensitivity_params)))
 design_seed_001$PS <- sensitivity_params$PS
 design_seed_001$N_GENES_INITIAL <- sensitivity_params$N_GENES_INITIAL
@@ -327,21 +333,78 @@ design_seed_001$BITING_RATE_MEAN <- sensitivity_params$BITING_RATE_MEAN
 design_seed_001$TRANSITION_RATE_NOT_IMMUNE <- sensitivity_params$TRANSITION_RATE_NOT_IMMUNE
 
 design <- design_seed_000 %>% bind_rows(design_seed_001)
-design$mem_per_cpu <- 32000
-design$wall_time <- '20:00:00'
+design$mem_per_cpu <- 42000
+design$wall_time <- '36:00:00'
+
+
+if (detect_locale()=='Lab'){
+  setwd('/home/shai/Documents/malaria_interventions')
+  sqlite_path_global <- '/media/Data/PLOS_Biol/sqlite'
+  parameter_files_path_global <- '/media/Data/PLOS_Biol/parameter_files'
+}
+if (detect_locale()=='Mac'){
+  setwd('~/GitHub/malaria_interventions')
+  sqlite_path_global <- '~/GitHub/PLOS_Biol/sqlite'
+  parameter_files_path_global <- '~/GitHub/PLOS_Biol/parameter_files'
+}
+
+
+# Create the reference experiments (checkpoint and control)
+ps_range <- sprintf('%03d', 100:211)
+exp_range <- sprintf('%0.3d', 0:1)
+run_range <- 1
+
+for (ps in ps_range){
+  design_subset <- subset(design, PS %in% ps & scenario==work_scenario & exp %in% exp_range)
+  generate_files(row_range = 1:nrow(design_subset), run_range = run_range, 
+                 experimental_design = design_subset, 
+                 # The radom_seed is necessary if using CP for intervention when
+                 # not creating the intervention experiment parameter file at the
+                 # same time as the 000 file.
+                 # random_seed = get_random_seed(PS = ps, scenario = work_scenario, run_range = run_range, folder = '/media/Data/PLOS_Biol/parameter_files/'),
+                 biting_rate_file = design_subset$DAILY_BITING_RATE_DISTRIBUTION[1],
+                 # only_sbatch = T,
+                 target_folder = parameter_files_path_global)
+}
+
+# Copy the files to Midway, then run the run_E000.sh file for run the checkpoints:
+sink('/media/Data/PLOS_Biol/parameter_files/run_E000_N.sh')
+for (ps in ps_range){
+  cat('sbatch PS',ps,work_scenario,'E000.sbatch',sep='');cat('\n')
+}
+sink.reset()
+
+jobids <- 56606693:56606810 # from Midway after runnign run_E000.sh
+diff(jobids)
+sink('/media/Data/PLOS_Biol/parameter_files/run_E001.sh')
+for (ps in ps_range){
+  if(is.null(jobids)){
+    cat('sbatch PS',ps,work_scenario,'E001.sbatch',sep='');cat('\n')
+  } else {
+    cat('sbatch -d afterok:',jobids[which(ps_range==ps)],' PS',ps,work_scenario,'E001.sbatch',sep='');cat('\n')    
+  }
+}
+sink.reset()
+
 
 # Create files to get data after sqlites are created.
-sbatch_arguments <- expand.grid(PS=sprintf('%0.3d', 100:183),
-                                scen=c('S'),
+sbatch_arguments <- expand.grid(PS=sprintf('%0.3d', 100:211),
+                                scen=c('G'),
                                 array='1', 
                                 layers='1:300',
                                 exp=c('001'),
+                                modularity_exp=0,
+                                write_edge_weights=F,
                                 stringsAsFactors = F)
-sbatch_arguments$cutoff_prob <-0.85
-sbatch_arguments$mem_per_cpu <- 20000
-sbatch_arguments$time <- '05:00:00'
-
-#Use function make_sbatch_get_data()
+sbatch_arguments$cutoff_prob <- 0.85
+sbatch_arguments$mem_per_cpu <- 8000
+sbatch_arguments$time <- '00:30:00'
+nrow(sbatch_arguments)
+make_sbatch_get_data(sbatch_arguments = sbatch_arguments,
+                     prepare_infomap = T,
+                     run_Infomap = T,
+                     read_infomap_results = T,
+                     temporal_diversity = T)
 
 # Generate files for empirical data comparison ----------------------------
 

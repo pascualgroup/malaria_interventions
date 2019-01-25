@@ -224,6 +224,20 @@ var_freq <- rowSums(data_genes)
 summary(var_freq)
 tibble(f=var_freq) %>% ggplot(aes(x=f))+geom_histogram(binwidth = 1)
 
+# Persistence of genes
+genes <- sapply(data_moi1_genes, rownames)
+survey <- rep(1:6, times=sapply(genes,length))
+gene_persistence <- tibble(gene=unlist(genes),survey=paste('S',survey,sep=''))
+n_genes <- length(unique(gene_persistence$gene))
+gene_persistence %>% 
+  group_by(gene) %>% 
+  summarise(persistence=n()) %>% 
+  group_by(persistence) %>% 
+  summarise(n=n()) %>% 
+  mutate(prop=n/n_genes) %>% 
+  ggplot(aes(x=persistence, y=prop))+geom_col()
+
+
 var_gene_richness_empirical <- c()
 var_gene_diversity_empirical <- c()
 for (s in paste('S',1:6,sep='')){
@@ -279,6 +293,7 @@ OTU_ID <- data_allele_1$OUT_ID
 data_allele_1 <- data_allele_1[,-1]
 data_allele_1 <- as.matrix(data_allele_1)
 rownames(data_allele_1) <- OTU_ID
+rownames(data_allele_1) <- paste(rownames(data_allele_1),'_locus1',sep='')
 # dim(data_allele_1)
 # data_allele_1[1:5,1:5]
 data_allele_2 <- data.table::fread('~/Dropbox/Qixin_Shai_Malaria/S1-S6/S1ToS6_VR2_clusterMap_groupBC_table.txt',sep = '\t',header = T)
@@ -288,9 +303,18 @@ OTU_ID <- data_allele_2$OUT_ID
 data_allele_2 <- data_allele_2[,-1]
 data_allele_2 <- as.matrix(data_allele_2)
 rownames(data_allele_2) <- OTU_ID
+rownames(data_allele_2) <- paste(rownames(data_allele_2),'_locus2',sep='')
+
 # dim(data_allele_2)
 # data_allele_2[1:5,1:5]
+
+# Make sure all the isolates are the same
 setequal(colnames(data_allele_1),colnames(data_allele_2))
+# Alleles are different loci of the same gene. Make sure all the genes are the same
+setequal(rownames(data_allele_1),rownames(data_allele_2))
+setdiff(rownames(data_allele_1),rownames(data_allele_2))
+setdiff(rownames(data_allele_2),rownames(data_allele_1))
+
 
 data_allleles <- rbind(data_allele_1,data_allele_2)
 isolates_all_allleles <- colnames(data_allleles)
@@ -329,6 +353,19 @@ x <- data_allleles[unique(unlist(lapply(data_moi1_alleles,rownames))),unique(unl
 dim(x)
 x <- tibble(freq=rowSums(x))
 ggplot(x, aes(freq))+geom_density()
+
+# Persistence of alleles
+alleles <- sapply(data_moi1_alleles, rownames)
+survey <- rep(1:6, times=sapply(alleles,length))
+allele_persistence <- tibble(allele=unlist(alleles),survey=paste('S',survey,sep=''))
+n_alleles <- length(unique(allele_persistence$allele))
+allele_persistence %>% 
+  group_by(allele) %>% 
+  summarise(persistence=n()) %>% 
+  group_by(persistence) %>% 
+  summarise(n=n()) %>% 
+  mutate(prop=n/n_alleles) %>% 
+  ggplot(aes(x=persistence, y=prop))+geom_col()
 
 
 # Diversity, distribution, similarity in var genes across layers
