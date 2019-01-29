@@ -281,7 +281,7 @@ sbatch_arguments <- expand.grid(PS=sprintf('%0.2d', 4:6),
                                 layers='1:300',
                                 exp=c('001'),
                                 modularity_exp=0,
-                                write_edge_weights=F,
+                                write_edge_weights=T,
                                 stringsAsFactors = F)
 sbatch_arguments$cutoff_prob <- rep(c(0.3,0.6,0.85),3)
 sbatch_arguments$mem_per_cpu <- rep(c(6000,12000,32000),3)
@@ -295,8 +295,9 @@ sbatch_arguments$time <- rep(c('00:15:00','01:00:00','01:00:00'),3)
 
 # sbatch_arguments <- subset(sbatch_arguments, scen=='G'&PS=='06')
 
-
-make_sbatch_get_data(sbatch_arguments = sbatch_arguments,temporal_diversity = T)
+setwd('/media/Data/PLOS_Biol/parameter_files')
+system('rm *.sbatch')
+make_sbatch_get_data(sbatch_arguments = sbatch_arguments,make_networks = T)
 
 
 # Generate files for sensitivity analysis of main results ---------------------------------

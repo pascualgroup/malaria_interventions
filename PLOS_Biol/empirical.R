@@ -540,6 +540,7 @@ module_persistence_empirical %<>%
   left_join(n_modules_df) %>% 
   mutate(prop=n/n_modules)
 png('/media/Data/PLOS_Biol/Results/empirical_persistence_cutoff.png',1600,1200,res=150)
+pdf('/home/shai/Dropbox/PLoS Biol/Fig_SI_empirical_cutoff.pdf', 16,12)
 ggplot(module_persistence_empirical,aes(x=persistence, y=prop))+
   scale_x_continuous(breaks=1:6, labels = 1:6)+
   geom_col(fill='purple')+
@@ -609,6 +610,8 @@ quantile(empirical_edge_weights$w, probs=seq(0.97,0.99,0.002))
 quantile(simulated_edge_weights$w, probs=seq(0.97,0.99,0.002))
 
 png('/media/Data/PLOS_Biol/Results/empirical_simulated_edge_weight_comparison.png',1600,1000,res=150)
+# png('/home/shai/Dropbox/PLoS Biol/Fig_SI_edge_weights_empirical.png', 4480*1.5,4490*1.5,units = 'px', res = 600)
+pdf('/home/shai/Dropbox/PLoS Biol/Fig_SI_edge_weights_empirical.pdf', 16,12)
 simulated_edge_weights %>% 
   filter(PS==580) %>% 
   bind_rows(empirical_edge_weights) %>% 
@@ -619,8 +622,8 @@ simulated_edge_weights %>%
   facet_grid(grp~layer, scales='free')+
   geom_vline(xintercept = cutoff_value_empirical, color='purple')+
   geom_vline(xintercept = cutoff_value_simulated, color='red')+
-  labs(title='Edge weight distributions (no cutoffs, not including zeros)')+
-  mytheme
+  labs(x='Edge weight')+
+  manuscript_theme
 dev.off()
 
 # 
@@ -695,13 +698,14 @@ exploratory_summary <- exploratory %>%
 exploratory %>% 
   filter(layer%in%layers_to_include) %>%
   ggplot(aes(x=layer, y=EIR, color=exp))+
-  scale_color_manual(values = exp_colors)+
-  geom_boxplot(aes(group=layer, color=exp),width=2)+
+  geom_boxplot(aes(group=layer, fill=exp),width=2)+
   stat_summary(aes(group=exp,color=exp), fun.y=mean, geom="point", size=3)+
   stat_summary(aes(group=exp,color=exp), fun.y=mean, geom="line", size=1)+
-  facet_grid(~exp)+
+  # facet_grid(~exp)+
   geom_vline(xintercept = c(131,138.2,145), color='black', linetype='dotted', size=1)+ # IRS. Put 138.2 instead of 138 so lines will not overlap
   scale_x_continuous(breaks = layers_to_include, labels=unique(subset(exploratory_summary, layer%in%layers_to_include)$mylabels))+
+  scale_color_manual(values = exp_colors)+
+  scale_fill_manual(values = exp_colors)+
   # scale_x_continuous(breaks = 118:162, labels=unique(subset(exploratory_summary, layer%in%118:162)$mylabels))+
   mytheme_no_legend+theme(axis.text.x = element_text(angle = 90, vjust = 0.5, size=8),panel.grid = element_blank())
 
@@ -732,7 +736,7 @@ exploratory_summary %>%
   geom_line(aes(x=layer, y=value_mean, color=exp), size=1)+
   geom_errorbar(aes(x=layer, ymin=value_mean-value_sd,ymax=value_mean+value_sd, color=exp),width=0.2, alpha=0.3)+
   scale_color_manual(values = exp_colors)+
-  geom_vline(xintercept = c(131,138,145), color='black', linetype='dotted', size=0.5)+ # IRS
+  geom_vline(xintercept = c(131,138.3,145), color='black', linetype='dotted', size=0.5)+ # IRS
   geom_vline(xintercept = c(118,126,138,142,154,162), color='black', size=0.5)+
   facet_wrap(~variable, scales='free')+
   mytheme_no_legend+
@@ -819,9 +823,6 @@ for (i in 1:nrow(experiments)){
 module_results_simulations <- as.tibble(module_results_simulations)
 module_results_simulations %>% group_by(scenario,PS,exp) %>% summarise(n=n())
 
-module_results_simulations_2 <- module_results_simulations
-module_results_simulations_3 <- module_results_simulations
-
 modsize <- module_results_simulations %>% 
   group_by(scenario,PS,exp,cutoff_prob,module) %>% summarise(size=n())
 
@@ -880,11 +881,13 @@ module_persistence_empirical %>%
   filter(cutoff_prob==0.978) %>% 
   ggplot(aes(x=persistence, y=prop, fill=scenario))+
   geom_col(position='dodge')+
-  facet_wrap(~cutoff_prob)+
+  # facet_wrap(~cutoff_prob)+
   scale_x_continuous(breaks=1:6, labels=1:6)+
   scale_fill_manual(values = c('purple','blue','orange','red'))+
   mytheme
 dev.off()
+
+
 
 
 # Compare between scenarios by calculating difference from control
@@ -952,6 +955,204 @@ module_persistence_simulated %>%
 #   geom_boxplot()+
 #   facet_wrap(~exp)+
 #   scale_fill_manual(values=c('blue','orange','red'))
+
+# Logistic regression -------------------------------------------------------
+survival_empirical <- modules_empirical_cutoff %>% 
+  group_by(scenario,cutoff_prob,module) %>%
+  mutate(birth_layer=min(layer),death_layer=max(layer),persistence=death_layer-birth_layer+1) %>% 
+  select(scenario,cutoff_prob,layer,module,birth_layer,death_layer,persistence) %>% 
+  mutate(exp='003')
+
+survival_simulated <- module_results_simulations %>% 
+  select(scenario, exp, PS, run, cutoff_prob, layer, module) %>% 
+  group_by(scenario, exp, PS,run,cutoff_prob,module) %>% 
+  summarise(birth_layer=min(layer), death_layer=max(layer), persistence=death_layer-birth_layer+1)
+
+survival_df <- survival_empirical %>% 
+  bind_rows(survival_simulated) %>% 
+  filter(cutoff_prob==0.978) %>% 
+  filter(birth_layer!= death_layer)
+survival_df %>% ungroup() %>% distinct(scenario,exp,cutoff_prob)
+survival_df$scenario <- factor(survival_df$scenario, levels=c('Empirical','S','G','N'))
+
+# We are asking what is the probability that a module would survive for at least
+# 3 layers? We can only ask that for modules that were born in layer 3 or
+# before. We define an EVENT as the survival of a module for at least 3 layers
+# and analyze that question with a logistic regression.
+survival_df <- subset(survival_df, birth_layer<=3)
+survival_df$event <- ifelse(survival_df$persistence>=3,1,0)
+
+# Defined the logistic model (following https://stats.idre.ucla.edu/r/dae/logit-regression/)
+mylogit <- glm(event~scenario, data=survival_df, family='binomial')
+
+# The summary shows that compared to Empirical (the reference level in the
+# scenario category), S,G and N have a lower odds ratio of survival. That matches
+# the persistence plot from section Experiments in simulated data.
+model_summary <- summary(mylogit)
+model_summary$coefficients[1]
+# The summary shows that 0.7047 is the log-odds that a module will survive in
+# the empirical data (all the predictors are 0, empirical is the intercept).
+# Therefore, the odds are:
+exp(model_summary$coefficients[1])
+#and the probability is:
+exp(model_summary$coefficients[1])/(exp(model_summary$coefficients[1])+1)
+
+# We can now test for an overall effect of scenario using the wald.test function
+library(aod)
+wald.test(b = coef(mylogit), Sigma = vcov(mylogit), Terms = 2:4)
+# Now we test that the coefficient for scenario=S is equal to the coefficient for scenario=G
+l <- cbind(0, 1, -1, 0) # This has the same order as the levels in confint(mylogit)
+wald.test(b = coef(mylogit), Sigma = vcov(mylogit), L = l)
+# Now we test that the coefficient for scenario=S is equal to the coefficient for scenario=N
+l <- cbind(0, 1, 0, -1) # This has the same order as the levels in confint(mylogit)
+wald.test(b = coef(mylogit), Sigma = vcov(mylogit), L = l)
+# Now we test that the coefficient for scenario=G is equal to the coefficient for scenario=N
+l <- cbind(0, 0, 1, -1) # This has the same order as the levels in confint(mylogit)
+wald.test(b = coef(mylogit), Sigma = vcov(mylogit), L = l)
+
+# Now we see the predicted PROBABILITY by the model, that a module will persist
+# for at least 3 layers given its scenario.
+newdata1 <- data.frame(scenario = factor(c('Empirical','S','G','N'))) # The order here has to match the levels in survival_df
+newdata1$scenarioP <- predict(mylogit, newdata = newdata1, type = "response")
+newdata1
+# But we would like to get a SE to calculate CI. We get the estimates on the
+# link scale and back transform both the predicted values and confidence limits
+# into probabilities.
+newdata2 <- cbind(newdata1, predict(mylogit, newdata = newdata1, type = "link", se = TRUE))
+newdata2 <- within(newdata2, {
+  PredictedProb <- plogis(fit)
+  LL <- plogis(fit - (1.96 * se.fit))
+  UL <- plogis(fit + (1.96 * se.fit))
+})
+
+newdata2$scenario <- factor(newdata2$scenario, levels=c('Empirical','S','G','N'))
+ggplot(newdata2)+
+  geom_col(aes(x=scenario, y=PredictedProb, fill=scenario))+
+  geom_errorbar(aes(x=scenario, ymin=LL, ymax=UL), color='black', width=0.1)+
+  scale_fill_manual(values = c('purple','red','blue','orange'))+
+  mytheme_no_legend
+
+# Overall model fit as compared to an empty model
+with(mylogit, null.deviance - deviance)
+with(mylogit, df.null - df.residual)
+with(mylogit, pchisq(null.deviance - deviance, df.null - df.residual, lower.tail = FALSE))
+
+
+# Plot for manuscript
+panel_A <- module_persistence_empirical %>% 
+  mutate(exp='003') %>% 
+  bind_rows(module_persistence_simulated) %>% 
+  filter(cutoff_prob==0.978) %>% 
+  ggplot(aes(x=persistence, y=prop, fill=scenario))+
+  geom_col(position='dodge')+
+  # facet_wrap(~cutoff_prob)+
+  scale_x_continuous(breaks=1:6, labels=1:6)+
+  scale_fill_manual(values = c('purple','blue','orange','red'))+
+  labs(x='Persistence',y='Proportion of modules')+
+  manuscript_theme
+
+panel_B <- ggplot(newdata2)+
+  geom_col(aes(x=scenario, y=PredictedProb, fill=scenario))+
+  geom_errorbar(aes(x=scenario, ymin=LL, ymax=UL), color='black', width=0.2)+
+  scale_fill_manual(values = c('purple','red','blue','orange'))+
+  labs(x='Scenario',y='Probability of persistence >3 layers')+
+  manuscript_theme
+Fig <- plot_grid(panel_A,panel_B,labels=c('A','B'), ncol=2, align='vh', label_size = 18)
+
+dev.off()
+# png('/home/shai/Dropbox/PLoS Biol/Fig_empirical_data_modules.pdf', 4480*1.5,4490*1.5,units = 'px', res = 600)
+pdf('/home/shai/Dropbox/PLoS Biol/Fig_empirical_data_results.pdf', 16,8)
+Fig
+dev.off()
+
+pdf('/home/shai/Dropbox/Images for presentations/BGU Job talk/Fig_empirical_comparison_B.pdf',6,6)
+png('/home/shai/Dropbox/Images for presentations/BGU Job talk/Fig_empirical_comparison_B.png',1600,1600,res=200)
+panel_B
+dev.off()
+
+
+# Plot layers -------------------------------------------------------------
+plotSurveyLayer <- function(x, zeroDiag=T, cutoff_g=NULL, vertex_color='purple', weight_plot_factor=3){
+  if ("data.frame"%in%class(x)){
+    g <- graph.data.frame(x)
+    E(g)$weight <- E(g)$w
+  }
+  if('matrix' %in% class(x)){
+    if(zeroDiag){diag(x) <- 0}
+    g <- graph.adjacency(x, mode = 'directed', weighted = T, diag = F)
+  }
+  if(!is.null(cutoff_g)){g <- delete_edges(g, which(E(g)$weight<quantile(E(g)$weight, cutoff_g)))} # remove all edges smaller than the cutoff
+  plot(g, 
+       vertex.size=6,
+       vertex.label=NA,
+       vertex.color=vertex_color,
+       edge.color='black',
+       # edge.arrow.mode='-', 
+       edge.arrow.width=1,
+       edge.arrow.size=0.2,
+       edge.curved=0.5, 
+       edge.width=E(g)$weight*weight_plot_factor)  
+}
+
+plotSurveyLayer_simulated <- function(scenario,PS,exp,cutoff_prob,modularity_exp=2,l,vertex_color){
+  x <- read_delim(paste('/media/Data/PLOS_Biol/Results/',PS,'_',scenario,'_',modularity_exp,'/PS',PS,'_',scenario,'_E',exp,'_R1_',cutoff_prob,'_Infomap_multilayer.txt',sep=''), col_names = c('layer_s','node_s','layer_t','node_t','w'), delim=' ')  
+  x %<>% filter(layer_s==layer_t) %>% 
+    filter(layer_s==l) %>% 
+    select(node_s,node_t,w)
+  plotSurveyLayer(x, vertex_color = vertex_color)
+}
+
+
+plotSurveyLayer(empiricalLayer_1, cutoff_g = 0.978)
+plotSurveyLayer(empiricalLayer_2, cutoff_g = 0.978)
+plotSurveyLayer(empiricalLayer_1, cutoff_g = 0.99)
+plotSurveyLayer(empiricalLayer_1, cutoff_g = 0.99)
+plotSurveyLayer(empiricalLayer_1, cutoff_g = 0.99)
+
+intralayer_matrices_empirical <- list(empiricalLayer_1, empiricalLayer_2, empiricalLayer_3, empiricalLayer_4,empiricalLayer_5,empiricalLayer_6)
+png('/media/Data/PLOS_Biol/Results/network_comparison_0.978.png',3200,2000,res=300)
+par(mfcol=c(4,6),mar=c(0,0,0,0)+.4)
+for (l in 1:6){
+  plotSurveyLayer(intralayer_matrices_empirical[[l]], cutoff_g = 0.978)
+  plotSurveyLayer_simulated(scenario = 'S',PS = 550,exp = '003',cutoff_prob = 0.978,modularity_exp = 2,l = l,vertex_color = 'red')
+  plotSurveyLayer_simulated(scenario = 'G',PS = 550,exp = '003',cutoff_prob = 0.978,modularity_exp = 2,l = l,vertex_color = 'blue')
+  plotSurveyLayer_simulated(scenario = 'N',PS = 550,exp = '003',cutoff_prob = 0.978,modularity_exp = 2,l = l,vertex_color = 'orange')
+}
+dev.off()
+
+
+# x <- get_data(parameter_space = '550',scenario = 'N', experiment = '003',run = 1,cutoff_prob = 0.978)
+# summary_general <- x$summary_general
+# summary_general$layer <- group_indices(summary_general, time)
+# summary_general %>% filter(layer==118)
+# sampled_infections <- x$sampled_infections
+# sampled_infections %>% filter(time==32325) %>% group_by(strain_id) %>% summarise(n=n())
+# 
+# node_list <- read_csv('/media/Data/PLOS_Biol/Results/550_N_2/PS550_N_E003_R1_0.978_node_list.csv')
+# node_list %<>% mutate(strain_id=as.integer(str_sub(nodeLabel,1,7)))
+# 
+# 
+# test <- sampled_infections %>% filter(time==32325) %>% 
+# select(strain_id) %>% group_by(strain_id) %>% summarise(n=n())
+# 
+# node_list %>% inner_join(test) %>% print(n=Inf)
+
+# Survival analysis -------------------------------------------------------
+
+library(survival)
+library(survminer)
+
+fit <- with(x, survfit(Surv(birth_layer, death_layer, event)~scenario))
+ggsurvplot(fit, data=x, conf.int = TRUE)
+png('/media/Data/PLOS_Biol/empirical/simulated_module_survival_by_scenario.png',1600,1000,res = 150)
+ggsurvplot_facet(fit, data=x, facet.by = 'scenario', conf.int = TRUE)
+dev.off()
+png('/media/Data/PLOS_Biol/empirical/simulated_module_survival_by_exp.png',1600,1000,res = 150)
+ggsurvplot_facet(fit, data=x, facet.by = 'exp', conf.int = TRUE)
+dev.off()
+
+# +scale_color_manual(values=c('blue','orange','red'))
+
 
 
 # No rescaling ------------------------------------------------------------
@@ -1216,153 +1417,6 @@ module_persistence_empirical %>%
 
 
 
-# Survival analysis -------------------------------------------------------
-survival_empirical <- modules_empirical_cutoff %>% 
-  group_by(scenario,cutoff_prob,module) %>%
-  mutate(birth_layer=min(layer),death_layer=max(layer),persistence=death_layer-birth_layer+1) %>% 
-  select(scenario,cutoff_prob,layer,module,birth_layer,death_layer,persistence) %>% 
-  mutate(exp='003')
-
-survival_simulated <- module_results_simulations %>% 
-  select(scenario, exp, PS, run, cutoff_prob, layer, module) %>% 
-  group_by(scenario, exp, PS,run,cutoff_prob,module) %>% 
-  summarise(birth_layer=min(layer), death_layer=max(layer), persistence=death_layer-birth_layer+1)
-
-survival_df <- survival_empirical %>% 
-  bind_rows(survival_simulated) %>% 
-  filter(cutoff_prob==0.978) %>% 
-  filter(birth_layer!= death_layer)
-survival_df %>% ungroup() %>% distinct(scenario,exp,cutoff_prob)
-survival_df$scenario <- factor(survival_df$scenario, levels=c('Empirical','S','G','N'))
-
-# We are asking what is the probability that a module would survive for at least
-# 3 layers? We can only ask that for modules that were born in layer 3 or
-# before. We define an EVENT as the survival of a module for at least 3 layers
-# and analyze that question with a logistic regression.
-survival_df <- subset(survival_df, birth_layer<=3)
-survival_df$event <- ifelse(survival_df$persistence>=3,1,0)
-
-# Defined the logistic model (following https://stats.idre.ucla.edu/r/dae/logit-regression/)
-mylogit <- glm(event~scenario, data=survival_df, family='binomial')
-
-# The summary shows that compared to Empirical (the reference level in the
-# scenario category), S,G and N have a lower odds ratio of survival. That matches
-# the persistence plot from section Experiments in simulated data.
-model_summary <- summary(mylogit)
-model_summary$coefficients[1]
-# The summary shows that 0.7047 is the log-odds that a module will survive in
-# the empirical data (all the predictors are 0, empirical is the intercept).
-# Therefore, the odds are:
-exp(model_summary$coefficients[1])
-#and the probability is:
-exp(model_summary$coefficients[1])/(exp(model_summary$coefficients[1])+1)
-
-# We can now test for an overall effect of scenario using the wald.test function
-library(aod)
-wald.test(b = coef(mylogit), Sigma = vcov(mylogit), Terms = 2:4)
-# Now we test that the coefficient for scenario=S is equal to the coefficient for scenario=G
-l <- cbind(0, 1, -1, 0) # This has the same order as the levels in confint(mylogit)
-wald.test(b = coef(mylogit), Sigma = vcov(mylogit), L = l)
-# Now we test that the coefficient for scenario=S is equal to the coefficient for scenario=N
-l <- cbind(0, 1, 0, -1) # This has the same order as the levels in confint(mylogit)
-wald.test(b = coef(mylogit), Sigma = vcov(mylogit), L = l)
-# Now we test that the coefficient for scenario=G is equal to the coefficient for scenario=N
-l <- cbind(0, 0, 1, -1) # This has the same order as the levels in confint(mylogit)
-wald.test(b = coef(mylogit), Sigma = vcov(mylogit), L = l)
-
-# Now we see the predicted PROBABILITY by the model, that a module will persist
-# for at least 3 layers given its scenario.
-newdata1 <- data.frame(scenario = factor(c('Empirical','S','G','N'))) # The order here has to match the levels in survival_df
-newdata1$scenarioP <- predict(mylogit, newdata = newdata1, type = "response")
-newdata1
-# But we would like to get a SE to calculate CI. We get the estimates on the
-# link scale and back transform both the predicted values and confidence limits
-# into probabilities.
-newdata2 <- cbind(newdata1, predict(mylogit, newdata = newdata1, type = "link", se = TRUE))
-newdata2 <- within(newdata2, {
-  PredictedProb <- plogis(fit)
-  LL <- plogis(fit - (1.96 * se.fit))
-  UL <- plogis(fit + (1.96 * se.fit))
-})
-
-newdata2$scenario <- factor(newdata2$scenario, levels=c('Empirical','S','G','N'))
-ggplot(newdata2)+
-  geom_col(aes(x=scenario, y=PredictedProb, fill=scenario))+
-  geom_errorbar(aes(x=scenario, ymin=LL, ymax=UL), color='black', width=0.1)+
-  scale_fill_manual(values = c('purple','red','blue','orange'))+
-  mytheme_no_legend
-
-# Overall model fit as compared to an empty model
-with(mylogit, null.deviance - deviance)
-with(mylogit, df.null - df.residual)
-with(mylogit, pchisq(null.deviance - deviance, df.null - df.residual, lower.tail = FALSE))
-
-
-
-
-library(survival)
-library(survminer)
-
-fit <- with(x, survfit(Surv(birth_layer, death_layer, event)~scenario))
-ggsurvplot(fit, data=x, conf.int = TRUE)
-png('/media/Data/PLOS_Biol/empirical/simulated_module_survival_by_scenario.png',1600,1000,res = 150)
-ggsurvplot_facet(fit, data=x, facet.by = 'scenario', conf.int = TRUE)
-dev.off()
-png('/media/Data/PLOS_Biol/empirical/simulated_module_survival_by_exp.png',1600,1000,res = 150)
-ggsurvplot_facet(fit, data=x, facet.by = 'exp', conf.int = TRUE)
-dev.off()
-
-# +scale_color_manual(values=c('blue','orange','red'))
-
-
-# Plot layers -------------------------------------------------------------
-plotSurveyLayer <- function(x, zeroDiag=T, cutoff_g=NULL, vertex_color='purple', weight_plot_factor=3){
-  if ("data.frame"%in%class(x)){
-    g <- graph.data.frame(x)
-    E(g)$weight <- E(g)$w
-  }
-  if('matrix' %in% class(x)){
-    if(zeroDiag){diag(x) <- 0}
-    g <- graph.adjacency(x, mode = 'directed', weighted = T, diag = F)
-  }
-  if(!is.null(cutoff_g)){g <- delete_edges(g, which(E(g)$weight<quantile(E(g)$weight, cutoff_g)))} # remove all edges smaller than the cutoff
-  plot(g, 
-       vertex.size=6,
-       vertex.label=NA,
-       vertex.color=vertex_color,
-       edge.color='black',
-       # edge.arrow.mode='-', 
-       edge.arrow.width=1,
-       edge.arrow.size=0.2,
-       edge.curved=0.5, 
-       edge.width=E(g)$weight*weight_plot_factor)  
-}
-
-plotSurveyLayer_simulated <- function(scenario,PS,exp,cutoff_prob,modularity_exp=2,l,vertex_color){
-  x <- read_delim(paste('/media/Data/PLOS_Biol/Results/',PS,'_',scenario,'_',modularity_exp,'/PS',PS,'_',scenario,'_E',exp,'_R1_',cutoff_prob,'_Infomap_multilayer.txt',sep=''), col_names = c('layer_s','node_s','layer_t','node_t','w'), delim=' ')  
-  x %<>% filter(layer_s==layer_t) %>% 
-    filter(layer_s==l) %>% 
-    select(node_s,node_t,w)
-  plotSurveyLayer(x, vertex_color = vertex_color)
-}
-
-
-plotSurveyLayer(empiricalLayer_1, cutoff_g = 0.978)
-plotSurveyLayer(empiricalLayer_2, cutoff_g = 0.978)
-plotSurveyLayer(empiricalLayer_1, cutoff_g = 0.99)
-plotSurveyLayer(empiricalLayer_1, cutoff_g = 0.99)
-plotSurveyLayer(empiricalLayer_1, cutoff_g = 0.99)
-
-intralayer_matrices_empirical <- list(empiricalLayer_1, empiricalLayer_2, empiricalLayer_3, empiricalLayer_4,empiricalLayer_5,empiricalLayer_6)
-png('/media/Data/PLOS_Biol/Results/network_comparison_0.978.png',3200,2000,res=300)
-par(mfcol=c(4,6),mar=c(0,0,0,0)+.4)
-for (l in 1:6){
-  plotSurveyLayer(intralayer_matrices_empirical[[l]], cutoff_g = 0.99)
-  plotSurveyLayer_simulated(scenario = 'S',PS = 550,exp = '003',cutoff_prob = 0.97,modularity_exp = 2,l = l,vertex_color = 'red')
-  plotSurveyLayer_simulated(scenario = 'G',PS = 550,exp = '003',cutoff_prob = 0.97,modularity_exp = 2,l = l,vertex_color = 'blue')
-  plotSurveyLayer_simulated(scenario = 'N',PS = 550,exp = '003',cutoff_prob = 0.97,modularity_exp = 2,l = l,vertex_color = 'orange')
-}
-dev.off()
 
 # Distribution of repertoire persistence ----------------------------------
 # In the neutral scenario, where repertoire persistence is purely a result of

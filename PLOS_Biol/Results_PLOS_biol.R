@@ -234,6 +234,11 @@ pdf('/home/shai/Dropbox/PLoS Biol/Fig_structure_high.pdf', 16,12)
 plot_grid(Fig_2ABC,Fig_2DEF, nrow=2, align='vh')
 dev.off()
 
+# pdf('/home/shai/Dropbox/Images for presentations/BGU Job talk/fig_2_panel_F.pdf',6,6)
+# png('/home/shai/Dropbox/Images for presentations/BGU Job talk/fig_2_panel_A.png',1400,1400,res=200)
+# panel_A
+# dev.off()
+
 
 # temporal_diversity$temp_div2 <- temporal_diversity$D/temporal_diversity$relative_persistence
 # panel_G <- temporal_diversity %>%
@@ -324,7 +329,7 @@ calculate_evenness <- function(scen,r){
 
 
 
-calculate_module_size_evenness_per_layer <- function(scen,r){
+calculate_module_size_evenness_per_layer <- function(scen,r, module_results){
   x <- module_results %>% 
     filter(scenario==scen) %>% 
     filter(run==r)
@@ -345,7 +350,7 @@ for(i in 1:nrow(experiments)){
   scen <- experiments[i,'scenario']
   r <- experiments[i,'run']
   print(paste(scen,'|',r))
-  y <- calculate_module_size_evenness_per_layer(scen,r)
+  y <- calculate_module_size_evenness_per_layer(scen,r,module_results = module_results)
   module_size_evenness_per_layer <- rbind(module_size_evenness_per_layer, y)
 }
 
@@ -360,7 +365,15 @@ module_size_evenness_per_layer %>%
   mytheme_no_legend
 dev.off()
 
-
+# pdf('/home/shai/Dropbox/Images for presentations/BGU Job talk/Fig_SI_module_evenness.pdf',6,6)
+# module_size_evenness_per_layer %>% 
+#   mutate(scenario=factor(scenario, levels=c('S','G','N'))) %>% 
+#   ggplot(aes(x=J, y=n_modules, color=scenario))+
+#   geom_point(alpha=0.5)+
+#   scale_color_manual(values = scenario_cols)+
+#   labs(x='Evenness (J)', y='Number of modules')+
+#   mytheme_no_legend
+# dev.off()
 
 
 # Seasonality --------------------------------------------
@@ -395,7 +408,9 @@ regime_summary_data %>%
   mytheme_no_legend+theme(axis.text.x = element_text(angle=-90))
 dev.off()
 
-png('Results/Fig_SI_seasonality_EIR.png', 1600,1200, res = 150)
+png('/home/shai/Dropbox/PLoS Biol/SI_seasonality_EIR.png', 4480*1.5,4490*1.5,units = 'px', res = 600)
+pdf('/home/shai/Dropbox/PLoS Biol/SI_seasonality_EIR.pdf', 16,12)
+# png('/home/shai/Dropbox/Images for presentations/BGU Job talk/SI_seasonality_EIR.png',1400,1400,res=300)
 regime_summary_data %>% 
   mutate(scenario=factor(scenario, levels=c('S','G','N'))) %>% 
   ggplot(aes(x=month, y=EIR, color=scenario))+
@@ -403,7 +418,9 @@ regime_summary_data %>%
   stat_summary(aes(group=scenario), fun.y=mean, geom="line", size=0.5)+
   scale_color_manual(values=scenario_cols)+
   labs(x='Month',y='EIR')+
-  mytheme_no_legend
+  scale_y_continuous(breaks=seq(0,20,4))+
+  facet_wrap(~scenario)+
+  manuscript_theme
 dev.off()
 
 
@@ -466,11 +483,75 @@ results_cutoff_S <- fread('/media/Data/PLOS_Biol/Results/results_cutoff_S.csv',
                                           double=11))
 results_cutoff_S <- as.tibble(results_cutoff_S)
 
+experiments <- results_cutoff_S %>% distinct(scenario,PS,cutoff_prob,run)
+scen <- 'S'
+module_size_evenness_per_layer_cutoff <- NULL
+for(i in 1:nrow(experiments)){
+  ps <- experiments$PS[i]
+  r <- experiments$run[i]
+  cutoff <- experiments$cutoff_prob[i]
+  print(paste(i,ps,cutoff,r,sep=' | '))
+  x <- results_cutoff_S %>% 
+    filter(PS==ps, cutoff_prob==cutoff) %>% 
+    filter(run==r)
+  evenness <- NULL
+  for (l in unique(x$layer)){
+    x_l <- subset(x, layer==l)
+    d <- x_l %>% group_by(module) %>% summarise(n=n())
+    d <- d$n
+    J <- vegan::diversity(d)/log(length(d))
+    tmp <- tibble(scenario=scen,run=r,layer=l, n_modules=length(d), J=J)
+    evenness <- rbind(evenness, tmp)
+  }
+  evenness$PS <- ps
+  evenness$run <- run
+  evenness$cutoff_prob <- cutoff
+  module_size_evenness_per_layer_cutoff <- rbind(module_size_evenness_per_layer_cutoff, evenness)
+}
+
+module_size_evenness_per_layer_cutoff %>% 
+  ggplot(aes(group=cutoff_prob, x=cutoff_prob, y=J, fill=PS))+
+  geom_boxplot()+
+  scale_fill_manual(values = ps_cols)+
+  labs(y='Evenness (J)', x='Cutoff')+
+  facet_wrap(~PS)+
+  mytheme
+
 persistence_df_cutoff_S <- read_csv('/media/Data/PLOS_Biol/Results/persistence_df_cutoff_S.csv', col_types = 'cidciiidc')
 temporal_diversity_cutoff_S <- read_csv('/media/Data/PLOS_Biol/Results/temporal_diversity_cutoff_S.csv', col_types = 'ccidiiiiddd')
 
+## Relative persistence
+panel_A <- persistence_df_cutoff_S %>% 
+  filter(PS=='04', type=='Module') %>% 
+  filter(cutoff_prob>=0.25) %>% 
+  ggplot(aes(x=cutoff_prob, y=relative_persistence, group=cutoff_prob))+
+  geom_boxplot(outlier.size = 0, fill=ps_cols[1])+
+  stat_summary(fun.y=mean, color="red", geom="point",shape=18, size=3,show.legend = FALSE)+  
+  scale_x_continuous(breaks = seq(0.05,0.95,0.15))+
+  manuscript_theme+theme(axis.title = element_blank())
+panel_B <- persistence_df_cutoff_S %>% 
+  filter(PS=='05', type=='Module') %>% 
+  filter(cutoff_prob>=0.25) %>% 
+  ggplot(aes(x=cutoff_prob, y=relative_persistence, group=cutoff_prob))+
+  geom_boxplot(outlier.size = 0, fill=ps_cols[2])+
+  stat_summary(fun.y=mean, color="red", geom="point",shape=18, size=3,show.legend = FALSE)+  
+  scale_x_continuous(breaks = seq(0.05,0.95,0.15))+
+  manuscript_theme+theme(axis.title = element_blank())
+panel_C <- persistence_df_cutoff_S %>% 
+  filter(PS=='06', type=='Module') %>% 
+  filter(cutoff_prob>=0.25) %>% 
+  ggplot(aes(x=cutoff_prob, y=relative_persistence, group=cutoff_prob))+
+  geom_boxplot(outlier.size = 0, fill=ps_cols[3])+
+  stat_summary(fun.y=mean, color="red", geom="point",shape=18, size=3,show.legend = FALSE)+  
+  scale_x_continuous(breaks = seq(0.05,0.95,0.15))+
+  manuscript_theme+theme(axis.title = element_blank())
+Fig <- plot_grid(panel_A,panel_B,panel_C, labels=c('A','B','C'), ncol=3, align='vh', label_size = 18, scale=0.95)
+y.grob <- textGrob("Relative persistence", gp=gpar(fontface="bold", col="black", fontsize=16), rot=90)
+# x.grob <- textGrob("Cut off", gp=gpar(fontface="bold", col="black", fontsize=16), vjust = -0.8)
+Fig_cutoff_ABC <- grid.arrange(arrangeGrob(Fig, left = y.grob))
+
 ## Modules per layer
-panel_A <- results_cutoff_S %>% 
+panel_D <- results_cutoff_S %>% 
   filter(PS=='04') %>% 
   filter(cutoff_prob>=0.25) %>% 
   group_by(scenario, run, cutoff_prob, layer) %>% 
@@ -480,7 +561,7 @@ panel_A <- results_cutoff_S %>%
   stat_summary(fun.y=mean, color="red", geom="point",shape=18, size=3,show.legend = FALSE)+
   scale_x_continuous(breaks = seq(0.05,0.95,0.15))+
   manuscript_theme+theme(axis.title = element_blank())
-panel_B <- results_cutoff_S %>% 
+panel_E <- results_cutoff_S %>% 
   filter(PS=='05') %>% 
   filter(cutoff_prob>=0.25) %>% 
   group_by(scenario, run, cutoff_prob, layer) %>% 
@@ -490,7 +571,7 @@ panel_B <- results_cutoff_S %>%
   stat_summary(fun.y=mean, color="red", geom="point",shape=18, size=3,show.legend = FALSE)+
   scale_x_continuous(breaks = seq(0.05,0.95,0.15))+
   manuscript_theme+theme(axis.title = element_blank())
-panel_C <- results_cutoff_S %>% 
+panel_F <- results_cutoff_S %>% 
   filter(PS=='06') %>% 
   filter(cutoff_prob>=0.25) %>% 
   group_by(scenario, run, cutoff_prob, layer) %>% 
@@ -500,71 +581,79 @@ panel_C <- results_cutoff_S %>%
   stat_summary(fun.y=mean, color="red", geom="point", shape=18, size=3,show.legend = FALSE)+
   scale_x_continuous(breaks = seq(0.05,0.95,0.15))+
   manuscript_theme+theme(axis.title = element_blank())
-Fig <- plot_grid(panel_A,panel_B,panel_C, labels=c('A','B','C'), ncol=3, align='vh', label_size = 18, scale=0.95)
-y.grob <- textGrob("Modules per layer", gp=gpar(fontface="bold", col="black", fontsize=16), rot=90)
-# x.grob <- textGrob("Cut off", gp=gpar(fontface="bold", col="black", fontsize=16), vjust = -0.8)
-Fig_cutoff_ABC <- grid.arrange(arrangeGrob(Fig, left = y.grob))
-
-## Relative persistence
-panel_D <- persistence_df_cutoff_S %>% 
-  filter(PS=='04', type=='Module') %>% 
-  filter(cutoff_prob>=0.25) %>% 
-  ggplot(aes(x=cutoff_prob, y=relative_persistence, group=cutoff_prob))+
-  geom_boxplot(outlier.size = 0, fill=ps_cols[1])+
-  stat_summary(fun.y=mean, color="red", geom="point",shape=18, size=3,show.legend = FALSE)+  
-  scale_x_continuous(breaks = seq(0.05,0.95,0.15))+
-  manuscript_theme+theme(axis.title = element_blank())
-panel_E <- persistence_df_cutoff_S %>% 
-  filter(PS=='05', type=='Module') %>% 
-  filter(cutoff_prob>=0.25) %>% 
-  ggplot(aes(x=cutoff_prob, y=relative_persistence, group=cutoff_prob))+
-  geom_boxplot(outlier.size = 0, fill=ps_cols[2])+
-  stat_summary(fun.y=mean, color="red", geom="point",shape=18, size=3,show.legend = FALSE)+  
-  scale_x_continuous(breaks = seq(0.05,0.95,0.15))+
-  manuscript_theme+theme(axis.title = element_blank())
-panel_F <- persistence_df_cutoff_S %>% 
-  filter(PS=='06', type=='Module') %>% 
-  filter(cutoff_prob>=0.25) %>% 
-  ggplot(aes(x=cutoff_prob, y=relative_persistence, group=cutoff_prob))+
-  geom_boxplot(outlier.size = 0, fill=ps_cols[3])+
-  stat_summary(fun.y=mean, color="red", geom="point",shape=18, size=3,show.legend = FALSE)+  
-  scale_x_continuous(breaks = seq(0.05,0.95,0.15))+
-  manuscript_theme+theme(axis.title = element_blank())
 Fig <- plot_grid(panel_D,panel_E,panel_F, labels=c('D','E','F'), ncol=3, align='vh', label_size = 18, scale=0.95)
-y.grob <- textGrob("Relative persistence", gp=gpar(fontface="bold", col="black", fontsize=16), rot=90)
+y.grob <- textGrob("Modules per layer", gp=gpar(fontface="bold", col="black", fontsize=16), rot=90)
 # x.grob <- textGrob("Cut off", gp=gpar(fontface="bold", col="black", fontsize=16), vjust = -0.8)
 Fig_cutoff_DEF <- grid.arrange(arrangeGrob(Fig, left = y.grob))
 
-## Temporal diveristy
-panel_G <- temporal_diversity_cutoff_S %>%
+
+## Evenness in module size
+panel_G <- module_size_evenness_per_layer_cutoff %>%
   filter(PS=='04') %>% 
-  ggplot(aes(x=cutoff_prob, y=statistic, group=cutoff_prob))+
+  ggplot(aes(x=cutoff_prob, y=J, group=cutoff_prob))+
   geom_boxplot(outlier.size = 0, fill=ps_cols[1])+
   stat_summary(fun.y=mean, color="red", geom="point",shape=18, size=3,show.legend = FALSE)+  
   scale_x_continuous(breaks = seq(0.05,0.95,0.15))+
   manuscript_theme+theme(axis.title = element_blank())
-panel_H <- temporal_diversity_cutoff_S %>%
+panel_H <- module_size_evenness_per_layer_cutoff %>%
   filter(PS=='05') %>% 
-  ggplot(aes(x=cutoff_prob, y=statistic, group=cutoff_prob))+
+  ggplot(aes(x=cutoff_prob, y=J, group=cutoff_prob))+
   geom_boxplot(outlier.size = 0, fill=ps_cols[2])+
   stat_summary(fun.y=mean, color="red", geom="point",shape=18, size=3,show.legend = FALSE)+  
   scale_x_continuous(breaks = seq(0.05,0.95,0.15))+
   manuscript_theme+theme(axis.title = element_blank())
-panel_I <- temporal_diversity_cutoff_S %>%
+panel_I <- module_size_evenness_per_layer_cutoff %>%
   filter(PS=='06') %>% 
-  ggplot(aes(x=cutoff_prob, y=statistic, group=cutoff_prob))+
+  ggplot(aes(x=cutoff_prob, y=J, group=cutoff_prob))+
   geom_boxplot(outlier.size = 0, fill=ps_cols[3])+
   stat_summary(fun.y=mean, color="red", geom="point",shape=18, size=3,show.legend = FALSE)+  
   scale_x_continuous(breaks = seq(0.05,0.95,0.15))+
   manuscript_theme+theme(axis.title = element_blank())
 Fig <- plot_grid(panel_G,panel_H,panel_I, labels=c('G','H','I'), ncol=3, align='vh', label_size = 18, scale=0.95)
-y.grob <- textGrob("Temporal diversity", gp=gpar(fontface="bold", col="black", fontsize=16), rot=90)
+y.grob <- textGrob("Evenness (J)", gp=gpar(fontface="bold", col="black", fontsize=16), rot=90)
 x.grob <- textGrob("Cut off", gp=gpar(fontface="bold", col="black", fontsize=16), vjust = -0.8)
 Fig_cutoff_GHI <- grid.arrange(arrangeGrob(Fig, left = y.grob, bottom = x.grob))
 
-title <- ggdraw() + draw_label("Cutoff results", size=20)
+png('/home/shai/Dropbox/PLoS Biol/Fig_SI_cutoff_sweep_edge_dist.png', 4480*1.5,4490*1.5,units = 'px', res = 600)
+pdf('/home/shai/Dropbox/PLoS Biol/Fig_SI_cutoff_sweep_edge_dist.pdf', 16,12)
+# svg('/home/shai/Dropbox/PLoS Biol/Fig_structure_high.svg', 10.66667,8)
+plot_grid(Fig_cutoff_ABC,Fig_cutoff_DEF,Fig_cutoff_GHI, nrow=3, align='vh')
+dev.off()
+
+## Temporal diveristy
+# panel_G <- temporal_diversity_cutoff_S %>%
+#   filter(PS=='04') %>% 
+#   ggplot(aes(x=cutoff_prob, y=statistic, group=cutoff_prob))+
+#   geom_boxplot(outlier.size = 0, fill=ps_cols[1])+
+#   stat_summary(fun.y=mean, color="red", geom="point",shape=18, size=3,show.legend = FALSE)+  
+#   scale_x_continuous(breaks = seq(0.05,0.95,0.15))+
+#   manuscript_theme+theme(axis.title = element_blank())
+# panel_H <- temporal_diversity_cutoff_S %>%
+#   filter(PS=='05') %>% 
+#   ggplot(aes(x=cutoff_prob, y=statistic, group=cutoff_prob))+
+#   geom_boxplot(outlier.size = 0, fill=ps_cols[2])+
+#   stat_summary(fun.y=mean, color="red", geom="point",shape=18, size=3,show.legend = FALSE)+  
+#   scale_x_continuous(breaks = seq(0.05,0.95,0.15))+
+#   manuscript_theme+theme(axis.title = element_blank())
+# panel_I <- temporal_diversity_cutoff_S %>%
+#   filter(PS=='06') %>% 
+#   ggplot(aes(x=cutoff_prob, y=statistic, group=cutoff_prob))+
+#   geom_boxplot(outlier.size = 0, fill=ps_cols[3])+
+#   stat_summary(fun.y=mean, color="red", geom="point",shape=18, size=3,show.legend = FALSE)+  
+#   scale_x_continuous(breaks = seq(0.05,0.95,0.15))+
+#   manuscript_theme+theme(axis.title = element_blank())
+# Fig <- plot_grid(panel_G,panel_H,panel_I, labels=c('G','H','I'), ncol=3, align='vh', label_size = 18, scale=0.95)
+# y.grob <- textGrob("Temporal diversity", gp=gpar(fontface="bold", col="black", fontsize=16), rot=90)
+# x.grob <- textGrob("Cut off", gp=gpar(fontface="bold", col="black", fontsize=16), vjust = -0.8)
+# Fig_cutoff_GHI <- grid.arrange(arrangeGrob(Fig, left = y.grob, bottom = x.grob))
+
+# title <- ggdraw() + draw_label("Cutoff results", size=20)
+# plot_grid(title, Fig_cutoff_ABC,Fig_cutoff_DEF,Fig_cutoff_GHI, nrow=4, align='vh', rel_heights = c(0.096,0.32,0.32,0.32))
 pdf('Results/Fig_SI_cutoff_S.pdf', 16,12)
 plot_grid(title, Fig_cutoff_ABC,Fig_cutoff_DEF,Fig_cutoff_GHI, nrow=4, align='vh', rel_heights = c(0.096,0.32,0.32,0.32))
+dev.off()
+
+
 # Also plot an example of modules
 results_cutoff_S %>% 
   # filter(PS=='06') %>% 
@@ -997,7 +1086,10 @@ y.grob <- textGrob("Mean duration of infection", gp=gpar(fontface="bold", col="b
 x.grob <- textGrob("Number of infections", gp=gpar(fontface="bold", col="black", fontsize=16), vjust = -0.8)
 Fig_4 <- grid.arrange(arrangeGrob(Fig, left = y.grob, bottom = x.grob))
 
-png('Results/Fig_4_epi.png', 1600,1200, res=150)
+
+dev.off()
+png('/home/shai/Dropbox/PLoS Biol/Fig_DOI_high.png', 4480*1.5,4490*1.5,units = 'px', res = 600)
+# pdf('/home/shai/Dropbox/PLoS Biol/Fig_DOI_high.pdf', 16,12)
 grid.arrange(arrangeGrob(Fig, left = y.grob, bottom = x.grob))
 dev.off()
 
@@ -1047,7 +1139,8 @@ fit_best_model_scenario <- function(scen){
   fit_summary <- summary(fit)
   a_coeff <- fit_summary$coefficients[1,1]
   b_coeff <- fit_summary$coefficients[2,1]
-  return(c(a_coeff,b_coeff))
+  b_coeff_se <- fit_summary$coefficients[2,2]
+  return(c(a_coeff,b_coeff,b_coeff_se))
 }
 
 b_coeff_S <- fit_best_model_scenario('S')[2]
@@ -1058,10 +1151,14 @@ b_coeff_G/b_coeff_S
 b_coeff_N/b_coeff_S
 
 
-
 a_coeff_S <- fit_best_model_scenario('S')[1]
 a_coeff_G <- fit_best_model_scenario('G')[1]
 a_coeff_N <- fit_best_model_scenario('N')[1]
+
+b_coeff_S_se <- fit_best_model_scenario('S')[3]
+b_coeff_G_se <- fit_best_model_scenario('G')[3]
+b_coeff_N_se <- fit_best_model_scenario('N')[3]
+
 
 # Calculate the doi of a new infection in a 5-months old baby. The number of
 # infections in 5 months depends on the EIR.
@@ -1077,14 +1174,37 @@ for (i in 1:50){
 EIR_df <- EIR_df[-1,]
 EIR_df$EIR_run <- as.numeric(EIR_df$EIR_run)
 EIR_df <- as.tibble(EIR_df) %>% group_by(scenario) %>% summarise(EIR_mean=mean(EIR_run))
-# Calculate 
-a_coeff_S*exp(-b_coeff_S*subset(EIR_df, scenario=='S')$EIR_mean*5)
-a_coeff_G*exp(-b_coeff_G*subset(EIR_df, scenario=='G')$EIR_mean*5)
-a_coeff_N*exp(-b_coeff_N*subset(EIR_df, scenario=='N')$EIR_mean*5)
+
+# Calculate per month
+doi_by_month_S <- tibble(m=1:60, scenario='S')
+doi_by_month_S$d <- a_coeff_S*exp(-b_coeff_S*subset(EIR_df, scenario=='S')$EIR_mean*doi_by_month_S$m)
+doi_by_month_S$d_se_U <- a_coeff_S*exp(-(b_coeff_S+b_coeff_S_se)*subset(EIR_df, scenario=='S')$EIR_mean*doi_by_month_S$m)
+doi_by_month_S$d_se_L <- a_coeff_S*exp(-(b_coeff_S-b_coeff_S_se)*subset(EIR_df, scenario=='S')$EIR_mean*doi_by_month_S$m)
+doi_by_month_G <- tibble(m=1:60, scenario='G')
+doi_by_month_G$d <- a_coeff_G*exp(-b_coeff_G*subset(EIR_df, scenario=='G')$EIR_mean*doi_by_month_G$m)
+doi_by_month_G$d_se_U <- a_coeff_G*exp(-(b_coeff_G+b_coeff_G_se)*subset(EIR_df, scenario=='G')$EIR_mean*doi_by_month_S$m)
+doi_by_month_G$d_se_L <- a_coeff_G*exp(-(b_coeff_G-b_coeff_G_se)*subset(EIR_df, scenario=='G')$EIR_mean*doi_by_month_S$m)
+doi_by_month_N <- tibble(m=1:60, scenario='N')
+doi_by_month_N$d <- a_coeff_N*exp(-b_coeff_N*subset(EIR_df, scenario=='N')$EIR_mean*doi_by_month_N$m)
+doi_by_month_N$d_se_U <- a_coeff_N*exp(-(b_coeff_N+b_coeff_N_se)*subset(EIR_df, scenario=='N')$EIR_mean*doi_by_month_N$m)
+doi_by_month_N$d_se_L <- a_coeff_N*exp(-(b_coeff_N-b_coeff_N_se)*subset(EIR_df, scenario=='N')$EIR_mean*doi_by_month_N$m)
+
+doi_by_month <- rbind(doi_by_month_S,doi_by_month_G,doi_by_month_N)
+doi_by_month %>% filter(m==5)
+doi_by_month %>% 
+  # filter(scenario=='G') %>% 
+ggplot(aes(color=scenario))+
+  geom_line(aes(x=m, y=d))+
+  geom_line(aes(x=m, y=d_se_U), linetype='dashed')+
+  geom_line(aes(x=m, y=d_se_L), linetype='dashed')+
+  scale_color_manual(values = c('blue','orange','red'))+
+  scale_x_continuous(breaks=seq(0,60,5))+
+  scale_y_continuous(breaks=seq(0,300,50))+
+  labs(x='Host age (months)', y='Predicted duration of infection')+
+  manuscript_theme
 
 
 
-# Allele accumulation in simulations --------------------------------------
 
 make_panel_allele_curve <- function(ps,scen,col){
   panel <- epi_results %>% 
