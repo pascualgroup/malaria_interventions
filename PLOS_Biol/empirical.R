@@ -1,6 +1,6 @@
 # Initialize --------------------------------------------------------------
 ## @knitr Initialize
-source('~/Documents/malaria_interventions/functions.R')
+source('~/GitHub//malaria_interventions/functions.R')
 prep.packages(c("tidyverse","magrittr","data.table","igraph","Matrix","dplyr","cowplot",'sqldf'))
 
 setwd('/media/Data/PLOS_Biol/empirical')
@@ -1137,6 +1137,47 @@ dev.off()
 # 
 # node_list %>% inner_join(test) %>% print(n=Inf)
 
+
+f <- '~/GitHub/PLOS_Biol/infomap_empirical.txt'
+plot_multilayer <- function(f,edge_weight_factor=1,cutoff_g=0.9,...){
+  x <- read_delim(f, col_names = c('layer_s','node_s','layer_t','node_t','weight'), col_types = 'iiiid', delim = ' ')
+  x$node_layer_s <- paste(x$node_s,x$layer_s,sep='.')
+  x$node_layer_t <- paste(x$node_t,x$layer_t,sep='.')
+  x$edgetype <- ifelse(x$layer_s==x$layer_t,'intra','inter')
+  x$layer_connection <- paste(x$layer_s,x$layer_t,sep='->')
+  x$edgecol <- ifelse(x$edgetype=='intra','black','#424949')
+  g <- graph.data.frame(x[,c(6,7,1:5,8:10)], directed = T)
+  if(!is.null(cutoff_g)){g <- delete_edges(g, which(E(g)$weight<quantile(E(g)$weight, cutoff_g)))} # remove all edges smaller than the cutoff
+  # E(g)$weight_plot <- E(g)$w
+  # E(g)$weight_plot[E(g)$edgetype=='intra'] <- E(g)$weight_plot[E(g)$edgetype=='intra']*edge_weight_factor
+  names(edge.attributes(g))
+  V(g)$layer <- sapply(str_split(V(g)$name,'\\.'), function (x) x[2])
+  
+  # This part makes the y  positions proportional to the time passed between surveys
+  V(g)$coords_y <- as.numeric(V(g)$layer)
+  # V(g)$coords_y[V(g)$coords_y==1] <- 0
+  # V(g)$coords_y[V(g)$coords_y==2] <- 8
+  # V(g)$coords_y[V(g)$coords_y==3] <- 20
+  # V(g)$coords_y[V(g)$coords_y==4] <- 24
+  
+  coords <- matrix(0,nrow = length(V(g)), ncol=2)
+  # coords[,1] <- runif(nrow(coords))
+  coords[,1] <- rep(seq(0,1,0.01)
+  coords[,2] <- V(g)$coords_y
+  # par(mar=c(20,20,20,20))
+  plot(g,
+       layout=coords,
+       vertex.color='purple',
+       vertex.size=5,
+       vertex.label=NA,
+       # edge.arrow.mode='-',
+       edge.arrow.width=0.1,
+       edge.arrow.size=0.2,
+       edge.curved=0.5,
+       edge.color=E(g)$edgecol,
+       edge.width=E(g)$weight,...)
+}
+plot_multilayer(f,edge_weight_factor=1,cutoff_g=0.9)
 # Survival analysis -------------------------------------------------------
 
 library(survival)
